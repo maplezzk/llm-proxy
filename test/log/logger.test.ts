@@ -136,6 +136,109 @@ describe('log/logger', () => {
     }
   })
 
+  it('getLogs 按日期筛选', () => {
+    const tmpDir = mkdtempSync(join(tmpdir(), 'llm-proxy-test-'))
+    const logDir = join(tmpDir, 'logs')
+    try {
+      mkdirSync(logDir, { recursive: true })
+      // 写两天的日志文件
+      const day1 = '2026-04-30'
+      const day2 = '2026-05-01'
+      writeFileSync(join(logDir, `llm-proxy-${day1}.log`),
+        [
+          `[${day1} 10:00:00] [REQ] [INFO] 第一天请求1`,
+          `[${day1} 10:00:01] [REQ] [INFO] 第一天请求2`,
+          `[${day1} 10:00:02] [REQ] [INFO] 第一天请求3`,
+        ].join('\n'), 'utf-8')
+      writeFileSync(join(logDir, `llm-proxy-${day2}.log`),
+        [
+          `[${day2} 10:00:00] [REQ] [INFO] 第二天请求1`,
+          `[${day2} 10:00:01] [REQ] [INFO] 第二天请求2`,
+        ].join('\n'), 'utf-8')
+
+      const log = new Logger(100, tmpDir, 'debug')
+
+      // 查第一天
+      const day1Logs = log.getLogs(100, undefined, undefined, undefined, day1)
+      assert.strictEqual(day1Logs.length, 3, '应返回第一天3条')
+      assert.ok(day1Logs.every(e => e.timestamp.startsWith(day1)), '所有条目时间戳应为第一天')
+
+      // 查第二天
+      const day2Logs = log.getLogs(100, undefined, undefined, undefined, day2)
+      assert.strictEqual(day2Logs.length, 2, '应返回第二天2条')
+      assert.ok(day2Logs.every(e => e.timestamp.startsWith(day2)), '所有条目时间戳应为第二天')
+
+      // 不传 date 返回全部（内存最多 100 条，这儿总共 5 条）
+      const allLogs = log.getLogs(100)
+      assert.strictEqual(allLogs.length, 5, '不传 date 应返回全部5条')
+    } finally {
+      rmSync(tmpDir, { recursive: true, force: true })
+    }
+  })
+
+  it('getLogs 日期查询：内存满了之后从文件补', () => {
+    const tmpDir = mkdtempSync(join(tmpdir(), 'llm-proxy-test-'))
+    const logDir = join(tmpDir, 'logs')
+    try {
+      mkdirSync(logDir, { recursive: true })
+      const yesterday = '2026-04-30'
+      const today = new Date().toISOString().slice(0, 10)
+      // 昨天文件写入 5 条
+      writeFileSync(join(logDir, `llm-proxy-${yesterday}.log`),
+        Array.from({ length: 5 }, (_, i) =>
+          `[${yesterday} ${String(10 + i).padStart(2, '0')}:00:00] [REQ] [INFO] 昨日日志${i}`
+        ).join('\n'), 'utf-8')
+
+      // 创建小内存 Logger（只保留 3 条），加载时昨天文件读 5 条但只能留 3 条
+      const log = new Logger(3, tmpDir, 'debug')
+
+      // 此时内存只有 3 条，昨天共 5 条
+      assert.strictEqual(log.getStats().total, 3, '内存应只保留 3 条')
+
+      // 不加 date：内存 3 条，limit=10 不够会从文件补，最终 5 条
+      const noDate = log.getLogs(10)
+      assert.strictEqual(noDate.length, 5, '不加 date 内存不够会从文件补全 5 条')
+
+      // 加 date='2026-04-30'：内存只有 3 条（来自昨天），但通过文件补全到 5 条
+      const withDate = log.getLogs(10, undefined, undefined, undefined, yesterday)
+      assert.strictEqual(withDate.length, 5, '加 date 应返回 5 条（内存3+文件补2）')
+
+      // 关键测试：加一个不存在的日期，应返回 0 条
+      const noExist = log.getLogs(10, undefined, undefined, undefined, '2026-01-01')
+      assert.strictEqual(noExist.length, 0, '不存在的日期应返回 0 条')
+    } finally {
+      rmSync(tmpDir, { recursive: true, force: true })
+    }
+  })
+
+  it('getLogs 日期查询：内存有数据但当日日志文件不存在', () => {
+    const tmpDir = mkdtempSync(join(tmpdir(), 'llm-proxy-test-'))
+    const logDir = join(tmpDir, 'logs')
+    try {
+      mkdirSync(logDir, { recursive: true })
+      const yesterday = '2026-04-30'
+      const today = '2026-05-01'
+      // 只写昨天文件
+      writeFileSync(join(logDir, `llm-proxy-${yesterday}.log`),
+        Array.from({ length: 5 }, (_, i) =>
+          `[${yesterday} ${String(10 + i).padStart(2, '0')}:00:00] [REQ] [INFO] 日志${i}`
+        ).join('\n'), 'utf-8')
+
+      const log = new Logger(10, tmpDir, 'debug')
+
+      // 不传 date：返回全部
+      const all = log.getLogs(10)
+      assert.strictEqual(all.length, 5, '不传 date 返回全部 5 条')
+
+      // 查今天（文件不存在）：无数据
+      const todayLogs = log.getLogs(10, undefined, undefined, undefined, today)
+      // 内存里没有今天的，文件也没有今天的，应该返回空
+      assert.strictEqual(todayLogs.length, 0, '今日无日志应返回 0 条')
+    } finally {
+      rmSync(tmpDir, { recursive: true, force: true })
+    }
+  })
+
   it('从文件回读日志（旧格式无级别，默认 info）', () => {
     const tmpDir = mkdtempSync(join(tmpdir(), 'llm-proxy-test-'))
     const logDir = join(tmpDir, 'logs')
