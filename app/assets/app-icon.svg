@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- macOS-style rounded square background -->
+  <rect width="512" height="512" rx="112" fill="#1a1a2e"/>
+  
+  <!-- Branch icon: 3 nodes + connecting lines, scaled to fit -->
+  <circle cx="128" cy="150" r="52" fill="#818cf8"/>
+  <circle cx="128" cy="362" r="52" fill="#818cf8"/>
+  <circle cx="384" cy="256" r="52" fill="#4fc3f7"/>
+  
+  <!-- Connecting lines (thick, rounded) -->
+  <line x1="180" y1="165" x2="332" y2="234" stroke="#a5b4fc" stroke-width="24" stroke-linecap="round"/>
+  <line x1="180" y1="347" x2="332" y2="278" stroke="#a5b4fc" stroke-width="24" stroke-linecap="round"/>
+  
+  <!-- Center hub -->
+  <circle cx="256" cy="256" r="28" fill="#c7d2fe"/>
+</svg>

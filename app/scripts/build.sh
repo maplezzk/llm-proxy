@@ -30,8 +30,9 @@ cp "$BUILD_DIR/release/LLMProxy" "$APP/Contents/MacOS/"
 cp "$BUILD_DIR/llm-proxy" "$APP/Contents/Resources/"
 cp "$BUILD_DIR/admin-ui.html" "$APP/Contents/Resources/"
 cp "$BUILD_DIR/admin-app.js" "$APP/Contents/Resources/"
-[ -f "$ROOT_DIR/app/assets/app-icon.icns" ] && cp "$ROOT_DIR/app/assets/app-icon.icns" "$APP/Contents/Resources/AppIcon.icns"
-[ -f "$ROOT_DIR/app/assets/menubar-icon.icns" ] && cp "$ROOT_DIR/app/assets/menubar-icon.icns" "$APP/Contents/Resources/AppIcon.icns"
+cp "$ROOT_DIR/app/assets/app-icon.icns" "$APP/Contents/Resources/AppIcon.icns"
+cp "$ROOT_DIR/app/assets/tray-icon.png" "$APP/Contents/Resources/tray-icon.png"
+cp "$ROOT_DIR/app/assets/tray-icon@2x.png" "$APP/Contents/Resources/tray-icon@2x.png"
 
 cat > "$APP/Contents/Info.plist" << 'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
