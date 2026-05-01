@@ -1,6 +1,12 @@
 export function capturePage() {
-  let leftEditor: any = null
-  let rightEditor: any = null
+  const PHASES = [
+    { key: 'requestIn', label: '客户端→代理', color: 'var(--success)' },
+    { key: 'requestOut', label: '代理→上游', color: 'var(--accent)' },
+    { key: 'responseIn', label: '上游→代理', color: 'var(--success)' },
+    { key: 'responseOut', label: '代理→客户端', color: 'var(--accent)' },
+  ]
+
+  let editors: any[] = []
 
   return {
     entries: [] as any[],
@@ -10,41 +16,28 @@ export function capturePage() {
     sourceFilter: '',
     sessionStart: 0,
 
+    phases: PHASES,
+
     fmtTime(ts: number): string {
       const d = new Date(ts)
       const pad = (n: number) => String(n).padStart(2, '0')
       return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
     },
 
-    fmtSize(s: string): string {
+    fmtSize(s: string | null): string {
+      if (!s) return '0B'
       const b = s.length
       if (b > 1024) return (b / 1024).toFixed(1) + 'KB'
       return b + 'B'
     },
 
-    dirIcon(d: string): string {
-      switch (d) {
-        case 'request-in': return '▲'
-        case 'request-out': return '▼'
-        case 'response-in': return '▲'
-        case 'response-out': return '▼'
-        default: return '?'
-      }
-    },
-
-    dirLabel(d: string): string {
-      switch (d) {
-        case 'request-in': return '客户端→代理'
-        case 'request-out': return '代理→上游'
-        case 'response-in': return '上游→代理'
-        case 'response-out': return '代理→客户端'
-        default: return d
-      }
+    get sources(): string[] {
+      return [...new Set(this.entries.map(e => e.source))].sort()
     },
 
     get filteredEntries(): any[] {
       if (!this.sourceFilter) return this.entries
-      return this.entries.filter((e: any) => e.source === this.sourceFilter || e.source?.startsWith(this.sourceFilter))
+      return this.entries.filter((e: any) => e.source === this.sourceFilter)
     },
 
     startCapture() {
@@ -53,7 +46,6 @@ export function capturePage() {
       this.selectedId = null
       this.sessionStart = Date.now()
 
-      // Only load captures from this session onwards
       fetch('/admin/debug/captures')
         .then(r => r.json())
         .then(d => {
@@ -68,8 +60,17 @@ export function capturePage() {
         try {
           const entry = JSON.parse(ev.data)
           if (entry.timestamp >= this.sessionStart) {
-            this.entries.push(entry)
-            if (this.entries.length > 200) this.entries = this.entries.slice(-200)
+            const idx = this.entries.findIndex((e: any) => e.pairId === entry.pairId)
+            if (idx >= 0) {
+              this.entries[idx] = entry
+              this.entries = this.entries.slice()
+              if (this.selectedId === entry.id) {
+                setTimeout(() => this.renderEditors(), 50)
+              }
+            } else {
+              this.entries.push(entry)
+              if (this.entries.length > 200) this.entries = this.entries.slice(-200)
+            }
           }
         } catch {}
       }
@@ -99,95 +100,63 @@ export function capturePage() {
       return this.entries.find((e: any) => e.id === this.selectedId) ?? null
     },
 
-    get pairedEntries(): any[] {
-      if (!this.selected) return []
-      return this.entries.filter((e: any) => e.pairId === this.selected.pairId).sort((a: any, b: any) => a.id - b.id)
-    },
-
     renderEditors() {
-      if (leftEditor) { leftEditor.destroy(); leftEditor = null }
-      if (rightEditor) { rightEditor.destroy(); rightEditor = null }
+      for (const ed of editors) { ed?.destroy() }
+      editors = []
 
-      const paired = this.pairedEntries
-      if (paired.length === 0) return
+      const entry = this.selected
+      if (!entry) return
 
       const JsonEditor = (window as any).JSONEditor
       if (!JsonEditor) return
 
-      const containers = document.querySelectorAll('.jsoneditor-container')
+      const containers = document.querySelectorAll('.phase-editor-container')
       if (containers.length === 0) return
 
-      paired.forEach((entry: any, i: number) => {
-        if (i >= containers.length) return
-        const container = containers[i] as HTMLElement
-        container.innerHTML = ''
-        const isStream = entry.direction === 'response-in' || entry.direction === 'response-out'
+      containers.forEach((el, i) => {
+        const htmlEl = el as HTMLElement
+        htmlEl.innerHTML = ''
+        htmlEl.style.cssText = 'overflow:auto;padding:12px;font-size:11px;font-family:monospace;white-space:pre-wrap;line-height:1.6;background:var(--surface);color:var(--text);border-radius:0;min-height:80px'
 
-        if (isStream) {
-          container.className = ''
-          container.style.cssText = 'overflow:auto;padding:12px;font-size:11px;font-family:monospace;white-space:pre-wrap;line-height:1.6;background:var(--surface);color:var(--text);border-radius:0'
-          container.textContent = entry.rawData
+        const phase = PHASES[i]
+        if (!phase) return
+
+        const data = entry[phase.key]
+        if (!data) {
+          htmlEl.textContent = '(暂无数据)'
+          htmlEl.style.display = 'flex'
+          htmlEl.style.alignItems = 'center'
+          htmlEl.style.justifyContent = 'center'
+          htmlEl.style.color = 'var(--text-dim)'
           return
         }
 
-        let json
-        try { json = JSON.parse(entry.rawData) } catch { json = entry.rawData }
+        htmlEl.style.display = ''
+        const isStream = phase.key === 'responseIn' || phase.key === 'responseOut'
+        if (isStream) {
+          htmlEl.textContent = data
+          return
+        }
 
-        const editor = new JsonEditor(container, {
-          mode: 'tree',
-          modes: ['tree', 'code', 'text'],
-          mainMenuBar: false,
-          navigationBar: false,
-          statusBar: false,
-          readOnly: true,
-        }, json)
-
-        if (i === 0) leftEditor = editor
-        else rightEditor = editor
+        try {
+          const json = JSON.parse(data)
+          const editor = new JsonEditor(htmlEl, {
+            mode: 'tree',
+            modes: ['tree', 'code', 'text'],
+            mainMenuBar: false,
+            navigationBar: false,
+            statusBar: false,
+            readOnly: true,
+          }, json)
+          editors.push(editor)
+        } catch {
+          htmlEl.textContent = data
+        }
       })
     },
 
     copyRaw(raw: string) {
       navigator.clipboard.writeText(raw).catch(() => {})
-    },
-
-    getDiffLines(left: string, right: string): string[] {
-      const diffs: string[] = []
-      try {
-        const l = JSON.parse(left)
-        const r = JSON.parse(right)
-        if (typeof l !== 'object' || typeof r !== 'object') return diffs
-
-        const lKeys = new Set(Object.keys(l))
-        const rKeys = new Set(Object.keys(r))
-        for (const k of lKeys) {
-          if (!rKeys.has(k)) diffs.push(`- ${k} (已移除)`)
-        }
-        for (const k of rKeys) {
-          if (!lKeys.has(k)) diffs.push(`+ ${k} (新增)`)
-        }
-
-        if (l.messages && r.messages && Array.isArray(l.messages) && Array.isArray(r.messages)) {
-          const lastL = l.messages[l.messages.length - 1]
-          const lastR = r.messages[r.messages.length - 1]
-          if (lastL?.content && Array.isArray(lastL.content)) {
-            const hasThinking = lastL.content.some((b: any) => b.type === 'thinking')
-            const hasToolUse = lastL.content.some((b: any) => b.type === 'tool_use')
-            if (hasThinking && lastR?.reasoning_content) diffs.push('✓ thinking → reasoning_content')
-            if (hasToolUse && lastR?.tool_calls) diffs.push('✓ tool_use → tool_calls')
-          }
-          if (lastL?.tool_calls && lastR?.content?.length) {
-            const hasToolUse = lastR.content.some((b: any) => b.type === 'tool_use')
-            if (hasToolUse) diffs.push('✓ tool_calls → tool_use block')
-          }
-        }
-
-        if (!l.tools && r.tools) diffs.push('✓ tools 格式转换')
-        if (l.system && !r.system && r.messages?.[0]?.role === 'system') diffs.push('✓ system → messages[0]')
-      } catch {
-        diffs.push('⚠ JSON 解析失败，无法 diff')
-      }
-      return diffs
     },
   }
 }

@@ -180,8 +180,8 @@ export async function convertAnthropicStreamToOpenAI(
 
   if (capture && pairId !== undefined) {
     const sseIn = rawLines.join('\n\n')
-    capture.record('response-in', 'anthropic', 'anthropic', 'stream', sseIn, pairId)
-    capture.record('response-out', 'anthropic', 'openai', 'stream', outLines.join(''), pairId)
+    capture.updateRequest(pairId, 'responseIn', sseIn)
+    capture.updateRequest(pairId, 'responseOut', outLines.join(''))
   }
 
   if (Object.keys(anthropicUsage).length > 0) {
@@ -252,8 +252,8 @@ export async function convertOpenAIStreamToAnthropic(
 
         if (capture && pairId !== undefined) {
           const sseIn = rawLines.join('\n\n')
-          capture.record('response-in', 'openai', 'openai', 'stream', sseIn, pairId)
-          capture.record('response-out', 'openai', 'anthropic', 'stream', outLines.join(''), pairId)
+          capture.updateRequest(pairId, 'responseIn', sseIn)
+          capture.updateRequest(pairId, 'responseOut', outLines.join(''))
         }
 
         if (Object.keys(lastUsage).length > 0) {
@@ -568,8 +568,8 @@ export async function convertOpenAIResponsesStreamToAnthropic(
 
         if (capture && pairId !== undefined) {
           const sseIn = rawLines.join('\n\n')
-          capture.record('response-in', 'openai-responses', 'openai-responses', 'stream', sseIn, pairId)
-          capture.record('response-out', 'openai-responses', 'anthropic', 'stream', outLines.join(''), pairId)
+          capture.updateRequest(pairId, 'responseIn', sseIn)
+          capture.updateRequest(pairId, 'responseOut', outLines.join(''))
         }
 
         return lastUsage
@@ -727,8 +727,8 @@ export async function convertAnthropicStreamToOpenAIResponses(
 
       if (capture && pairId !== undefined) {
         const sseIn = rawLines.join('\n\n')
-        capture.record('response-in', 'anthropic', 'anthropic', 'stream', sseIn, pairId)
-        capture.record('response-out', 'anthropic', 'openai-responses', 'stream', outLines.join(''), pairId)
+        capture.updateRequest(pairId, 'responseIn', sseIn)
+        capture.updateRequest(pairId, 'responseOut', outLines.join(''))
       }
 
       return true
@@ -853,8 +853,8 @@ export async function convertOpenAIStreamToOpenAIResponses(
 
         if (capture && pairId !== undefined) {
           const sseIn = rawLines.join('\n\n')
-          capture.record('response-in', 'openai', 'openai', 'stream', sseIn, pairId)
-          capture.record('response-out', 'openai', 'openai-responses', 'stream', outLines.join(''), pairId)
+          capture.updateRequest(pairId, 'responseIn', sseIn)
+          capture.updateRequest(pairId, 'responseOut', outLines.join(''))
         }
 
         if (Object.keys(lastUsage).length > 0) {
@@ -1125,8 +1125,8 @@ export async function convertOpenAIResponsesStreamToOpenAI(
 
         if (capture && pairId !== undefined) {
           const sseIn = rawLines.join('\n\n')
-          capture.record('response-in', 'openai-responses', 'openai-responses', 'stream', sseIn, pairId)
-          capture.record('response-out', 'openai-responses', 'openai', 'stream', outLines.join(''), pairId)
+          capture.updateRequest(pairId, 'responseIn', sseIn)
+          capture.updateRequest(pairId, 'responseOut', outLines.join(''))
         }
 
         return Object.keys(lastUsage).length > 0 ? { input_tokens: (lastUsage.input_tokens ?? 0) as number, output_tokens: (lastUsage.output_tokens ?? 0) as number } : null

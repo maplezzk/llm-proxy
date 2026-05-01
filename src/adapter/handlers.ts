@@ -73,5 +73,5 @@ export async function handleAdapterRequest(
     return
   }
 
-  await forwardPipeline(ctx, req, res, pre.body, pre.rawBody, adapterResult.route, inboundType, logLabel)
+  await forwardPipeline(ctx, req, res, pre.body, pre.rawBody, adapterResult.route, inboundType, logLabel, adapterName)
 }

@@ -102,7 +102,9 @@ export async function forwardPipeline(
   rawBody: string,
   route: RouterResult,
   inboundType: InboundType,
-  logLabel: string
+  logLabel: string,
+  /** 适配器名称（适配器请求时传入） */
+  adapterName?: string
 ): Promise<void> {
   const isStream = body.stream === true
   const startTime = Date.now()
@@ -118,9 +120,18 @@ export async function forwardPipeline(
   try {
     const upstream = await transformInboundRequest(inboundType, route, body, ctx.logger)
 
-    const pairId = ctx.capture?.startPair()
-    ctx.capture?.record('request-in', logLabel, inboundType, modelName, rawBody, pairId)
-    ctx.capture?.record('request-out', logLabel, route.providerType, String(route.modelId), JSON.stringify(upstream.body), pairId)
+    let pairId: number | undefined
+    if (ctx.capture) {
+      const source = adapterName ?? 'proxy'
+      pairId = ctx.capture.startRequest(source, inboundType, modelName, {
+        adapterName,
+        upstreamProvider: route.providerName,
+        upstreamProtocol: route.providerType,
+        upstreamModel: route.modelId,
+      })
+      ctx.capture.updateRequest(pairId, 'requestIn', rawBody)
+      ctx.capture.updateRequest(pairId, 'requestOut', JSON.stringify(upstream.body))
+    }
 
     await forwardRequest(
       {
