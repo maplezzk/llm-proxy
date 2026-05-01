@@ -147,7 +147,16 @@ export async function convertAnthropicStreamToOpenAI(
               total_tokens: ((anthropicUsage.input_tokens as number) ?? 0) + ((anthropicUsage.output_tokens as number) ?? 0),
             }
             const promptDetails = (anthropicUsage.prompt_tokens_details ?? anthropicUsage.prompt_cache_details) as Record<string, unknown> | undefined
-            if (promptDetails?.cached_tokens != null) usage.prompt_tokens_details = { cached_tokens: promptDetails.cached_tokens }
+            const promptDetailsOut: Record<string, unknown> = {}
+            if (promptDetails?.cached_tokens != null) {
+              promptDetailsOut.cached_tokens = promptDetails.cached_tokens
+            } else if (anthropicUsage.cache_read_input_tokens != null) {
+              promptDetailsOut.cached_tokens = anthropicUsage.cache_read_input_tokens
+            }
+            if (anthropicUsage.cache_creation_input_tokens != null) {
+              promptDetailsOut.cache_creation_input_tokens = anthropicUsage.cache_creation_input_tokens
+            }
+            if (Object.keys(promptDetailsOut).length > 0) usage.prompt_tokens_details = promptDetailsOut
             if (anthropicUsage.prompt_cache_miss_tokens != null) usage.prompt_cache_miss_tokens = anthropicUsage.prompt_cache_miss_tokens
             ;(chunk as Record<string, unknown>).usage = usage
           }
