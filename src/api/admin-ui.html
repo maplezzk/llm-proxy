@@ -735,17 +735,17 @@ tbody tr:hover td { background: #f8f9fb; }
         <div style="flex:0 0 auto;max-height:280px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--radius);margin-bottom:12px">
           <table style="width:100%;font-size:12px;font-family:monospace">
             <thead><tr style="background:var(--bg-hover);position:sticky;top:0">
-              <th style="width:40px;text-align:center">#</th>
-              <th style="width:145px">时间</th>
-              <th style="width:65px">来源</th>
-              <th style="width:50px">适配器</th>
-              <th style="width:50px">协议</th>
-              <th style="min-width:60px">入站模型</th>
-              <th style="width:65px">上游供应商</th>
-              <th style="width:50px">上游协议</th>
-              <th style="min-width:60px">上游模型</th>
-              <th style="width:80px;text-align:right">请求大小</th>
-              <th style="width:80px;text-align:right">响应大小</th>
+              <th style="width:36px;text-align:center">#</th>
+              <th style="width:150px">时间</th>
+              <th>来源</th>
+              <th>适配器</th>
+              <th>入站协议</th>
+              <th>入站模型</th>
+              <th>上游供应商</th>
+              <th>上游协议</th>
+              <th>上游模型</th>
+              <th style="width:90px;text-align:right">请求大小</th>
+              <th style="width:90px;text-align:right">响应大小</th>
             </tr></thead>
             <tbody>
               <template x-for="e in filteredEntries.slice().reverse()" :key="e.id">
@@ -753,15 +753,15 @@ tbody tr:hover td { background: #f8f9fb; }
                     :style="'cursor:pointer;background:' + (selectedId === e.id ? 'var(--accent-bg)' : 'transparent')">
                   <td style="text-align:center;color:var(--text-muted)" x-text="e.id"></td>
                   <td x-text="fmtTime(e.timestamp)"></td>
-                  <td x-text="e.source === 'proxy' ? '代理' : e.source" style="color:var(--text-muted)"></td>
-                  <td x-text="e.adapterName || '—'" style="color:var(--text-muted);font-size:11px"></td>
-                  <td x-text="e.protocol" style="font-size:11px"></td>
-                  <td x-text="e.model" style="font-size:11px;max-width:120px;overflow:hidden;text-overflow:ellipsis"></td>
-                  <td x-text="e.upstreamProvider || '?'" style="font-size:11px;color:var(--text-muted)"></td>
-                  <td x-text="e.upstreamProtocol || '?'" style="font-size:11px"></td>
-                  <td x-text="e.upstreamModel || '?'" style="font-size:11px;max-width:120px;overflow:hidden;text-overflow:ellipsis;color:var(--text-muted)"></td>
-                  <td style="text-align:right"><span style="font-size:11px;color:var(--success)" x-text="fmtSize(e.requestIn)"></span><span style="font-size:10px;color:var(--text-muted)"> / </span><span style="font-size:11px;color:var(--accent)" x-text="fmtSize(e.requestOut)"></span></td>
-                  <td style="text-align:right"><span style="font-size:11px;color:var(--success)" x-text="fmtSize(e.responseIn)"></span><span style="font-size:10px;color:var(--text-muted)"> / </span><span style="font-size:11px;color:var(--accent)" x-text="fmtSize(e.responseOut)"></span></td>
+                  <td style="white-space:nowrap" x-text="e.source === 'proxy' ? '代理' : e.source"></td>
+                  <td style="white-space:nowrap;color:var(--text-muted)" x-text="e.adapterName || '—'"></td>
+                  <td style="white-space:nowrap" x-text="e.protocol"></td>
+                  <td style="overflow:hidden;text-overflow:ellipsis" x-text="e.model"></td>
+                  <td style="white-space:nowrap;color:var(--text-muted)" x-text="e.upstreamProvider || '?'"></td>
+                  <td style="white-space:nowrap" x-text="e.upstreamProtocol || '?'"></td>
+                  <td style="overflow:hidden;text-overflow:ellipsis;color:var(--text-muted)" x-text="e.upstreamModel || '?'"></td>
+                  <td style="text-align:right;white-space:nowrap"><span style="color:var(--success)" x-text="fmtSize(e.requestIn)"></span><span style="font-size:10px;color:var(--text-muted)"> / </span><span style="color:var(--accent)" x-text="fmtSize(e.requestOut)"></span></td>
+                  <td style="text-align:right;white-space:nowrap"><span style="color:var(--success)" x-text="fmtSize(e.responseIn)"></span><span style="font-size:10px;color:var(--text-muted)"> / </span><span style="color:var(--accent)" x-text="fmtSize(e.responseOut)"></span></td>
                 </tr>
               </template>
             </tbody>
