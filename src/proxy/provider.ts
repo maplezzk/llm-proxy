@@ -133,7 +133,7 @@ export async function forwardRequest(
       }
 
       // Record capture
-      req.capture?.record('response-in', req.providerName ?? '?', req.inboundType, req.providerName ?? '?', text, req.pairId)
+      req.capture?.updateRequest(req.pairId!, 'responseIn', text)
 
       req.logger?.log('request', `上游响应: ${response.status}`, {
         status: response.status,
@@ -162,7 +162,7 @@ export async function forwardRequest(
           outBody: truncateObj(converted),
         }, 'debug')
         // Record converted response
-        req.capture?.record('response-out', req.providerName ?? '?', req.inboundType, req.providerName ?? '?', JSON.stringify(converted), req.pairId)
+        req.capture?.updateRequest(req.pairId!, 'responseOut', JSON.stringify(converted))
         res.writeHead(200, {
           'Content-Type': 'application/json',
           'Access-Control-Allow-Origin': '*',
@@ -236,8 +236,8 @@ export async function forwardRequest(
       }
       await pump()
       if (req.capture && req.pairId !== undefined) {
-        req.capture.record('response-in', String(req.providerName ?? '?'), req.inboundType, req.providerName ?? '?', chunks.join(''), req.pairId)
-        req.capture.record('response-out', String(req.providerName ?? '?'), req.inboundType, req.providerName ?? '?', chunks.join(''), req.pairId)
+        req.capture.updateRequest(req.pairId, 'responseIn', chunks.join(''))
+        req.capture.updateRequest(req.pairId, 'responseOut', chunks.join(''))
       }
     }
   } catch (err) {

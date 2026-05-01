@@ -118,9 +118,12 @@ export async function forwardPipeline(
   try {
     const upstream = await transformInboundRequest(inboundType, route, body, ctx.logger)
 
-    const pairId = ctx.capture?.startPair()
-    ctx.capture?.record('request-in', logLabel, inboundType, modelName, rawBody, pairId)
-    ctx.capture?.record('request-out', logLabel, route.providerType, String(route.modelId), JSON.stringify(upstream.body), pairId)
+    let pairId: number | undefined
+    if (ctx.capture) {
+      pairId = ctx.capture.startRequest(logLabel, inboundType, modelName)
+      ctx.capture.updateRequest(pairId, 'requestIn', rawBody)
+      ctx.capture.updateRequest(pairId, 'requestOut', JSON.stringify(upstream.body))
+    }
 
     await forwardRequest(
       {
