@@ -162,7 +162,7 @@ class MenuBarController: NSObject {
 
         menu.addItem(.separator())
 
-        let refreshItem = NSMenuItem(title: "刷新", action: #selector(refreshMenu), keyEquivalent: "r")
+        let refreshItem = NSMenuItem(title: "🔄 刷新", action: #selector(refreshMenu), keyEquivalent: "r")
         refreshItem.target = self
         menu.addItem(refreshItem)
 
@@ -185,7 +185,8 @@ class MenuBarController: NSObject {
 
         menu.addItem(.separator())
 
-        let quitItem = NSMenuItem(title: "退出", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        let quitItem = NSMenuItem(title: "退出 LLMProxy", action: #selector(quitApp), keyEquivalent: "q")
+        quitItem.target = self
         menu.addItem(quitItem)
 
         statusItem.menu = menu
@@ -305,6 +306,10 @@ class MenuBarController: NSObject {
         }
         task.arguments = [command]
         try? task.run()
+    }
+
+    @objc func quitApp() {
+        NSApplication.shared.terminate(nil)
     }
 
     @objc func openAdmin() {
