@@ -114,7 +114,6 @@ export async function forwardPipeline(
     type: inboundType,
     model: body.model,
     stream: isStream,
-    body,
   }, 'debug')
 
   try {
