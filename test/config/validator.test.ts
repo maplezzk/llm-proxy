@@ -133,4 +133,94 @@ describe('config/validator', () => {
     const errors = validateConfig(config)
     assert.ok(errors.some((e) => e.message.includes('不能为空')), '空 id 字段应报错')
   })
+
+  it('Anthropic 模型 valid thinking 配置通过', () => {
+    const config: Config = {
+      providers: [
+        {
+          name: 'p1',
+          type: 'anthropic',
+          apiKey: 'sk-ant-1',
+          models: [{ id: 'claude-sonnet-4', thinking: { budget_tokens: 8192 } }],
+        },
+      ],
+    }
+    const errors = validateConfig(config)
+    assert.strictEqual(errors.length, 0)
+  })
+
+  it('Anthropic 模型 budget_tokens 为 0 报错', () => {
+    const config: Config = {
+      providers: [
+        {
+          name: 'p1',
+          type: 'anthropic',
+          apiKey: 'sk-ant-1',
+          models: [{ id: 'claude-sonnet-4', thinking: { budget_tokens: 0 } }],
+        },
+      ],
+    }
+    const errors = validateConfig(config)
+    assert.ok(errors.some((e) => e.message.includes('有效的 budget_tokens')))
+  })
+
+  it('Anthropic 模型不能设置 reasoning_effort', () => {
+    const config: Config = {
+      providers: [
+        {
+          name: 'p1',
+          type: 'anthropic',
+          apiKey: 'sk-ant-1',
+          models: [{ id: 'claude-sonnet-4', thinking: { budget_tokens: 8192, reasoning_effort: 'medium' as any } }],
+        },
+      ],
+    }
+    const errors = validateConfig(config)
+    assert.ok(errors.some((e) => e.message.includes('不支持 reasoning_effort')))
+  })
+
+  it('OpenAI 模型 valid reasoning_effort 通过', () => {
+    const config: Config = {
+      providers: [
+        {
+          name: 'p1',
+          type: 'openai',
+          apiKey: 'sk-openai-1',
+          models: [{ id: 'o3-mini', thinking: { reasoning_effort: 'medium' } }],
+        },
+      ],
+    }
+    const errors = validateConfig(config)
+    assert.strictEqual(errors.length, 0)
+  })
+
+  it('OpenAI 模型无效 reasoning_effort 报错', () => {
+    const config: Config = {
+      providers: [
+        {
+          name: 'p1',
+          type: 'openai',
+          apiKey: 'sk-openai-1',
+          models: [{ id: 'o3-mini', thinking: { reasoning_effort: 'super-high' as any } }],
+        },
+      ],
+    }
+    const errors = validateConfig(config)
+    assert.ok(errors.some((e) => e.message.includes('必须是 low、medium 或 high')))
+  })
+
+  it('OpenAI 模型不能设置 budget_tokens', () => {
+    const config: Config = {
+      providers: [
+        {
+          name: 'p1',
+          type: 'openai',
+          apiKey: 'sk-openai-1',
+          models: [{ id: 'gpt-4o', thinking: { budget_tokens: 8192 } }],
+        },
+      ],
+    }
+    const errors = validateConfig(config)
+    assert.ok(errors.some((e) => e.message.includes('不支持 budget_tokens')))
+  })
 })

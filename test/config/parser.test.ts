@@ -89,4 +89,61 @@ providers:
     assert.strictEqual(config.providers.length, 1)
     assert.strictEqual(config.providers[0].name, 'minimal')
   })
+
+  it('解析 Anthropic thinking 配置', () => {
+    process.env.K = 'sk-ant-1'
+    const path = writeConfig(`
+providers:
+  - name: p1
+    type: anthropic
+    api_key: \${K}
+    models:
+      - id: claude-sonnet-4
+        thinking:
+          budget_tokens: 8192
+    `)
+    const config = loadConfigFromYaml(path)
+    assert.strictEqual(config.providers[0].models[0].thinking?.budget_tokens, 8192)
+    assert.strictEqual(config.providers[0].models[0].thinking?.reasoning_effort, undefined)
+  })
+
+  it('解析 OpenAI reasoning_effort 配置', () => {
+    process.env.K = 'sk-openai-1'
+    const path = writeConfig(`
+providers:
+  - name: p1
+    type: openai
+    api_key: \${K}
+    models:
+      - id: o3-mini
+        reasoning_effort: high
+    `)
+    const config = loadConfigFromYaml(path)
+    assert.strictEqual(config.providers[0].models[0].thinking?.reasoning_effort, 'high')
+    assert.strictEqual(config.providers[0].models[0].thinking?.budget_tokens, undefined)
+  })
+
+  it('解析适配器 thinking 配置', () => {
+    process.env.K = 'sk-ant-1'
+    const path = writeConfig(`
+providers:
+  - name: p1
+    type: anthropic
+    api_key: \${K}
+    models:
+      - id: claude-sonnet-4
+
+adapters:
+  - name: my-tool
+    type: anthropic
+    models:
+      - source_model_id: claude-sonnet-4
+        provider: p1
+        target_model_id: claude-sonnet-4-20250514
+        thinking:
+          budget_tokens: 4096
+    `)
+    const config = loadConfigFromYaml(path)
+    assert.strictEqual(config.adapters![0].models[0].thinking?.budget_tokens, 4096)
+  })
 })

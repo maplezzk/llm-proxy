@@ -19,6 +19,7 @@ export function routeModel(
           apiKey: provider.apiKey,
           apiBase,
           modelId: model.id,
+          thinking: model.thinking,
         }
       }
     }

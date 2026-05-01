@@ -56,7 +56,7 @@ export function providersPage() {
     },
 
     addModelRow(id?: string) {
-      this.form.models.push({ id: id || '' })
+      this.form.models.push({ id: id || '', thinking: {}, reasoning_effort: '' })
     },
 
     removeModelRow(index: number) {
@@ -65,7 +65,18 @@ export function providersPage() {
 
     async save() {
       const { name, type, apiKey, apiBase, models } = this.form
-      const validModels = models.filter((m: any) => m.id.trim()).map((m: any) => ({ id: m.id.trim() }))
+      const validModels = models
+        .filter((m: any) => m.id.trim())
+        .map((m: any) => {
+          const base: Record<string, any> = { id: m.id.trim() }
+          if (type === 'anthropic') {
+            const bt = parseInt(m.thinking?.budget_tokens, 10)
+            if (bt > 0) base.thinking = { budget_tokens: bt }
+          } else if (m.reasoning_effort && ['low', 'medium', 'high'].includes(m.reasoning_effort)) {
+            base.thinking = { reasoning_effort: m.reasoning_effort }
+          }
+          return base
+        })
       if (!name || validModels.length === 0) {
         ;(window as any).Alpine.store('app').toast('请填写名称和模型列表', 'error')
         return

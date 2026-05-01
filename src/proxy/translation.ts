@@ -1,7 +1,13 @@
 import type { RouterResult } from './types.js'
 import type { Logger } from '../log/logger.js'
+import { createHash } from 'node:crypto'
 
 // --- Helpers ---
+
+/** 从 thinking 内容生成确定性伪签名（与 stream-converter.ts 中的一致） */
+function makeSignature(thinkingText: string): string {
+  return createHash('sha256').update(thinkingText).digest('hex').slice(0, 16)
+}
 
 function truncateBody(obj: Record<string, unknown>, maxLen = 500): Record<string, unknown> {
   const json = JSON.stringify(obj)
@@ -313,43 +319,93 @@ function extractFullAnthropic(body: Record<string, unknown>): FullParams {
 }
 
 function convertMessagesToAnthropic(messages: unknown[]): unknown[] {
-  return messages.map((msg) => {
-    const m = msg as Record<string, unknown>
+  const result: unknown[] = []
+  let i = 0
 
-    // tool role → Anthropic user message with tool_result content block
+  while (i < messages.length) {
+    const m = messages[i] as Record<string, unknown>
+
+    // tool role → 合并连续 tool 消息到单个 user 消息
+    // Anthropic 要求并行 tool_result 必须在同一 user 消息的 content 数组中
     if (m.role === 'tool') {
-      return {
-        role: 'user',
-        content: [{
+      const toolResults: unknown[] = []
+      while (i < messages.length) {
+        const cur = messages[i] as Record<string, unknown>
+        if (cur.role !== 'tool') break
+        toolResults.push({
           type: 'tool_result',
-          tool_use_id: m.tool_call_id,
-          content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content),
-        }],
+          tool_use_id: cur.tool_call_id,
+          content: typeof cur.content === 'string' ? cur.content : JSON.stringify(cur.content),
+        })
+        i++
       }
+      result.push({ role: 'user', content: toolResults })
+      continue
     }
 
     // developer role → user (Anthropic doesn't support "developer" role)
     if (m.role === 'developer') {
-      return { role: 'user', content: m.content }
+      result.push({ role: 'user', content: m.content })
+      i++
+      continue
     }
 
-    if (m.role !== 'assistant') return m
+    if (m.role !== 'assistant') {
+      result.push(m)
+      i++
+      continue
+    }
 
     const reasoning = m.reasoning_content as string | undefined
     const text = m.content as string | undefined
+    const toolCalls = m.tool_calls as Array<Record<string, unknown>> | undefined
 
-    // If no reasoning, keep as-is (Anthropic accepts string content for assistant)
-    if (!reasoning) return m
+    // 如果有 tool_calls，需要转为 content 数组中的 tool_use 块
+    if (toolCalls && toolCalls.length > 0) {
+      const content: unknown[] = []
+      if (reasoning) {
+        const sig = (m.reasoning_signature as string) || makeSignature(reasoning)
+        content.push({ type: 'thinking', thinking: reasoning, signature: sig })
+      }
+      if (text) {
+        content.push({ type: 'text', text })
+      }
+      for (const tc of toolCalls) {
+        const fn = tc.function as Record<string, unknown> | undefined
+        let input: unknown = {}
+        try { input = fn?.arguments ? JSON.parse(fn.arguments as string) : {} } catch { input = {} }
+        content.push({
+          type: 'tool_use',
+          id: tc.id as string,
+          name: fn?.name as string ?? '',
+          input,
+        })
+      }
+      result.push({ role: 'assistant', content })
+      i++
+      continue
+    }
+
+    // If no reasoning and no tool_calls, keep as-is (Anthropic accepts string content for assistant)
+    if (!reasoning) {
+      result.push(m)
+      i++
+      continue
+    }
 
     // Convert to content block array with thinking + text
     const content: unknown[] = []
-    if (reasoning) content.push({ type: 'thinking', thinking: reasoning, signature: (m.reasoning_signature as string) ?? '' })
+    if (reasoning) {
+      const sig = (m.reasoning_signature as string) || makeSignature(reasoning)
+      content.push({ type: 'thinking', thinking: reasoning, signature: sig })
+    }
     if (text) content.push({ type: 'text', text })
 
-    const converted: Record<string, unknown> = { role: 'assistant', content }
-    if (m.tool_calls) converted.tool_calls = m.tool_calls
-    return converted
-  })
+    result.push({ role: 'assistant', content })
+    i++
+  }
+
+  return result
 }
 
 function buildAnthropicFromOpenAI(params: FullParams): Record<string, unknown> {
@@ -555,7 +611,18 @@ export async function transformInboundRequest(
   }
 
   if (sameProtocol) {
-    return { url, headers, body: { ...body, model: route.modelId }, crossProtocol: false }
+    const upstreamBody: Record<string, unknown> = { ...body, model: route.modelId }
+    injectThinkingConfig(upstreamBody, route)
+    // thinking 模式检测：配置开启了 或 消息中已有 thinking 块，都需要补全
+    if (route.providerType === 'anthropic') {
+      const msgs = upstreamBody.messages as Array<Record<string, unknown>> | undefined
+      if (msgs) {
+        if (hasThinkingInMessages(msgs)) {
+          ensureThinkingBlocks(msgs)
+        }
+      }
+    }
+    return { url, headers, body: upstreamBody, crossProtocol: false }
   }
 
   // Cross-protocol: full translation
@@ -577,6 +644,18 @@ export async function transformInboundRequest(
     upstreamBody = buildOpenAIFromAnthropic(params)
   }
 
+  // 注入 thinking 配置到转换后的请求体
+  injectThinkingConfig(upstreamBody, route)
+  // thinking 模式检测：配置开启了 或 消息中已有 thinking 块，都需要补全
+  if (route.providerType === 'anthropic') {
+    const msgs = upstreamBody.messages as Array<Record<string, unknown>> | undefined
+    if (msgs) {
+      if (hasThinkingInMessages(msgs)) {
+        ensureThinkingBlocks(msgs)
+      }
+    }
+  }
+
   logger?.log('request', `跨协议转换: ${inboundType} → ${route.providerType}`, {
     originalModel: body.model,
     targetModel: route.modelId,
@@ -585,6 +664,81 @@ export async function transformInboundRequest(
   }, 'debug')
 
   return { url, headers, body: upstreamBody, crossProtocol: true }
+}
+
+/**
+ * 根据 content 块生成描述性的占位 thinking 文本。
+ */
+function generatePlaceholderThinking(content: Array<Record<string, unknown>>): string {
+  const toolUses = content.filter((c) => c.type === 'tool_use')
+  if (toolUses.length > 0) {
+    const names = toolUses.map((c) => c.name as string).filter(Boolean)
+    const uniqueNames = [...new Set(names)]
+    if (uniqueNames.length === 1) {
+      return `让我调用 ${uniqueNames[0]} 工具`
+    }
+    return `让我调用 ${uniqueNames.join('、')} 等多个工具`
+  }
+  return '让我思考一下'
+}
+
+/**
+ * 检查消息列表中是否有任意 assistant 消息已包含 thinking 块（或 OpenAI 的 reasoning_content）。
+ * 如果有，说明对话已经在 thinking 模式下，需要保证所有 assistant 消息都有 thinking 块。
+ */
+function hasThinkingInMessages(messages: Array<Record<string, unknown>>): boolean {
+  for (const msg of messages) {
+    if (msg.role !== 'assistant') continue
+    // OpenAI 格式：有 reasoning_content 说明开启了 thinking
+    if (msg.reasoning_content) return true
+    // Anthropic 格式：content 数组中有 thinking 块
+    const content = msg.content
+    if (Array.isArray(content)) {
+      if (content.some((c: Record<string, unknown>) => c.type === 'thinking')) return true
+    }
+  }
+  return false
+}
+
+/**
+ * 确保所有 assistant 消息在 thinking 模式下都有 thinking 块作为首个 content block。
+ * 工具调用消息如果没有 reasoning_content，需要补一个占位 thinking。
+ */
+function ensureThinkingBlocks(messages: Array<Record<string, unknown>>): void {
+  for (const msg of messages) {
+    if (msg.role !== 'assistant') continue
+    const content = msg.content
+    if (!Array.isArray(content)) continue
+    // 如果第一个 block 不是 thinking，在前面插入占位 thinking
+    if (content.length === 0 || content[0].type !== 'thinking') {
+      const placeholder = generatePlaceholderThinking(content)
+      content.unshift({ type: 'thinking', thinking: placeholder, signature: makeSignature(placeholder) })
+    }
+  }
+}
+
+/**
+ * 根据路由配置的 thinking 参数，注入到上游请求体中。
+ * 同协议和跨协议路径都调用此函数。
+ */
+function injectThinkingConfig(
+  upstreamBody: Record<string, unknown>,
+  route: RouterResult
+): void {
+  if (!route.thinking) return
+
+  if (route.providerType === 'anthropic' && route.thinking.budget_tokens) {
+    const budget = route.thinking.budget_tokens
+    upstreamBody.thinking = { type: 'enabled', budget_tokens: budget }
+    // 确保 max_tokens >= budget_tokens，否则 Anthropic API 会报错
+    if (!upstreamBody.max_tokens || (upstreamBody.max_tokens as number) < budget) {
+      upstreamBody.max_tokens = budget
+    }
+  }
+
+  if ((route.providerType === 'openai' || route.providerType === 'openai-responses') && route.thinking.reasoning_effort) {
+    upstreamBody.reasoning_effort = route.thinking.reasoning_effort
+  }
 }
 
 // --- OpenAI Responses ↔ Anthropic response conversion ---

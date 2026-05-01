@@ -45,6 +45,8 @@ export function adaptersPage() {
               sourceModelId: m.sourceModelId,
               provider: m.provider,
               targetModelId: m.targetModelId,
+              thinking: m.thinking ? { budget_tokens: m.thinking.budget_tokens } : {},
+              reasoning_effort: (m as any).reasoning_effort || '',
             })),
           }
         }
@@ -54,7 +56,7 @@ export function adaptersPage() {
     },
 
     addMappingRow() {
-      this.form.models.push({ sourceModelId: '', provider: '', targetModelId: '' })
+      this.form.models.push({ sourceModelId: '', provider: '', targetModelId: '', thinking: {}, reasoning_effort: '' })
     },
 
     removeMappingRow(index: number) {
@@ -68,7 +70,18 @@ export function adaptersPage() {
 
     async save() {
       const { name, type, models } = this.form
-      const validModels = models.filter((m: any) => m.sourceModelId.trim() && m.provider && m.targetModelId)
+      const validModels = models
+        .filter((m: any) => m.sourceModelId.trim() && m.provider && m.targetModelId)
+        .map((m: any) => {
+          const base = { sourceModelId: m.sourceModelId, provider: m.provider, targetModelId: m.targetModelId }
+          if (type === 'anthropic') {
+            const bt = parseInt(m.thinking?.budget_tokens, 10)
+            if (bt > 0) (base as any).thinking = { budget_tokens: bt }
+          } else if (m.reasoning_effort && ['low', 'medium', 'high'].includes(m.reasoning_effort)) {
+            (base as any).thinking = { reasoning_effort: m.reasoning_effort }
+          }
+          return base
+        })
       if (!name || validModels.length === 0) {
         ;(window as any).Alpine.store('app').toast('请填写名称和模型映射', 'error')
         return

@@ -24,7 +24,9 @@ export function handleGetAdapters(ctx: ServerContext, req: IncomingMessage, res:
         } else if (!provider.models.find((pm) => pm.id === m.targetModelId)) {
           status = 'model_not_found'
         }
-        return { sourceModelId: m.sourceModelId, provider: m.provider, targetModelId: m.targetModelId, status }
+        const base: Record<string, unknown> = { sourceModelId: m.sourceModelId, provider: m.provider, targetModelId: m.targetModelId, status }
+        if (m.thinking) base.thinking = m.thinking
+        return base
       }),
     }
   })

@@ -45,6 +45,9 @@ export function resolveAdapterRoute(
 
   const apiBase = provider.apiBase ?? getDefaultApiBase(provider.type)
 
+  // Thinking config: 优先使用适配器映射上的配置，否则使用目标模型的配置
+  const thinking = mapping.thinking ?? model.thinking
+
   return {
     route: {
       providerName: provider.name,
@@ -52,6 +55,7 @@ export function resolveAdapterRoute(
       apiKey: provider.apiKey,
       apiBase,
       modelId: model.id,
+      thinking,
     },
     inboundType: adapter.type,
   }
