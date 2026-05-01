@@ -264,6 +264,9 @@ function startPolling() {
 // ── App lifecycle ──
 
 app.whenReady().then(async () => {
+  // Hide from dock (tray-only macOS app)
+  app.setActivationPolicy('accessory')
+
   // Create tray
   const iconPath = path.join(__dirname, '..', 'src', 'api', 'tray-icon.png')
   console.log('[electron] tray icon path:', iconPath, 'exists:', require('fs').existsSync(iconPath))
