@@ -162,7 +162,7 @@ class MenuBarController: NSObject {
 
         menu.addItem(.separator())
 
-        let refreshItem = NSMenuItem(title: "🔄 刷新", action: #selector(refreshMenu), keyEquivalent: "r")
+        let refreshItem = NSMenuItem(title: "刷新", action: #selector(refreshMenu), keyEquivalent: "r")
         refreshItem.target = self
         menu.addItem(refreshItem)
 
