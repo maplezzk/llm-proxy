@@ -42,7 +42,8 @@ jobs:
       - name: Calculate SHA256
         id: sha
         run: |
-          SHA=$(shasum -a 256 app/.build/LLMProxy.dmg | cut -d' ' -f1)
+          VERSION=$(node -p "require('./package.json').version")
+          SHA=$(shasum -a 256 app/.build/LLMProxy-v${VERSION}.dmg | cut -d' ' -f1)
           echo "sha=$SHA" >> $GITHUB_OUTPUT
 
       - name: Create Release
@@ -62,7 +63,7 @@ jobs:
             ```bash
             brew install --cask maplezzk/tap/llm-proxy
             ```
-          files: app/.build/LLMProxy.dmg
+          files: app/.build/LLMProxy-v${{ steps.version.outputs.version }}.dmg
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

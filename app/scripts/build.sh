@@ -54,7 +54,8 @@ PLIST
 codesign --force --deep --sign - "$APP" 2>/dev/null || true
 
 echo "=== 4. Create DMG ==="
-DMG="$BUILD_DIR/LLMProxy.dmg"
+VERSION=$(node -p "require('$ROOT_DIR/package.json').version")
+DMG="$BUILD_DIR/LLMProxy-v${VERSION}.dmg"
 rm -f "$DMG"
 hdiutil create -fs HFS+ -srcfolder "$APP" -volname "LLMProxy" "$DMG" 2>/dev/null
 
