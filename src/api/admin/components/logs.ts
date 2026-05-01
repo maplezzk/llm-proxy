@@ -1,9 +1,15 @@
 export function logsPage() {
+  function todayStr() {
+    const d = new Date()
+    const pad = (n: number) => String(n).padStart(2, '0')
+    return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`
+  }
+
   return {
     allLogs: [] as any[],
     filter: 'all',
     levelFilter: 'all',
-    dateFilter: '',
+    dateFilter: todayStr(),
     search: '',
     page: 1,
     pageSize: 50,
