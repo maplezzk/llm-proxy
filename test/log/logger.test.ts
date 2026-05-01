@@ -113,9 +113,9 @@ describe('log/logger', () => {
     try {
       const today = new Date().toISOString().slice(0, 10)
       const content = [
-        `[${today} 10:00:00] [REQ] [INFO] 上游请求: POST https://api.openai.com  {"url":"https://api.openai.com","curl":"curl ..."}`,
-        `[${today} 10:00:01] [SYS] [ERROR] 模型测试失败  {"error":"timeout"}`,
-        `[${today} 10:00:02] [REQ] [WARN] 上游返回错误: 429  {"status":429}`,
+        `[${today} 10:00:00.000] [REQ] [INFO] 上游请求: POST https://api.openai.com  {"url":"https://api.openai.com","curl":"curl ..."}`,
+        `[${today} 10:00:01.000] [SYS] [ERROR] 模型测试失败  {"error":"timeout"}`,
+        `[${today} 10:00:02.000] [REQ] [WARN] 上游返回错误: 429  {"status":429}`,
       ].join('\n')
       mkdirSync(logDir, { recursive: true })
       writeFileSync(join(logDir, `llm-proxy-${today}.log`), content, 'utf-8')
@@ -146,14 +146,14 @@ describe('log/logger', () => {
       const day2 = '2026-05-01'
       writeFileSync(join(logDir, `llm-proxy-${day1}.log`),
         [
-          `[${day1} 10:00:00] [REQ] [INFO] 第一天请求1`,
-          `[${day1} 10:00:01] [REQ] [INFO] 第一天请求2`,
-          `[${day1} 10:00:02] [REQ] [INFO] 第一天请求3`,
+          `[${day1} 10:00:00.000] [REQ] [INFO] 第一天请求1`,
+          `[${day1} 10:00:01.000] [REQ] [INFO] 第一天请求2`,
+          `[${day1} 10:00:02.000] [REQ] [INFO] 第一天请求3`,
         ].join('\n'), 'utf-8')
       writeFileSync(join(logDir, `llm-proxy-${day2}.log`),
         [
-          `[${day2} 10:00:00] [REQ] [INFO] 第二天请求1`,
-          `[${day2} 10:00:01] [REQ] [INFO] 第二天请求2`,
+          `[${day2} 10:00:00.000] [REQ] [INFO] 第二天请求1`,
+          `[${day2} 10:00:01.000] [REQ] [INFO] 第二天请求2`,
         ].join('\n'), 'utf-8')
 
       const log = new Logger(100, tmpDir, 'debug')
@@ -245,8 +245,8 @@ describe('log/logger', () => {
     try {
       const today = new Date().toISOString().slice(0, 10)
       const content = [
-        `[${today} 10:00:00] [REQ] 上游请求: POST https://api.openai.com  {"url":"https://api.openai.com"}`,
-        `[${today} 10:00:01] [SYS] 代理启动  {"port":9000}`,
+        `[${today} 10:00:00.000] [REQ] 上游请求: POST https://api.openai.com  {"url":"https://api.openai.com"}`,
+        `[${today} 10:00:01.000] [SYS] 代理启动  {"port":9000}`,
       ].join('\n')
       mkdirSync(logDir, { recursive: true })
       writeFileSync(join(logDir, `llm-proxy-${today}.log`), content, 'utf-8')

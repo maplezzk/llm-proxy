@@ -32,8 +32,8 @@ function formatLogLine(entry: LogEntry): string {
   return line + '\n'
 }
 
-const LINE_RE_NEW = /^\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\] \[(REQ|SYS)\] \[(DEBUG|INFO|WARN|ERROR)\] (.+?)(?:  (\{.*\}))?$/
-const LINE_RE_OLD = /^\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\] \[(REQ|SYS)\] (.+?)(?:  (\{.*\}))?$/
+const LINE_RE_NEW = /^\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3})\] \[(REQ|SYS)\] \[(DEBUG|INFO|WARN|ERROR)\] (.+?)(?:  (\{.*\}))?$/
+const LINE_RE_OLD = /^\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:\.\d{3})?)\] \[(REQ|SYS)\] (.+?)(?:  (\{.*\}))?$/
 
 function parseLogLine(line: string): LogEntry | null {
   let match = line.match(LINE_RE_NEW)
