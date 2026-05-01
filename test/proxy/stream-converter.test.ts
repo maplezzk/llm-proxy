@@ -73,6 +73,28 @@ describe('proxy/stream-converter', () => {
       assert.ok(output.includes('"finish_reason":"stop"'), 'end_turn → stop')
     })
 
+    it('cache_read_input_tokens / cache_creation_input_tokens 透传到 prompt_tokens_details', async () => {
+      const { chunks, res } = makeResponse()
+      const reader = makeReader([
+        'event: content_block_start\ndata: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}\n\n',
+        'event: content_block_delta\ndata: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"hi"}}\n\n',
+        'event: message_delta\ndata: {"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"input_tokens":227,"cache_creation_input_tokens":0,"cache_read_input_tokens":125312,"output_tokens":1595}}\n\n',
+        'event: message_stop\ndata: {"type":"message_stop"}\n\n',
+      ])
+      await convertAnthropicStreamToOpenAI(reader, res)
+      const output = chunks.join('')
+      // 验证 cache_read_input_tokens → prompt_tokens_details.cached_tokens
+      assert.ok(output.includes('"prompt_tokens_details"'), '应包含 prompt_tokens_details')
+      assert.ok(output.includes('"cached_tokens":125312'), 'cache_read_input_tokens 应映射到 cached_tokens')
+      // 验证 cache_creation_input_tokens 保留
+      assert.ok(output.includes('"cache_creation_input_tokens":0'), 'cache_creation_input_tokens 应保留')
+      // 验证基础字段
+      assert.ok(output.includes('"prompt_tokens":227'), 'prompt_tokens 应等于 input_tokens')
+      assert.ok(output.includes('"completion_tokens":1595'), 'completion_tokens 应等于 output_tokens')
+      assert.ok(output.includes('"total_tokens":1822'), 'total_tokens 应为 input + output')
+      assert.ok(output.includes('[DONE]'), '应包含 [DONE]')
+    })
+
     it('ping 事件被忽略', async () => {
       const { chunks, res } = makeResponse()
       const reader = makeReader([
