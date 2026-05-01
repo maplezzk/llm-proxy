@@ -44,7 +44,7 @@ jobs:
       - name: Check version change
         id: version
         run: |
-          PUBLISHED_VERSION=$(npm view llm-proxy version 2>/dev/null || echo "0.0.0")
+          PUBLISHED_VERSION=$(npm view @maplezzk/llm-proxy version 2>/dev/null || echo "0.0.0")
           LOCAL_VERSION=$(node -p "require('./package.json').version")
           echo "Published version: $PUBLISHED_VERSION"
           echo "Local version: $LOCAL_VERSION"
