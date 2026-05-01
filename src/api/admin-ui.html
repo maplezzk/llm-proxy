@@ -445,7 +445,13 @@ tbody tr:hover td { background: #f8f9fb; }
               <tr>
                 <td><strong x-text="p.name"></strong></td>
                 <td><span class="mono" x-text="p.type === 'openai-responses' ? 'openai (responses)' : p.type"></span></td>
-                <td class="mono" x-text="p.models?.length ?? 0"></td>
+                <td class="mono">
+                  <span x-text="p.models?.length ?? 0"></span>
+                  <template x-if="p.models?.some((m: any) => m.thinking?.budget_tokens || m.reasoning_effort || m.thinking?.reasoning_effort)">
+                    <span style="margin-left:4px;font-size:10px;color:var(--accent);cursor:help"
+                          :title="p.models.filter((m:any) => m.thinking?.budget_tokens || m.reasoning_effort || m.thinking?.reasoning_effort).map((m:any) => m.id + ' → ' + (m.thinking?.budget_tokens ? 'thinking:'+m.thinking.budget_tokens : 're:'+m.reasoning_effort || m.thinking?.reasoning_effort)).join('\n')">🧠</span>
+                  </template>
+                </td>
                 <td><span class="badge" :class="p.available ? 'badge-ok' : 'badge-err'" x-text="p.available ? '正常' : '异常'"></span></td>
                 <td>
                   <button class="btn btn-sm btn-success" @click="openTestPanel(p.name)">测试</button>
@@ -493,6 +499,28 @@ tbody tr:hover td { background: #f8f9fb; }
           <div class="dynamic-row">
             <span class="pm-label">模型 ID</span>
             <input x-model="m.id" placeholder="如 gpt-4o" style="flex:1">
+            <!-- Thinking 配置 -->
+            <template x-if="form.type === 'anthropic'">
+              <div style="display:flex;align-items:center;gap:4px;white-space:nowrap">
+                <span class="pm-label" style="font-size:10px;color:var(--accent)">思考预算</span>
+                <input x-model="m.thinking.budget_tokens" type="number" min="0" step="1024"
+                       style="width:90px;font-size:10.5px;padding:3px 5px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);color:var(--text)"
+                       title="Anthropic extended thinking 的 token 预算，启用后模型会在回答前展示推理过程">
+              </div>
+            </template>
+            <template x-if="form.type === 'openai' || form.type === 'openai-responses'">
+              <div style="display:flex;align-items:center;gap:4px;white-space:nowrap">
+                <span class="pm-label" style="font-size:10px;color:var(--accent)">推理力度</span>
+                <select x-model="m.reasoning_effort"
+                        style="width:80px;font-size:10.5px;padding:3px 3px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);color:var(--text)"
+                        title="OpenAI reasoning_effort，控制推理模型（如 o3/o4-mini）的思考深度">
+                  <option value="">默认</option>
+                  <option value="low">低</option>
+                  <option value="medium">中</option>
+                  <option value="high">高</option>
+                </select>
+              </div>
+            </template>
             <button class="btn btn-sm btn-danger btn-icon" @click="removeModelRow(i)">✕</button>
           </div>
         </template>
@@ -562,7 +590,8 @@ tbody tr:hover td { background: #f8f9fb; }
                 <td><div class="adapter-tags">
                   <template x-for="m in a.models" :key="m.sourceModelId + m.targetModelId">
                     <span class="adapter-tag" :class="{ 'adapter-tag-err': m.status !== 'ok' }"
-                          x-text="m.sourceModelId + ' → ' + m.provider + '/' + m.targetModelId"></span>
+                          x-text="m.sourceModelId + ' → ' + m.provider + '/' + m.targetModelId + (m.thinking?.budget_tokens ? ' 🧠' : (m.reasoning_effort || m.thinking?.reasoning_effort ? ' 🧠' : ''))"
+                          :title="m.thinking?.budget_tokens ? 'thinking: ' + m.thinking.budget_tokens : (m.reasoning_effort || m.thinking?.reasoning_effort ? 'reasoning: ' + (m.reasoning_effort || m.thinking?.reasoning_effort) : '')"></span>
                   </template>
                 </div></td>
                 <td>
@@ -613,9 +642,31 @@ tbody tr:hover td { background: #f8f9fb; }
             <select :value="m.targetModelId" @change="m.targetModelId = $event.target.value" style="flex:2;min-width:140px">
               <option value="">-- 选择模型 --</option>
               <template x-for="mid in getProviderModels(m.provider)" :key="mid.id">
-                <option :value="mid.id" :selected="mid.id === m.targetModelId" x-text="mid.id"></option>
+                <option :value="mid.id" :selected="mid.id === m.targetModelId" x-text="mid.id + (mid.thinking || mid.reasoning_effort ? ' 🤔' : '')"></option>
               </template>
             </select>
+            <!-- Thinking 配置 -->
+            <template x-if="form.type === 'anthropic'">
+              <div style="display:flex;align-items:center;gap:4px;white-space:nowrap">
+                <span class="pm-label" style="font-size:10px;color:var(--accent)">思考预算</span>
+                <input x-model="m.thinking.budget_tokens" type="number" min="0" step="1024"
+                       style="width:80px;font-size:10.5px;padding:3px 5px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);color:var(--text)"
+                       title="覆盖目标模型的 thinking budget_tokens">
+              </div>
+            </template>
+            <template x-if="form.type === 'openai' || form.type === 'openai-responses'">
+              <div style="display:flex;align-items:center;gap:4px;white-space:nowrap">
+                <span class="pm-label" style="font-size:10px;color:var(--accent)">推理力度</span>
+                <select x-model="m.reasoning_effort"
+                        style="width:75px;font-size:10.5px;padding:3px 3px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);color:var(--text)"
+                        title="覆盖目标模型的 reasoning_effort">
+                  <option value="">默认</option>
+                  <option value="low">低</option>
+                  <option value="medium">中</option>
+                  <option value="high">高</option>
+                </select>
+              </div>
+            </template>
             <button class="btn btn-sm btn-danger btn-icon" @click="removeMappingRow(i)">✕</button>
           </div>
         </template>

@@ -65,6 +65,25 @@ function validateProviders(config: Config): ValidationError[] {
       if (!VALID_MODEL_NAMES.test(model.id)) {
         errors.push({ field: `providers.${provider.name}.models.${model.id}.id`, message: `模型 ID "${model.id}" 包含非法字符` })
       }
+
+      // 校验 thinking 配置
+      if (model.thinking) {
+        if (provider.type === 'anthropic') {
+          if (!model.thinking.budget_tokens || model.thinking.budget_tokens < 0) {
+            errors.push({ field: `providers.${provider.name}.models.${model.id}.thinking.budget_tokens`, message: `Anthropic thinking 模式需要有效的 budget_tokens（正整数）` })
+          }
+          if (model.thinking.reasoning_effort) {
+            errors.push({ field: `providers.${provider.name}.models.${model.id}.thinking.reasoning_effort`, message: `Anthropic 模型不支持 reasoning_effort` })
+          }
+        } else if (provider.type === 'openai' || provider.type === 'openai-responses') {
+          if (model.thinking.reasoning_effort && !['low', 'medium', 'high'].includes(model.thinking.reasoning_effort)) {
+            errors.push({ field: `providers.${provider.name}.models.${model.id}.thinking.reasoning_effort`, message: `OpenAI reasoning_effort 必须是 low、medium 或 high` })
+          }
+          if (model.thinking.budget_tokens) {
+            errors.push({ field: `providers.${provider.name}.models.${model.id}.thinking.budget_tokens`, message: `OpenAI 模型不支持 budget_tokens，请使用 reasoning_effort` })
+          }
+        }
+      }
     }
   }
 

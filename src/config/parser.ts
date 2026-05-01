@@ -14,6 +14,18 @@ function interpolateEnvVars(value: string): string {
   })
 }
 
+function parseThinkingConfig(m: { thinking?: { budget_tokens?: number }; reasoning_effort?: string }): import('./types.js').ThinkingConfig | undefined {
+  const tc: import('./types.js').ThinkingConfig = {}
+  if (m.thinking?.budget_tokens && m.thinking.budget_tokens > 0) {
+    tc.budget_tokens = m.thinking.budget_tokens
+  }
+  if (m.reasoning_effort && ['low', 'medium', 'high'].includes(m.reasoning_effort)) {
+    tc.reasoning_effort = m.reasoning_effort as 'low' | 'medium' | 'high'
+  }
+  if (tc.budget_tokens === undefined && tc.reasoning_effort === undefined) return undefined
+  return tc
+}
+
 function interpolateAll(obj: unknown): unknown {
   if (typeof obj === 'string') {
     return interpolateEnvVars(obj)
@@ -44,6 +56,7 @@ export function loadConfigFromYaml(filePath: string): Config {
       apiBase: p.api_base,
       models: p.models.map((m) => ({
         id: m.id,
+        thinking: parseThinkingConfig(m),
       })),
     })),
     adapters: (interpolated.adapters ?? []).map((a) => ({
@@ -53,6 +66,7 @@ export function loadConfigFromYaml(filePath: string): Config {
         sourceModelId: m.source_model_id,
         provider: m.provider,
         targetModelId: m.target_model_id,
+        thinking: parseThinkingConfig(m),
       })),
     })),
     proxyKey: interpolated.proxy_key,
@@ -67,12 +81,22 @@ export function serializeConfigToYaml(config: Config): string {
       type: p.type,
       api_key: p.apiKey,
       api_base: p.apiBase,
-      models: p.models.map((m) => ({ id: m.id })),
+      models: p.models.map((m) => ({
+        id: m.id,
+        ...(m.thinking?.budget_tokens ? { thinking: { budget_tokens: m.thinking.budget_tokens } } : {}),
+        ...(m.thinking?.reasoning_effort ? { reasoning_effort: m.thinking.reasoning_effort } : {}),
+      })),
     })),
     adapters: (config.adapters ?? []).map((a) => ({
       name: a.name,
       type: a.type,
-      models: a.models.map((m) => ({ source_model_id: m.sourceModelId, provider: m.provider, target_model_id: m.targetModelId })),
+      models: a.models.map((m) => ({
+        source_model_id: m.sourceModelId,
+        provider: m.provider,
+        target_model_id: m.targetModelId,
+        ...(m.thinking?.budget_tokens ? { thinking: { budget_tokens: m.thinking.budget_tokens } } : {}),
+        ...(m.thinking?.reasoning_effort ? { reasoning_effort: m.thinking.reasoning_effort } : {}),
+      })),
     })),
     proxy_key: config.proxyKey,
     log_level: config.logLevel,

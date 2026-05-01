@@ -12,7 +12,11 @@ export function handleGetConfig(ctx: ServerContext, _req: IncomingMessage, res: 
         type: p.type,
         api_key: p.apiKey,
         api_base: p.apiBase,
-        models: p.models,
+        models: p.models.map((m) => ({
+          id: m.id,
+          ...(m.thinking?.budget_tokens ? { thinking: { budget_tokens: m.thinking.budget_tokens } } : {}),
+          ...(m.thinking?.reasoning_effort ? { reasoning_effort: m.thinking.reasoning_effort } : {}),
+        })),
       })),
       adapters: (config.adapters ?? []).map((a) => ({
         name: a.name,

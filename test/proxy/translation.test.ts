@@ -283,6 +283,135 @@ describe('proxy/translation', () => {
       assert.strictEqual(asst2.reasoning_content, 'The time is midnight UTC')
       assert.strictEqual(asst2.content, 'It is currently midnight UTC.')
     })
+
+    it('助手消息 tool_calls → content 中 tool_use 块（有 reasoning）', async () => {
+      const result = await transformInboundRequest('openai', anthropicRoute, {
+        model: 'claude-sonnet',
+        messages: [
+          { role: 'user', content: '看桌面' },
+          {
+            role: 'assistant',
+            content: null,
+            reasoning_content: '需要查看桌面',
+            tool_calls: [
+              { id: 'call_1', type: 'function', function: { name: 'bash', arguments: '{"cmd":"ls ~/Desktop/"}' } },
+            ],
+          },
+          { role: 'tool', tool_call_id: 'call_1', content: 'file.txt' },
+        ],
+      })
+      const msgs = result.body.messages as Array<Record<string, unknown>>
+      const assistant = msgs.find((m) => m.role === 'assistant')!
+      const content = assistant.content as Array<Record<string, unknown>>
+      assert.strictEqual(content[0].type, 'thinking')
+      assert.strictEqual(content[0].thinking, '需要查看桌面')
+      assert.strictEqual(content[1].type, 'tool_use')
+      assert.strictEqual(content[1].id, 'call_1')
+      assert.strictEqual(content[1].name, 'bash')
+      assert.deepStrictEqual(content[1].input, { cmd: 'ls ~/Desktop/' })
+      // tool_calls 不应出现在顶层
+      assert.ok(!('tool_calls' in assistant))
+    })
+
+    it('助手消息 tool_calls → content 中 tool_use 块（无 reasoning）', async () => {
+      const result = await transformInboundRequest('openai', anthropicRoute, {
+        model: 'claude-sonnet',
+        messages: [
+          { role: 'user', content: '看桌面' },
+          {
+            role: 'assistant',
+            content: '正在查看',
+            tool_calls: [
+              { id: 'call_2', type: 'function', function: { name: 'bash', arguments: '{"cmd":"ls"}' } },
+            ],
+          },
+          { role: 'tool', tool_call_id: 'call_2', content: 'files' },
+        ],
+      })
+      const msgs = result.body.messages as Array<Record<string, unknown>>
+      const assistant = msgs.find((m) => m.role === 'assistant')!
+      const content = assistant.content as Array<Record<string, unknown>>
+      // 没有 thinking，所以从 text 开始
+      const textBlock = content.find((c) => c.type === 'text')
+      assert.ok(textBlock, '应有 text 块')
+      assert.strictEqual((textBlock as Record<string, unknown>).text, '正在查看')
+      const toolUse = content.find((c) => c.type === 'tool_use')
+      assert.ok(toolUse, '应有 tool_use 块')
+      assert.strictEqual((toolUse as Record<string, unknown>).id, 'call_2')
+      assert.ok(!('tool_calls' in assistant))
+    })
+
+    it('并行 tool_calls 转为多个 tool_use 块，连续 tool 消息合并为单个 user 消息', async () => {
+      const result = await transformInboundRequest('openai', anthropicRoute, {
+        model: 'claude-sonnet',
+        messages: [
+          { role: 'user', content: '并行测试' },
+          {
+            role: 'assistant',
+            content: null,
+            reasoning_content: '并行执行两个工具',
+            tool_calls: [
+              { id: 'call_a', type: 'function', function: { name: 'bash', arguments: '{"cmd":"ls"}' } },
+              { id: 'call_b', type: 'function', function: { name: 'bash', arguments: '{"cmd":"pwd"}' } },
+            ],
+          },
+          { role: 'tool', tool_call_id: 'call_a', content: 'files' },
+          { role: 'tool', tool_call_id: 'call_b', content: '/home' },
+        ],
+      })
+      const msgs = result.body.messages as Array<Record<string, unknown>>
+
+      // assistant 消息有两个 tool_use 块
+      const assistant = msgs.find((m) => m.role === 'assistant')!
+      const content = assistant.content as Array<Record<string, unknown>>
+      const toolUses = content.filter((c) => c.type === 'tool_use')
+      assert.strictEqual(toolUses.length, 2, '应有 2 个 tool_use 块')
+      assert.strictEqual(toolUses[0].id, 'call_a')
+      assert.strictEqual(toolUses[1].id, 'call_b')
+
+      // tool_result 应合并到一个 user 消息
+      const toolUserMsgs = msgs.filter((m: Record<string, unknown>) =>
+        m.role === 'user' &&
+        Array.isArray(m.content) &&
+        (m.content as Array<Record<string, unknown>>).some((c) => c.type === 'tool_result')
+      )
+      assert.strictEqual(toolUserMsgs.length, 1, 'tool_result 应合并到单个 user 消息')
+      const toolResults = (toolUserMsgs[0].content as Array<Record<string, unknown>>)
+        .filter((c) => c.type === 'tool_result')
+      assert.strictEqual(toolResults.length, 2, '单个 user 消息应有 2 个 tool_result')
+      assert.strictEqual(toolResults[0].tool_use_id, 'call_a')
+      assert.strictEqual(toolResults[1].tool_use_id, 'call_b')
+    })
+
+    it('单 tool_result 不合并——前后有非 tool 消息', async () => {
+      const result = await transformInboundRequest('openai', anthropicRoute, {
+        model: 'claude-sonnet',
+        messages: [
+          { role: 'user', content: '单工具' },
+          {
+            role: 'assistant',
+            content: null,
+            tool_calls: [
+              { id: 'call_x', type: 'function', function: { name: 'bash', arguments: '{}' } },
+            ],
+          },
+          { role: 'tool', tool_call_id: 'call_x', content: 'done' },
+          { role: 'assistant', content: '完成' },
+        ],
+      })
+      const msgs = result.body.messages as Array<Record<string, unknown>>
+      const toolUserMsgs = msgs.filter((m: Record<string, unknown>) =>
+        m.role === 'user' &&
+        Array.isArray(m.content) &&
+        (m.content as Array<Record<string, unknown>>).some((c) => c.type === 'tool_result')
+      )
+      assert.strictEqual(toolUserMsgs.length, 1, '应有 1 个 tool_result user 消息')
+      const toolResults = (toolUserMsgs[0].content as Array<Record<string, unknown>>)
+        .filter((c) => c.type === 'tool_result')
+      assert.strictEqual(toolResults.length, 1)
+      // 后续 assistant 不应该丢失
+      assert.ok(msgs.some((m) => m.role === 'assistant' && m.content === '完成'), '后续 assistant 消息应保留')
+    })
   })
 })
 
@@ -360,6 +489,30 @@ describe('proxy/response-conversion', () => {
     assert.strictEqual(tcs[0].id, 'tu_123')
     assert.strictEqual(tcs[0].type, 'function')
     assert.strictEqual((tcs[0].function as Record<string, unknown>).name, 'get_weather')
+    assert.strictEqual((result.choices as Array<Record<string, unknown>>)[0].finish_reason, 'tool_calls')
+  })
+
+  it('并行 tool_use → 并行 tool_calls', () => {
+    const result = convertAnthropicResponseToOpenAI({
+      content: [
+        { type: 'text', text: '查看结果' },
+        { type: 'tool_use', id: 'tu_1', name: 'bash', input: { cmd: 'ls ~/Desktop/' } },
+        { type: 'tool_use', id: 'tu_2', name: 'bash', input: { cmd: 'pwd' } },
+      ],
+      stop_reason: 'tool_use',
+    })
+    const msg = (result.choices as Array<Record<string, unknown>>)[0].message as Record<string, unknown>
+    assert.strictEqual(msg.content, '查看结果')
+    const tcs = msg.tool_calls as Array<Record<string, unknown>>
+    assert.strictEqual(tcs.length, 2, '应有 2 个 tool_calls')
+    assert.strictEqual(tcs[0].id, 'tu_1')
+    assert.strictEqual(tcs[0].type, 'function')
+    assert.strictEqual((tcs[0].function as Record<string, unknown>).name, 'bash')
+    assert.strictEqual((tcs[0].function as Record<string, unknown>).arguments, '{"cmd":"ls ~/Desktop/"}')
+    assert.strictEqual(tcs[1].id, 'tu_2')
+    assert.strictEqual(tcs[1].type, 'function')
+    assert.strictEqual((tcs[1].function as Record<string, unknown>).name, 'bash')
+    assert.strictEqual((tcs[1].function as Record<string, unknown>).arguments, '{"cmd":"pwd"}')
     assert.strictEqual((result.choices as Array<Record<string, unknown>>)[0].finish_reason, 'tool_calls')
   })
 
@@ -464,5 +617,244 @@ describe('proxy/response-conversion', () => {
     assert.strictEqual(msg.content, 'The answer is 42')
     assert.strictEqual(msg.reasoning_content, 'Let me think...')
     assert.strictEqual(msg.reasoning_signature, 's1')
+  })
+
+  describe('thinking 配置注入', () => {
+    it('同协议 Anthropic 注入 thinking.budget_tokens', async () => {
+      const route = { ...anthropicRoute, thinking: { budget_tokens: 8192 } }
+      const result = await transformInboundRequest('anthropic', route, {
+        model: 'claude-sonnet',
+        messages: [{ role: 'user', content: 'hi' }],
+        max_tokens: 10000,
+      })
+      assert.deepStrictEqual(result.body.thinking, { type: 'enabled', budget_tokens: 8192 })
+      // max_tokens should remain unchanged since it's >= budget
+      assert.strictEqual(result.body.max_tokens, 10000)
+    })
+
+    it('同协议 Anthropic 自动调整 max_tokens < budget_tokens', async () => {
+      const route = { ...anthropicRoute, thinking: { budget_tokens: 8192 } }
+      const result = await transformInboundRequest('anthropic', route, {
+        model: 'claude-sonnet',
+        messages: [{ role: 'user', content: 'hi' }],
+        max_tokens: 100,
+      })
+      assert.strictEqual(result.body.max_tokens, 8192)
+    })
+
+    it('同协议 Anthropic max_tokens 未设置时自动设为 budget_tokens', async () => {
+      const route = { ...anthropicRoute, thinking: { budget_tokens: 4096 } }
+      const result = await transformInboundRequest('anthropic', route, {
+        model: 'claude-sonnet',
+        messages: [{ role: 'user', content: 'hi' }],
+      })
+      assert.strictEqual(result.body.max_tokens, 4096)
+    })
+
+    it('同协议 OpenAI 注入 reasoning_effort', async () => {
+      const route = { ...openaiRoute, thinking: { reasoning_effort: 'medium' } }
+      const result = await transformInboundRequest('openai', route, {
+        model: 'o3-mini',
+        messages: [{ role: 'user', content: 'hi' }],
+      })
+      assert.strictEqual(result.body.reasoning_effort, 'medium')
+    })
+
+    it('跨协议 OpenAI → Anthropic 注入 thinking', async () => {
+      const route = { ...anthropicRoute, thinking: { budget_tokens: 8192 } }
+      const result = await transformInboundRequest('openai', route, {
+        model: 'claude-sonnet',
+        messages: [{ role: 'user', content: 'hi' }],
+      })
+      assert.deepStrictEqual(result.body.thinking, { type: 'enabled', budget_tokens: 8192 })
+      assert.strictEqual(result.body.max_tokens, 8192)
+    })
+
+    it('跨协议 Anthropic → OpenAI 注入 reasoning_effort', async () => {
+      const route = { ...openaiRoute, thinking: { reasoning_effort: 'high' } }
+      const result = await transformInboundRequest('anthropic', route, {
+        model: 'claude-sonnet',
+        messages: [{ role: 'user', content: 'hi' }],
+        max_tokens: 1000,
+      })
+      assert.strictEqual(result.body.reasoning_effort, 'high')
+    })
+
+    it('无 thinking 配置时不注入任何参数', async () => {
+      const result = await transformInboundRequest('anthropic', anthropicRoute, {
+        model: 'claude-sonnet',
+        messages: [{ role: 'user', content: 'hi' }],
+      })
+      assert.strictEqual(result.body.thinking, undefined)
+    })
+
+    it('对话中已有 thinking 时，工具调用 assistant 自动补占位 thinking', async () => {
+      const result = await transformInboundRequest('openai', anthropicRoute, {
+        model: 'claude-sonnet',
+        messages: [
+          { role: 'user', content: '看桌面' },
+          {
+            role: 'assistant',
+            content: null,
+            reasoning_content: '让我检查一下桌面',
+            tool_calls: [
+              { id: 'c1', type: 'function', function: { name: 'bash', arguments: '{}' } },
+            ],
+          },
+          { role: 'tool', tool_call_id: 'c1', content: 'files' },
+        ],
+      })
+      const msgs = result.body.messages as Array<Record<string, unknown>>
+      const asst = msgs.find((m) => m.role === 'assistant')!
+      const content = asst.content as Array<Record<string, unknown>>
+      // 有 reasoning_content，convertMessagesToAnthropic 已创建 thinking 块
+      assert.strictEqual(content[0].type, 'thinking', '首块应为 thinking')
+      assert.strictEqual(content[0].thinking, '让我检查一下桌面', '保留原始 reasoning')
+      assert.strictEqual(content[1].type, 'tool_use')
+    })
+
+    it('已有 thinking 块时，后续无 reasoning 的 tool_calls 也补占位', async () => {
+      const result = await transformInboundRequest('openai', anthropicRoute, {
+        model: 'claude-sonnet',
+        messages: [
+          { role: 'user', content: 'hi' },
+          { role: 'assistant', content: '你好', reasoning_content: '用中文回应' },
+          { role: 'user', content: '看桌面' },
+          {
+            role: 'assistant',
+            content: null,
+            reasoning_content: '需要查看桌面',
+            tool_calls: [
+              { id: 'c2', type: 'function', function: { name: 'bash', arguments: '{}' } },
+            ],
+          },
+          { role: 'tool', tool_call_id: 'c2', content: 'files' },
+          { role: 'user', content: '继续' },
+          {
+            role: 'assistant',
+            content: null,
+            // 无 reasoning_content——之前对话已有 thinking，应补占位
+            tool_calls: [
+              { id: 'c3', type: 'function', function: { name: 'bash', arguments: '{}' } },
+            ],
+          },
+          { role: 'tool', tool_call_id: 'c3', content: 'done' },
+        ],
+      })
+      const msgs = result.body.messages as Array<Record<string, unknown>>
+      // 第一条 assistant（有 reasoning）— 保留原始
+      const asst1 = msgs[1] as Record<string, unknown>
+      assert.strictEqual((asst1.content as Array<Record<string, unknown>>)[0].thinking, '用中文回应')
+      // 第二条 assistant（有 reasoning + tool_calls）— 已有 thinking，不重复
+      const asst2 = msgs[3] as Record<string, unknown>
+      const c2 = asst2.content as Array<Record<string, unknown>>
+      assert.strictEqual(c2[0].thinking, '需要查看桌面')
+      assert.strictEqual(c2[1].type, 'tool_use')
+      assert.strictEqual(c2.length, 2, '不应重复插入 thinking')
+      // 第三条 assistant（无 reasoning，仅有 tool_calls）— 应补占位
+      const asst3 = msgs[6] as Record<string, unknown>
+      const c3 = asst3.content as Array<Record<string, unknown>>
+      assert.strictEqual(c3[0].type, 'thinking', '首块应为 thinking')
+      assert.strictEqual(c3[0].thinking, '让我调用 bash 工具', '应有描述性占位')
+      assert.strictEqual(c3[1].type, 'tool_use')
+    })
+
+    it('thinking 模式未启用时不补占位 thinking', async () => {
+      const result = await transformInboundRequest('openai', anthropicRoute, {
+        model: 'claude-sonnet',
+        messages: [
+          { role: 'user', content: 'hi' },
+          {
+            role: 'assistant',
+            content: null,
+            tool_calls: [
+              { id: 'c3', type: 'function', function: { name: 'test', arguments: '{}' } },
+            ],
+          },
+          { role: 'tool', tool_call_id: 'c3', content: 'ok' },
+        ],
+      })
+      const msgs = result.body.messages as Array<Record<string, unknown>>
+      const asst = msgs.find((m) => m.role === 'assistant')!
+      const content = asst.content as Array<Record<string, unknown>>
+      // 没有 thinking 配置，也没有任何 assistant 有 reasoning_content，所以不补 thinking
+      const hasThinking = content.some((c) => c.type === 'thinking')
+      assert.strictEqual(hasThinking, false, '无 thinking 配置时不应有 thinking 块')
+    })
+
+    it('无 thinking 配置但对话中已有 reasoning_content 时自动补占位 thinking', async () => {
+      // 用户没配 thinking.budget_tokens，但之前的 assistant 消息有 reasoning_content
+      // 说明对话已经在 thinking 模式下
+      const result = await transformInboundRequest('openai', anthropicRoute, {
+        model: 'claude-sonnet',
+        messages: [
+          { role: 'user', content: 'hi' },
+          {
+            role: 'assistant',
+            content: '好的',
+            reasoning_content: '用户打招呼，我用中文回应',
+          },
+          { role: 'user', content: '看桌面' },
+          {
+            role: 'assistant',
+            content: null,
+            tool_calls: [
+              { id: 'c4', type: 'function', function: { name: 'bash', arguments: '{}' } },
+            ],
+          },
+          { role: 'tool', tool_call_id: 'c4', content: 'files' },
+        ],
+      })
+      const msgs = result.body.messages as Array<Record<string, unknown>>
+      // 第一条 assistant（有 reasoning）— 已有 thinking，不改
+      const asst1 = msgs.find((m: Record<string, unknown>) => m.role === 'assistant' && (m.content as Array<Record<string, unknown>>)?.some((c: Record<string, unknown>) => c.type === 'thinking' && (c as any).thinking === '用户打招呼，我用中文回应'))
+      assert.ok(asst1, '第一条 assistant 的 thinking 保留')
+      // 第二条 assistant（工具调用，无 reasoning）— 应自动补占位 thinking
+      const asst2 = msgs.filter((m: Record<string, unknown>) => m.role === 'assistant')[1]
+      const content2 = asst2.content as Array<Record<string, unknown>>
+      assert.strictEqual(content2[0].type, 'thinking', '工具调用 assistant 首块应为 thinking')
+      assert.strictEqual(content2[0].thinking, '让我调用 bash 工具', '应有描述性占位')
+      assert.strictEqual(content2[1].type, 'tool_use', '第二块为 tool_use')
+    })
+
+    it('thinking 签名：上游有 reasoning_signature 时优先使用', async () => {
+      const result = await transformInboundRequest('openai', anthropicRoute, {
+        model: 'claude-sonnet',
+        messages: [
+          { role: 'user', content: 'hi' },
+          {
+            role: 'assistant',
+            content: null,
+            reasoning_content: 'Thinking text',
+            reasoning_signature: 'upstream_sig_abc',
+          },
+        ],
+      })
+      const msgs = result.body.messages as Array<Record<string, unknown>>
+      const asst = msgs.find((m) => m.role === 'assistant')!
+      const thinking = (asst.content as Array<Record<string, unknown>>)[0]
+      assert.strictEqual(thinking.signature, 'upstream_sig_abc', '应使用上游原始签名')
+    })
+
+    it('thinking 签名：上游无 reasoning_signature 时自动 SHA-256 生成', async () => {
+      const result = await transformInboundRequest('openai', anthropicRoute, {
+        model: 'claude-sonnet',
+        messages: [
+          { role: 'user', content: 'hi' },
+          {
+            role: 'assistant',
+            content: null,
+            reasoning_content: 'Hello world',
+            // 故意不传 reasoning_signature
+          },
+        ],
+      })
+      const msgs = result.body.messages as Array<Record<string, unknown>>
+      const asst = msgs.find((m) => m.role === 'assistant')!
+      const thinking = (asst.content as Array<Record<string, unknown>>)[0]
+      // SHA-256('Hello world') 前16字符
+      const expectedSig = '64ec88ca00b268e5'
+      assert.strictEqual(thinking.signature, expectedSig, '应自动生成 SHA-256 签名')
+    })
   })
 })

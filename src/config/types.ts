@@ -1,7 +1,15 @@
 export type ProviderType = 'anthropic' | 'openai' | 'openai-responses'
 
+export interface ThinkingConfig {
+  /** Anthropic: thinking budget tokens (启用 thinking 模式时必填) */
+  budget_tokens?: number
+  /** OpenAI: reasoning_effort (low | medium | high) */
+  reasoning_effort?: 'low' | 'medium' | 'high'
+}
+
 export interface Model {
   id: string
+  thinking?: ThinkingConfig
 }
 
 export interface Provider {
@@ -16,6 +24,7 @@ export interface AdapterModelMapping {
   sourceModelId: string
   provider: string
   targetModelId: string
+  thinking?: ThinkingConfig
 }
 
 export interface AdapterConfig {
@@ -33,18 +42,23 @@ export interface Config {
 
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error'
 
+export interface ThinkingConfigFile {
+  budget_tokens?: number
+  reasoning_effort?: string
+}
+
 export interface ProviderConfigFile {
   name: string
   type: ProviderType
   api_key: string
   api_base?: string
-  models: { id: string }[]
+  models: { id: string; thinking?: ThinkingConfigFile; reasoning_effort?: string }[]
 }
 
 export interface AdapterConfigFile {
   name: string
   type: ProviderType
-  models: { source_model_id: string; provider: string; target_model_id: string }[]
+  models: { source_model_id: string; provider: string; target_model_id: string; thinking?: ThinkingConfigFile; reasoning_effort?: string }[]
 }
 
 export interface ConfigFile {

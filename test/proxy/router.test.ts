@@ -65,4 +65,31 @@ describe('proxy/router', () => {
     const store = createStore()
     assert.throws(() => routeModel(store, 'nonexistent-model'), { message: /未找到/ })
   })
+
+  it('模型包含 thinking 配置时正确传递', () => {
+    const config: Config = {
+      providers: [
+        { name: 'p1', type: 'anthropic', apiKey: 'k1', models: [{ id: 'm1', thinking: { budget_tokens: 8192 } }] },
+        { name: 'p2', type: 'openai', apiKey: 'k2', models: [{ id: 'm2', thinking: { reasoning_effort: 'medium' } }] },
+      ],
+    }
+    const store = new ConfigStore('/fake', config)
+
+    const r1 = routeModel(store, 'm1')
+    assert.strictEqual(r1.thinking?.budget_tokens, 8192)
+
+    const r2 = routeModel(store, 'm2')
+    assert.strictEqual(r2.thinking?.reasoning_effort, 'medium')
+  })
+
+  it('模型无 thinking 配置时返回 undefined', () => {
+    const config: Config = {
+      providers: [
+        { name: 'p1', type: 'anthropic', apiKey: 'k1', models: [{ id: 'm1' }] },
+      ],
+    }
+    const store = new ConfigStore('/fake', config)
+    const result = routeModel(store, 'm1')
+    assert.strictEqual(result.thinking, undefined)
+  })
 })
