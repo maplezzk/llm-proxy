@@ -19,7 +19,11 @@ A local LLM proxy server — single port serving both admin UI and AI API, with 
 ## Install
 
 **macOS (recommended):**
-Download the latest `LLMProxy.dmg` from [Releases](https://github.com/maplezzk/llm-proxy/releases), drag to `/Applications`. Includes everything — CLI, proxy, and admin UI.
+Download `LLMProxy.dmg` from [Releases](https://github.com/maplezzk/llm-proxy/releases), drag to `/Applications`. If macOS blocks the app, run:
+```bash
+xattr -cr /Applications/LLMProxy.app
+```
+Then open again. Includes everything — CLI, proxy, and admin UI.
 
 **CLI only:**
 ```bash
