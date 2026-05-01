@@ -1,0 +1,33 @@
+# llm-proxy 配置示例
+
+providers:
+  # Anthropic (原生 Messages API)
+  - name: anthropic-main
+    type: anthropic
+    api_key: ${ANTHROPIC_API_KEY}      # 从环境变量读取
+    # api_base: https://api.anthropic.com  # 可选，默认使用官方 API
+    models:
+      - name: claude-sonnet
+        model: claude-sonnet-4-20250514
+      - name: claude-haiku
+        model: claude-3-haiku-20240307
+
+  # OpenAI (Chat Completions API)
+  - name: openai-main
+    type: openai
+    api_key: ${OPENAI_API_KEY}         # 从环境变量读取
+    # api_base: https://api.openai.com     # 可选，默认使用官方 API
+    models:
+      - name: gpt-4o
+        model: gpt-4o
+      - name: gpt-4o-mini
+        model: gpt-4o-mini
+
+  # OpenAI 兼容协议 (如 DeepSeek, Groq 等)
+  - name: deepseek
+    type: openai
+    api_key: ${DEEPSEEK_API_KEY}
+    api_base: https://api.deepseek.com
+    models:
+      - name: deepseek-chat
+        model: deepseek-chat

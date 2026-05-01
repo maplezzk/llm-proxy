@@ -1,0 +1,799 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>llm-proxy</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236366f1' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'><path d='M12 20 L12 12 C12 9 7 6 4 4'/><path d='M12 12 C12 9 17 6 20 4'/><polyline points='2,5 4,4 5,7'/><polyline points='18,2 20,4 18,6'/></svg>">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jsoneditor@10/dist/jsoneditor.min.css">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --sidebar: 220px;
+  --bg: #f0f1f3;
+  --surface: #fff;
+  --border: #e2e4e9;
+  --sidebar-bg: #15171b;
+  --sidebar-text: #9ca0b0;
+  --sidebar-active: #fff;
+  --sidebar-hover: #1e2027;
+  --text: #14151a;
+  --text-muted: #6b7084;
+  --accent: #3080f0;
+  --accent-bg: #eaf1fe;
+  --success: #1a8c4a;
+  --success-bg: #e6f7ed;
+  --danger: #d43b3b;
+  --danger-bg: #fce8e8;
+  --warn: #cc7a00;
+  --warn-bg: #fff3e0;
+  --debug: #6b7084;
+  --debug-bg: #f0f1f3;
+  --radius: 6px;
+  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --mono: "SF Mono", "Fira Code", "Cascadia Code", "Menlo", monospace;
+}
+html, body { height: 100%; }
+body { font-family: var(--font); background: var(--bg); color: var(--text); display: flex; line-height: 1.5; }
+
+/* Toast */
+.toast-container { position: fixed; top: 16px; right: 16px; z-index: 200; display: flex; flex-direction: column; gap: 8px; }
+.toast {
+  padding: 10px 16px; border-radius: var(--radius); font-size: 12.5px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.12); animation: toastIn 0.2s ease;
+  display: flex; align-items: center; gap: 8px; max-width: 360px;
+}
+.toast-success { background: var(--success-bg); color: var(--success); border-left: 3px solid var(--success); }
+.toast-error { background: var(--danger-bg); color: var(--danger); border-left: 3px solid var(--danger); }
+.toast-info { background: var(--accent-bg); color: var(--accent); border-left: 3px solid var(--accent); }
+@keyframes toastIn { from { opacity: 0; transform: translateX(30px); } to { opacity: 1; transform: none; } }
+
+/* Custom Confirm */
+.confirm-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.4); z-index:150; align-items:center; justify-content:center; }
+.confirm-overlay.open { display:flex; }
+.confirm-box { background:var(--surface); border-radius:var(--radius); padding:24px; min-width:320px; max-width:420px; box-shadow:0 8px 32px rgba(0,0,0,0.2); }
+.confirm-box p { font-size:13.5px; margin-bottom:18px; line-height:1.6; }
+.confirm-box .btn-row { display:flex; gap:8px; justify-content:flex-end; }
+
+/* Sidebar */
+.sidebar {
+  width: var(--sidebar); min-width: var(--sidebar);
+  background: var(--sidebar-bg); color: var(--sidebar-text);
+  display: flex; flex-direction: column;
+  height: 100vh; position: sticky; top: 0;
+  user-select: none;
+}
+.sidebar-header {
+  padding: 20px 20px 0;
+  margin-bottom: 24px;
+}
+.sidebar-header h1 {
+  font-size: 15px; font-weight: 600; color: var(--sidebar-active);
+  letter-spacing: -0.01em;
+}
+.sidebar-header .sub {
+  font-size: 11px; color: var(--sidebar-text); margin-top: 2px;
+}
+.sidebar-nav { flex: 1; padding: 0 8px; }
+.sidebar-nav a {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 12px; margin-bottom: 2px;
+  font-size: 13px; color: var(--sidebar-text); text-decoration: none;
+  border-radius: var(--radius); cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+.sidebar-nav a:hover { background: var(--sidebar-hover); color: #c8cbd6; }
+.sidebar-nav a.active { background: var(--sidebar-hover); color: var(--sidebar-active); font-weight: 500; }
+.sidebar-nav a .icon { width: 18px; height: 18px; display: flex; align-items: center; justify-content: center; opacity: 0.7; flex-shrink: 0; }
+.sidebar-nav a.active .icon { opacity: 1; }
+.sidebar-footer {
+  padding: 12px 20px; font-size: 11px; color: var(--sidebar-text);
+  border-top: 1px solid rgba(255,255,255,0.06);
+  display: flex; align-items: center; gap: 8px;
+}
+.sidebar-footer .dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: #555;
+}
+.sidebar-footer .dot.running { background: #34d058; box-shadow: 0 0 4px rgba(52,208,88,0.4); }
+
+/* Main Content */
+.main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.topbar {
+  height: 48px; display: flex; align-items: center;
+  padding: 0 32px; gap: 12px; flex-shrink: 0;
+  border-bottom: 1px solid var(--border); background: var(--surface);
+}
+.topbar h2 { font-size: 14px; font-weight: 600; color: var(--text); }
+.topbar .count {
+  font-size: 12px; padding: 1px 8px; border-radius: 10px;
+  background: var(--border); color: var(--text-muted);
+}
+.content { flex: 1; padding: 24px 32px; overflow-y: auto; }
+.page { display: none; }
+.page.active { display: block; animation: fadeIn 0.15s ease; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+
+/* Stats Grid */
+.stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 32px; }
+.stat {
+  background: var(--surface); border-radius: var(--radius); padding: 18px 20px;
+  border: 1px solid var(--border);
+  transition: box-shadow 0.15s;
+}
+.stat:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+.stat .label { font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.03em; margin-bottom: 6px; }
+.stat .value { font-size: 26px; font-weight: 700; letter-spacing: -0.02em; }
+
+/* Section */
+.section { margin-bottom: 28px; }
+.section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; gap: 12px; flex-wrap: wrap; }
+.section-header h3 { font-size: 13px; font-weight: 600; color: var(--text-muted); }
+.section-header .search-box { display: flex; align-items: center; gap: 6px; }
+.section-header .search-box input {
+  padding: 5px 10px; font-size: 12px; border: 1px solid var(--border); border-radius: var(--radius);
+  width: 200px; outline: none; background: var(--surface);
+}
+.section-header .search-box input:focus { border-color: var(--accent); }
+
+.btn {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 6px 14px; font-size: 12.5px; font-weight: 500;
+  border: none; border-radius: var(--radius); cursor: pointer;
+  transition: background 0.12s;
+}
+.btn-primary { background: var(--accent); color: #fff; }
+.btn-primary:hover { background: #2770d8; }
+.btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
+.btn-ghost { background: transparent; color: var(--text-muted); }
+.btn-ghost:hover { background: var(--border); color: var(--text); }
+.btn-danger { background: var(--danger-bg); color: var(--danger); border:1px solid transparent; }
+.btn-danger:hover { background: var(--danger); color: #fff; }
+.btn-success { background: var(--success-bg); color: var(--success); border:1px solid transparent; }
+.btn-success:hover { background: var(--success); color: #fff; }
+.btn-warning { background: var(--warn-bg); color: var(--warn); border:1px solid transparent; }
+.btn-warning:hover { background: var(--warn); color: #fff; }
+.btn-sm { padding: 4px 10px; font-size: 11.5px; }
+.btn-icon { padding: 4px 6px; font-size: 13px; }
+
+/* Alerts */
+.alert {
+  padding: 10px 14px; border-radius: var(--radius); font-size: 12.5px;
+  margin-bottom: 12px; display: flex; align-items: center; gap: 8px;
+}
+.alert-success { background: var(--success-bg); color: var(--success); }
+.alert-error { background: var(--danger-bg); color: var(--danger); }
+.alert-warn { background: var(--warn-bg); color: var(--warn); }
+
+/* Table */
+.table-wrap {
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+  overflow: hidden;
+}
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+thead th {
+  padding: 10px 16px; text-align: left;
+  font-weight: 600; font-size: 11px; color: var(--text-muted);
+  text-transform: uppercase; letter-spacing: 0.03em;
+  border-bottom: 1px solid var(--border); background: #f8f9fb;
+}
+tbody td { padding: 10px 16px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+tbody tr:last-child td { border-bottom: none; }
+tbody tr:hover td { background: #f8f9fb; }
+
+/* Badge */
+.badge {
+  display: inline-block; padding: 1px 8px; border-radius: 10px;
+  font-size: 11px; font-weight: 500;
+}
+.badge-ok { background: var(--success-bg); color: var(--success); }
+.badge-err { background: var(--danger-bg); color: var(--danger); }
+.badge-warn { background: var(--warn-bg); color: var(--warn); }
+.badge-muted { background: var(--border); color: var(--text-muted); }
+
+/* Empty */
+.empty { text-align: center; padding: 48px 24px; color: var(--text-muted); font-size: 13px; }
+.empty .empty-action { margin-top: 12px; }
+
+/* Values */
+.mono { font-family: var(--mono); font-size: 12px; }
+
+/* Skeleton */
+.skeleton { background: linear-gradient(90deg, #f0f1f3 25%, #e2e4e9 50%, #f0f1f3 75%); background-size: 200% 100%; animation: shimmer 1.2s infinite; border-radius: var(--radius); }
+@keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
+.skeleton-row { height: 41px; margin-bottom: 1px; }
+
+/* Modal */
+.modal-overlay { display:flex; position:fixed; inset:0; background:rgba(0,0,0,0.4); z-index:100; align-items:center; justify-content:center; }
+.modal-overlay.open { display:flex; }
+.modal { background:var(--surface); border-radius:var(--radius); padding:24px; min-width:420px; max-width:580px; width:90vw; box-shadow:0 8px 32px rgba(0,0,0,0.2); }
+.modal h3 { font-size:14px; font-weight:600; margin-bottom:16px; }
+.modal label { display:block; font-size:12px; font-weight:500; color:var(--text-muted); margin:10px 0 4px; }
+.modal input, .modal select { width:100%; padding:7px 10px; font-size:13px; border:1px solid var(--border); border-radius:var(--radius); background:var(--surface); color:var(--text); }
+.modal input:focus, .modal select:focus { outline:none; border-color:var(--accent); }
+.modal .hint { font-size:11px; color:var(--text-muted); margin-top:3px; }
+.modal .btn-row { display:flex; gap:8px; justify-content:flex-end; margin-top:16px; }
+
+/* Dynamic model/mapping rows */
+.dynamic-rows { display:flex; flex-direction:column; gap:4px; margin-top:4px; }
+.dynamic-row { display:flex; gap:6px; align-items:center; }
+.dynamic-row input, .dynamic-row select { flex:1; min-width:0; padding:6px 8px; font-size:12px; border:1px solid var(--border); border-radius:var(--radius); background:var(--surface); }
+.pm-label { font-size:11px; color:var(--text-muted); white-space:nowrap; }
+
+/* Log filter */
+.log-filters { display:flex; gap:6px; margin-bottom:12px; }
+.filter-btn { padding:4px 12px; font-size:11.5px; border:1px solid var(--border); border-radius:12px; background:var(--surface); cursor:pointer; color:var(--text-muted); transition:all 0.12s; }
+.filter-btn.active { background:var(--accent); color:#fff; border-color:var(--accent); }
+.filter-btn:disabled { opacity:0.4; cursor:default; }
+
+/* jsoneditor overrides for capture page */
+.jsoneditor-container .jsoneditor { border:none !important; }
+.jsoneditor-container .jsoneditor-menu { background:var(--surface) !important; border-bottom:1px solid var(--border) !important; }
+.jsoneditor-container .jsoneditor-tree { background:var(--surface) !important; }
+
+.log-table { width:100%; border-collapse:collapse; font-size:12px; }
+.log-table th { position:sticky; top:0; background:var(--surface); padding:8px 12px; font-size:11px; font-weight:600; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.04em; border-bottom:2px solid var(--border); text-align:left; z-index:1; }
+.log-table td { padding:8px 12px; border-bottom:1px solid var(--border); vertical-align:top; }
+.log-table tr:hover td { background:var(--bg); }
+.log-table .log-icon { width:24px; height:24px; border-radius:5px; display:inline-flex; align-items:center; justify-content:center; flex-shrink:0; }
+.log-table .log-icon.req { background:var(--accent-bg); color:var(--accent); }
+.log-table .log-icon.sys { background:var(--warn-bg); color:var(--warn); }
+.log-table .log-icon svg { width:12px; height:12px; }
+.log-table .log-level { display:inline-block; font-size:10px; font-weight:600; text-transform:uppercase; padding:1px 5px; border-radius:3px; letter-spacing:0.03em; }
+.log-table .log-level.debug { background:var(--debug-bg); color:var(--debug); }
+.log-table .log-level.info { background:var(--accent-bg); color:var(--accent); }
+.log-table .log-level.warn { background:var(--warn-bg); color:var(--warn); }
+.log-table .log-level.error { background:var(--danger-bg); color:var(--danger); }
+.log-table .log-detail-toggle { font-size:10.5px; color:var(--accent); cursor:pointer; user-select:none; }
+.log-table .log-detail-toggle:hover { text-decoration:underline; }
+.log-table .log-detail { font-family:var(--mono); font-size:10px; color:var(--text-muted); margin-top:4px; padding:6px 8px; background:var(--bg); border-radius:4px; max-height:160px; overflow-y:auto; white-space:pre-wrap; word-break:break-all; display:block; }
+.log-table .log-detail.collapsed { display:none; }
+
+/* Adapter tags */
+.adapter-tag { display:inline-block; padding:2px 8px; border-radius:10px; font-size:10.5px; background:var(--accent-bg); color:var(--accent); margin:1px 2px; }
+.adapter-tag-err { background:var(--danger-bg); color:var(--danger); }
+.adapter-tags { display:flex; flex-wrap:wrap; gap:2px; }
+
+@media (max-width: 720px) {
+  .sidebar { width: 48px; min-width: 48px; }
+  .sidebar-header h1, .sidebar-header .sub, .sidebar-nav a span, .sidebar-footer span { display: none; }
+  .sidebar-nav a { justify-content: center; padding: 9px; }
+  .sidebar-nav a .icon { margin: 0; }
+  .sidebar-footer { justify-content: center; }
+  .stats { grid-template-columns: repeat(2, 1fr); }
+  .content { padding: 16px; }
+  .topbar { padding: 0 16px; }
+  .section-header .search-box input { width: 140px; }
+  .modal { min-width: auto; width: 95vw; }
+}
+[x-cloak] { display: none !important; }
+</style>
+<script src="https://cdn.jsdelivr.net/npm/jsoneditor@10/dist/jsoneditor.min.js"></script>
+<script defer src="/admin-app.js"></script>
+</head>
+<body>
+
+<div class="sidebar">
+  <div class="sidebar-header">
+    <h1>llm-proxy</h1>
+    <div class="sub">Model Gateway</div>
+  </div>
+  <div class="sidebar-nav" x-data>
+    <template x-for="tab in ['dashboard','providers','adapters','logs','capture']" :key="tab">
+      <a :class="{ active: $store.app.currentTab === tab }"
+         href="#"
+         @click.prevent="$store.app.switchTab(tab)">
+        <span class="icon" x-html="$store.app.tabIcons[tab]"></span>
+        <span x-text="$store.app.tabNames[tab]"></span>
+      </a>
+    </template>
+  </div>
+  <div class="sidebar-footer" x-data>
+    <span class="dot" :class="{ running: $store.app.status === 'running' }"></span>
+    <span x-text="$store.app.status === 'running' ? '运行中' : $store.app.status === 'offline' ? '未连接' : '加载中'"></span>
+  </div>
+</div>
+
+<div class="main">
+  <div class="topbar" x-data>
+    <h2 x-text="$store.app.tabNames[$store.app.currentTab] || '仪表盘'"></h2>
+  </div>
+  <div class="content">
+
+    <!-- Dashboard -->
+    <div class="page" id="page-dashboard"
+         x-data="dashboardPage"
+         :class="{ active: $store.app.currentTab === 'dashboard' }">
+      <div class="stats">
+        <template x-for="stat in stats" :key="stat.label">
+          <div class="stat">
+            <div class="label" x-text="stat.label"></div>
+            <div class="value" :style="{ color: stat.clr }" x-text="stat.value"></div>
+          </div>
+        </template>
+      </div>
+      <div class="stats" style="margin-top:12px" x-show="tokenCards.length">
+        <template x-for="card in tokenCards" :key="card.label">
+          <div class="stat">
+            <div class="label" x-text="card.label"></div>
+            <div class="value" :style="{ color: card.clr }" x-text="card.value"></div>
+            <div style="font-size:11px;color:var(--text-muted);margin-top:2px" x-text="card.desc"></div>
+          </div>
+        </template>
+      </div>
+      <div class="section" style="margin-top:20px" x-data="proxyKeyForm">
+        <div class="section-header"><h3>代理 API Key</h3></div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <input type="password" x-model="key" placeholder="不设置则无需鉴权" style="flex:1;padding:6px 10px;font-size:13px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);color:var(--text)">
+          <button class="btn btn-primary btn-sm" @click="save()" :disabled="saving" x-text="saving ? '保存中...' : '保存'"></button>
+          <button class="btn btn-ghost btn-sm" @click="remove()" :disabled="saving" x-show="hasKey">移除</button>
+        </div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:4px" x-show="hasKey" x-text="'已设置 (请求需带 Authorization: Bearer <key> 或 x-api-key 头)'"></div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:4px" x-show="!hasKey">未设置 — 所有请求可直接访问</div>
+      </div>
+    </div>
+
+    <!-- Logs -->
+    <div class="page" id="page-logs"
+         x-data="logsPage"
+         :class="{ active: $store.app.currentTab === 'logs' }">
+      <div class="section">
+        <div class="section-header" style="display:flex;align-items:center;justify-content:space-between">
+          <h3>日志</h3>
+          <div style="display:flex;align-items:center;gap:16px;font-size:11px;color:var(--text-muted)">
+            <span>共 <strong style="color:var(--text)" x-text="totalCount"></strong> 条匹配 · 第 <strong style="color:var(--text)" x-text="page"></strong>/<strong style="color:var(--text)" x-text="totalPages"></strong> 页</span>
+          </div>
+        </div>
+
+        <!-- Filter bar -->
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+          <input type="date" x-model="dateFilter" @change="page=1" style="padding:5px 10px;font-size:12px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);width:135px">
+          <button class="filter-btn" @click="dateFilter='';page=1" x-show="dateFilter" style="font-size:10px;padding:3px 7px">✕</button>
+          <span style="color:var(--border)">|</span>
+          <button class="filter-btn" :class="{active:filter==='all'}" @click="filter='all';page=1">全部</button>
+          <button class="filter-btn" :class="{active:filter==='request'}" @click="filter='request';page=1">请求</button>
+          <button class="filter-btn" :class="{active:filter==='system'}" @click="filter='system';page=1">系统</button>
+          <span style="color:var(--border)">|</span>
+          <button class="filter-btn" :class="{active:levelFilter==='all'}" @click="levelFilter='all';page=1">全部</button>
+          <button class="filter-btn" :class="{active:levelFilter==='error'}" @click="levelFilter='error';page=1" style="border-color:var(--danger);color:var(--danger)" x-bind:style="levelFilter==='error' ? 'background:var(--danger);color:#fff;border-color:var(--danger)' : 'border-color:var(--danger);color:var(--danger)'">error</button>
+          <button class="filter-btn" :class="{active:levelFilter==='warn'}" @click="levelFilter='warn';page=1" style="border-color:var(--warn);color:var(--warn)" x-bind:style="levelFilter==='warn' ? 'background:var(--warn);color:#fff;border-color:var(--warn)' : 'border-color:var(--warn);color:var(--warn)'">warn</button>
+          <button class="filter-btn" :class="{active:levelFilter==='info'}" @click="levelFilter='info';page=1">info</button>
+          <button class="filter-btn" :class="{active:levelFilter==='debug'}" @click="levelFilter='debug';page=1" style="color:var(--text-muted)">debug</button>
+          <span style="color:var(--border)">|</span>
+          <input type="text" x-model="search" @input="page=1" placeholder="搜索…" style="flex:1;min-width:100px;padding:5px 10px;font-size:12px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text)">
+          <div style="display:flex;align-items:center;gap:4px">
+            <span style="font-size:11px;color:var(--text-muted)">记录级别</span>
+            <select x-model="currentLogLevel" @change="setLogLevel($event.target.value)" style="padding:4px 8px;font-size:11px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text)">
+              <option value="debug">debug</option>
+              <option value="info">info</option>
+              <option value="warn">warn</option>
+              <option value="error">error</option>
+            </select>
+          </div>
+          <button class="btn btn-primary btn-sm" @click="load()" style="padding:5px 12px;font-size:11px">刷新</button>
+        </div>
+
+        <!-- Log table -->
+        <div style="max-height:65vh;overflow-y:auto;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface)">
+          <table class="log-table">
+            <thead><tr>
+              <th style="width:36px"></th>
+              <th style="width:170px">时间</th>
+              <th style="width:52px">级别</th>
+              <th style="width:260px">消息</th>
+              <th>详情</th>
+            </tr></thead>
+            <tbody>
+              <template x-for="log in pagedLogs" :key="log.id">
+                <tr>
+                  <td>
+                    <span class="log-icon" :class="log.type === 'request' ? 'req' : 'sys'">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" x-show="log.type === 'request'"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" x-show="log.type === 'system'"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+                    </span>
+                  </td>
+                  <td class="mono" style="font-size:11px;color:var(--text-muted)" x-text="formatTime(log.timestamp)"></td>
+                  <td><span class="log-level" :class="log.level" x-text="log.level"></span></td>
+                  <td style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" x-text="log.message"></td>
+                  <td style="max-width:500px">
+                    <template x-if="log.details">
+                      <div>
+                        <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px">
+                          <span class="log-detail-toggle" @click="log._closed = !log._closed" x-text="log._closed ? '展开' : '收起'"></span>
+                          <span class="log-detail-toggle" @click="copyJson(log.details)" x-show="!log._closed">复制</span>
+                        </div>
+                        <div class="log-detail" :class="{collapsed: log._closed}" x-text="formatDetails(log.details)"></div>
+                      </div>
+                    </template>
+                  </td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+          <div style="padding:32px;text-align:center;color:var(--text-muted);font-size:13px" x-show="filteredLogs.length === 0 && allLogs.length === 0">暂无日志</div>
+          <div style="padding:32px;text-align:center;color:var(--text-muted);font-size:13px" x-show="filteredLogs.length === 0 && allLogs.length > 0">没有匹配的日志</div>
+        </div>
+
+        <!-- Pagination -->
+        <div style="display:flex;align-items:center;justify-content:center;gap:10px;margin-top:12px" x-show="totalPages > 1">
+          <button class="filter-btn" @click="page=1" :disabled="page<=1">⏮</button>
+          <button class="filter-btn" @click="prevPage()" :disabled="page<=1">◀</button>
+          <span style="font-size:12px;color:var(--text-muted);min-width:60px;text-align:center" x-text="`${page}/${totalPages}`"></span>
+          <button class="filter-btn" @click="nextPage()" :disabled="page>=totalPages">▶</button>
+          <button class="filter-btn" @click="page=totalPages" :disabled="page>=totalPages">⏭</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Providers -->
+    <div class="page" id="page-providers"
+         x-data="providersPage"
+         :class="{ active: $store.app.currentTab === 'providers' }">
+      <div class="section">
+        <div class="section-header">
+          <h3>模型供应商</h3>
+          <div style="display:flex;gap:8px;align-items:center">
+            <div class="search-box"><input x-model="search" placeholder="搜索模型供应商..."></div>
+            <button class="btn btn-primary btn-sm" @click="openForm(null)">+ 添加</button>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table><thead><tr>
+            <th>名称</th><th>类型</th><th>模型数</th><th>状态</th><th>操作</th>
+          </tr></thead><tbody>
+            <template x-for="p in filteredProviders" :key="p.name">
+              <tr>
+                <td><strong x-text="p.name"></strong></td>
+                <td><span class="mono" x-text="p.type === 'openai-responses' ? 'openai (responses)' : p.type"></span></td>
+                <td class="mono" x-text="p.models?.length ?? 0"></td>
+                <td><span class="badge" :class="p.available ? 'badge-ok' : 'badge-err'" x-text="p.available ? '正常' : '异常'"></span></td>
+                <td>
+                  <button class="btn btn-sm btn-success" @click="openTestPanel(p.name)">测试</button>
+                  <button class="btn btn-sm btn-warning" @click="openForm(p.name)">编辑</button>
+                  <button class="btn btn-sm btn-danger" @click="confirmDelete(p.name)">删除</button>
+                </td>
+              </tr>
+            </template>
+            <tr x-show="filteredProviders.length === 0 && providers.length === 0">
+              <td colspan="5" class="empty">暂无数据</td>
+            </tr>
+            <tr x-show="filteredProviders.length === 0 && providers.length > 0">
+              <td colspan="5" class="empty">没有匹配的供应商</td>
+            </tr>
+          </tbody></table>
+        </div>
+      </div>
+
+    <!-- Provider Modal -->
+    <div class="modal-overlay" x-show="showModal" x-cloak style="display:none"><div class="modal" style="max-height:80vh;display:flex;flex-direction:column">
+      <h3 x-text="editingName ? '编辑模型供应商' : '添加模型供应商'"></h3>
+      <div style="flex:1;overflow-y:auto;padding-right:4px">
+      <label>名称</label><input x-model="form.name" placeholder="my-provider">
+      <label>类型</label><select x-model="form.type">
+        <option value="openai">OpenAI (Chat)</option>
+        <option value="openai-responses">OpenAI (Responses)</option>
+        <option value="anthropic">Anthropic</option>
+      </select>
+      <label>API Key</label>
+      <div style="display:flex;gap:4px">
+        <input x-model="form.apiKey" :type="showKey ? 'text' : 'password'" placeholder="sk-..." style="flex:1">
+        <button class="btn btn-sm btn-ghost" type="button"
+                @click="showKey = !showKey"
+                x-text="showKey ? '隐藏' : '查看'"
+                style="flex-shrink:0;font-size:12px"></button>
+      </div>
+      <div class="hint" x-show="editingName" x-text="'留空则保留原值'" style="display:none"></div>
+      <label>API Base（可选）</label>
+      <input x-model="form.apiBase" placeholder="https://api.openai.com">
+      <label>模型列表
+        <button class="btn btn-sm btn-success" @click="openPullModels()" style="margin-left:8px">拉取远程模型</button>
+      </label>
+      <div class="dynamic-rows">
+        <template x-for="(m, i) in form.models" :key="i">
+          <div class="dynamic-row">
+            <span class="pm-label">模型 ID</span>
+            <input x-model="m.id" placeholder="如 gpt-4o" style="flex:1">
+            <button class="btn btn-sm btn-danger btn-icon" @click="removeModelRow(i)">✕</button>
+          </div>
+        </template>
+      </div>
+      <button class="btn btn-sm btn-ghost" @click="addModelRow()" style="margin-top:4px;flex-shrink:0">+ 添加模型</button>
+      </div>
+      <div class="btn-row" style="flex-shrink:0">
+        <button class="btn btn-ghost" @click="showModal = false">取消</button>
+        <button class="btn btn-primary" @click="save()">保存</button>
+      </div>
+    </div></div>
+
+    <!-- Pull Models Modal -->
+    <div class="modal-overlay" x-show="pullModal.visible" x-cloak style="display:none"><div class="modal" style="max-height:80vh;display:flex;flex-direction:column">
+      <h3>远程模型列表</h3>
+      <div style="font-size:12px;color:var(--text-muted);margin-bottom:8px">
+        <span x-show="!pullModal.loading" x-text="'共 ' + pullModal.models.length + ' 个模型，' + pullModal.existing.length + ' 个已存在'"></span>
+        <span x-show="pullModal.loading">加载中...</span>
+      </div>
+      <div style="flex:1;overflow-y:auto;margin-bottom:12px">
+        <template x-if="!pullModal.loading && pullModal.models.length === 0">
+          <div class="empty" x-text="pullModal.error || '未找到可用模型'"></div>
+        </template>
+        <table x-show="!pullModal.loading && pullModal.models.length > 0">
+          <thead><tr><th style="width:30px"></th><th>模型 ID</th><th>来源</th></tr></thead>
+          <tbody>
+            <template x-for="(m, i) in pullModal.models" :key="i">
+              <tr>
+                <td><input type="checkbox"
+                           :checked="pullModal.existing.includes(m.id) || true"
+                           :disabled="pullModal.existing.includes(m.id)"></td>
+                <td><span class="mono" x-text="m.id"></span></td>
+                <td style="font-size:11px;color:var(--text-muted)" x-text="m.description || ''"></td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-ghost" @click="pullModal.visible = false">取消</button>
+        <button class="btn btn-primary" @click="importPullModels()" :disabled="pullModal.loading">导入选中</button>
+      </div>
+    </div></div>
+    </div>
+
+    <!-- Adapters -->
+    <div class="page" id="page-adapters"
+         x-data="adaptersPage"
+         :class="{ active: $store.app.currentTab === 'adapters' }">
+      <div class="section">
+        <div class="section-header">
+          <h3>工具适配器映射</h3>
+          <div style="display:flex;gap:8px;align-items:center">
+            <div class="search-box"><input x-model="search" placeholder="搜索适配器..."></div>
+            <button class="btn btn-primary btn-sm" @click="openForm(null)">+ 添加</button>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table><thead><tr>
+            <th>适配器</th><th>类型</th><th>Base URL</th><th>模型映射</th><th>状态</th><th>操作</th>
+          </tr></thead><tbody>
+            <template x-for="a in filteredAdapters" :key="a.name">
+              <tr>
+                <td><strong x-text="a.name"></strong></td>
+                <td><span class="mono" x-text="a.type === 'openai-responses' ? 'openai (responses)' : a.type"></span></td>
+                <td class="mono" style="font-size:11px;color:var(--text-muted)" x-text="a.baseUrl || '—'"></td>
+                <td><div class="adapter-tags">
+                  <template x-for="m in a.models" :key="m.sourceModelId + m.targetModelId">
+                    <span class="adapter-tag" :class="{ 'adapter-tag-err': m.status !== 'ok' }"
+                          x-text="m.sourceModelId + ' → ' + m.provider + '/' + m.targetModelId"></span>
+                  </template>
+                </div></td>
+                <td>
+                  <span class="badge"
+                        :class="a.models.every(m => m.status === 'ok') ? 'badge-ok' : 'badge-err'"
+                        x-text="a.models.every(m => m.status === 'ok') ? '正常' : (a.models.find(m => m.status !== 'ok')?.status || '异常')"></span>
+                </td>
+                <td>
+                  <button class="btn btn-sm btn-success" @click="openTestPanel(a.name)">测试</button>
+                  <button class="btn btn-sm btn-warning" @click="openForm(a.name)">编辑</button>
+                  <button class="btn btn-sm btn-danger" @click="confirmDelete(a.name)">删除</button>
+                </td>
+              </tr>
+            </template>
+            <tr x-show="filteredAdapters.length === 0 && adapters.length === 0">
+              <td colspan="6" class="empty">暂无适配器</td>
+            </tr>
+            <tr x-show="filteredAdapters.length === 0 && adapters.length > 0">
+              <td colspan="6" class="empty">没有匹配的适配器</td>
+            </tr>
+          </tbody></table>
+        </div>
+      </div>
+
+    <!-- Adapter Modal -->
+    <div class="modal-overlay" x-show="showModal" x-cloak style="display:none"><div class="modal" style="min-width:640px;max-width:740px">
+      <h3 x-text="editingName ? '编辑适配器' : '添加适配器'"></h3>
+      <label>名称</label><input x-model="form.name" placeholder="my-tool">
+      <label>类型</label><select x-model="form.type">
+        <option value="openai">OpenAI (Chat)</option>
+        <option value="openai-responses">OpenAI (Responses)</option>
+        <option value="anthropic">Anthropic</option>
+      </select>
+      <label>模型映射</label>
+      <div class="dynamic-rows">
+        <template x-for="(m, i) in form.models" :key="i">
+          <div class="dynamic-row">
+            <span class="pm-label">适配前模型 ID</span>
+            <input x-model="m.sourceModelId" placeholder="工具发出的模型名" style="flex:1">
+            <span class="pm-label">供应商</span>
+            <select :value="m.provider" @change="m.provider = $event.target.value; onProviderChange(i)" style="flex:1;min-width:0">
+              <option value="">-- 选择供应商 --</option>
+              <template x-for="p in providers" :key="p.name">
+                <option :value="p.name" :selected="p.name === m.provider" x-text="p.name"></option>
+              </template>
+            </select>
+            <span class="pm-label">适配后模型 ID</span>
+            <select :value="m.targetModelId" @change="m.targetModelId = $event.target.value" style="flex:2;min-width:140px">
+              <option value="">-- 选择模型 --</option>
+              <template x-for="mid in getProviderModels(m.provider)" :key="mid.id">
+                <option :value="mid.id" :selected="mid.id === m.targetModelId" x-text="mid.id"></option>
+              </template>
+            </select>
+            <button class="btn btn-sm btn-danger btn-icon" @click="removeMappingRow(i)">✕</button>
+          </div>
+        </template>
+      </div>
+      <button class="btn btn-sm btn-ghost" @click="addMappingRow()" style="margin-top:4px">+ 添加映射</button>
+      <div class="btn-row">
+        <button class="btn btn-ghost" @click="showModal = false">取消</button>
+        <button class="btn btn-primary" @click="save()">保存</button>
+      </div>
+    </div></div>
+
+    <!-- Adapter Test Modal -->
+    <div class="modal-overlay" x-show="adapterTestModal.visible" x-cloak style="display:none"><div class="modal" style="min-width:500px;max-width:640px">
+      <h3 x-text="'测试适配器 — ' + adapterTestModal.adapterName"></h3>
+      <div style="display:flex;gap:8px;margin-bottom:14px;align-items:center">
+        <select x-model="adapterTestModal.selectedModelId" style="flex:1;padding:6px 8px;font-size:12px;border:1px solid var(--border);border-radius:var(--radius)">
+          <template x-for="m in adapterTestModal.models" :key="m.id">
+            <option :value="m.id" x-text="m.id + (m.status !== 'ok' ? ' (' + m.status + ')' : '')"></option>
+          </template>
+        </select>
+        <button class="btn btn-primary btn-sm" @click="runAdapterTest()" style="min-width:52px" :disabled="adapterTestModal.running" x-text="adapterTestModal.running ? '测试中' : '运行'"></button>
+      </div>
+      <div style="max-height:360px;overflow-y:auto;display:flex;flex-direction:column;gap:6px">
+        <template x-for="(r, i) in adapterTestModal.results" :key="i">
+          <div :style="'display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:var(--radius);font-size:12.5px;background:' + (r.ok ? 'var(--success-bg)' : 'var(--danger-bg)') + ';border-left:3px solid ' + (r.ok ? 'var(--success)' : 'var(--danger)')">
+            <span style="font-weight:600;min-width:140px;max-width:200px;overflow:hidden;text-overflow:ellipsis" x-text="r.model"></span>
+            <span style="font-size:11px;color:var(--text-muted);min-width:60px" x-text="r.time"></span>
+            <span style="flex:1" x-text="r.ok ? '✓ ' + r.latency + 'ms' : '✗ ' + (r.error || '不可达').slice(0, 80)"></span>
+          </div>
+        </template>
+        <div class="empty" style="padding:24px" x-show="adapterTestModal.results.length === 0">点击 "运行" 测试所选映射模型</div>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-ghost" @click="adapterTestModal.results = []" style="font-size:11.5px">清除结果</button>
+        <button class="btn btn-ghost" @click="adapterTestModal.visible = false">关闭</button>
+      </div>
+    </div></div>
+    </div>
+
+    <!-- Protocol Capture (Wireshark) -->
+    <div class="page" id="page-capture"
+         x-data="capturePage"
+         :class="{ active: $store.app.currentTab === 'capture' }">
+      <div class="section" style="flex:1;display:flex;flex-direction:column">
+        <div class="section-header">
+          <h3>协议数据包捕获</h3>
+          <div style="display:flex;align-items:center;gap:8px">
+            <button class="filter-btn" :class="{active: running}" @click="startCapture()" x-show="!running">▶ 开始抓包</button>
+            <button class="filter-btn" @click="stopCapture()" x-show="running">⏸ 暂停</button>
+            <button class="filter-btn" @click="endCapture()" x-show="entries.length > 0" style="border-color:var(--danger);color:var(--danger)">■ 结束</button>
+            <span style="color:var(--border);margin:0 4px">|</span>
+            <span style="font-size:11px;color:var(--text-muted)" x-text="entries.length + ' 条'"></span>
+          </div>
+        </div>
+
+        <!-- Filter bar -->
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+          <span style="font-size:11px;color:var(--text-muted)">来源</span>
+          <button class="filter-btn" :class="{active: !sourceFilter}" @click="sourceFilter = ''">全部</button>
+          <button class="filter-btn" :class="{active: sourceFilter === 'proxy'}" @click="sourceFilter = 'proxy'">代理</button>
+          <template x-for="s in [...new Set(entries.map(e => e.source))].filter(s => s.startsWith('adapter:')).sort()" :key="s">
+            <button class="filter-btn" :class="{active: sourceFilter === s}" @click="sourceFilter = s" x-text="s.slice(8)"></button>
+          </template>
+        </div>
+
+        <!-- Packet list -->
+        <div style="flex:0 0 auto;max-height:280px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--radius);margin-bottom:12px">
+          <table style="width:100%;font-size:12px;font-family:monospace">
+            <thead><tr style="background:var(--bg-hover);position:sticky;top:0">
+              <th style="width:40px;text-align:center">#</th>
+              <th style="width:150px">时间</th>
+              <th style="width:100px">方向</th>
+              <th style="width:90px">来源</th>
+              <th style="width:90px">协议</th>
+              <th style="width:90px">模型</th>
+              <th style="width:60px;text-align:right">大小</th>
+            </tr></thead>
+            <tbody>
+              <template x-for="e in filteredEntries.slice().reverse()" :key="e.id">
+                <tr @click="select(e.id)"
+                    :style="'cursor:pointer;background:' + (selectedId === e.id ? 'var(--accent-bg)' : 'transparent')">
+                  <td style="text-align:center;color:var(--text-muted)" x-text="e.id"></td>
+                  <td x-text="fmtTime(e.timestamp)"></td>
+                  <td><span :style="'color:' + (e.direction.endsWith('-in') ? 'var(--success)' : 'var(--accent)')" x-html="dirIcon(e.direction) + ' ' + dirLabel(e.direction)"></span></td>
+                  <td style="color:var(--text-muted)" x-text="e.source?.startsWith('adapter:') ? e.source.slice(8) : e.source"></td>
+                  <td x-text="e.protocol"></td>
+                  <td x-text="e.model"></td>
+                  <td style="text-align:right;color:var(--text-muted)" x-text="fmtSize(e.rawData)"></td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+          <div style="padding:24px;text-align:center;color:var(--text-muted);font-size:13px" x-show="entries.length === 0">
+            暂无数据包 — 发起一次代理请求即可捕获
+          </div>
+        </div>
+
+        <!-- Detail split view -->
+        <template x-if="selected">
+          <div style="flex:1;display:flex;flex-direction:column;min-height:0">
+            <!-- Paired entries: side by side -->
+            <div style="display:flex;gap:8px;flex:1;min-height:0">
+              <template x-for="e in pairedEntries" :key="e.id">
+                <div style="flex:1;display:flex;flex-direction:column;min-width:0;border:1px solid var(--border);border-radius:var(--radius);overflow:hidden">
+                  <div :style="'padding:6px 10px;font-size:11px;font-weight:600;background:' + (e.direction.endsWith('-in') ? 'var(--success-bg)' : 'var(--accent-bg)') + ';border-bottom:1px solid var(--border)'">
+                    <span x-text="dirIcon(e.direction) + ' ' + dirLabel(e.direction)"></span>
+                    <span style="float:right;opacity:0.7" x-text="e.protocol + ' · ' + e.model"></span>
+                    <button @click="copyRaw(e.rawData)" style="float:right;margin-right:8px;font-size:10px;padding:2px 6px;border:1px solid var(--border);border-radius:4px;background:var(--surface);cursor:pointer;opacity:0.7" title="复制原始内容">📋</button>
+                  </div>
+                  <div class="jsoneditor-container" style="flex:1;min-height:200px"></div>
+                </div>
+              </template>
+            </div>
+
+            <!-- Diff summary -->
+            <div style="margin-top:8px;padding:8px 12px;background:var(--bg-hover);border-radius:var(--radius);font-size:11.5px;line-height:1.6" x-show="pairedEntries.length >= 2">
+              <div style="font-weight:600;margin-bottom:4px">转换差异</div>
+              <template x-for="d in getDiffLines(pairedEntries[0].rawData, pairedEntries[1].rawData)" :key="d">
+                <div x-text="d" :style="'color:' + (d.startsWith('+') ? 'var(--success)' : d.startsWith('-') ? 'var(--danger)' : d.startsWith('⚠') ? 'var(--warn)' : 'var(--text-muted)')"></div>
+              </template>
+              <div x-show="getDiffLines(pairedEntries[0].rawData, pairedEntries[1].rawData).length === 0" style="color:var(--text-muted)">同协议透传，无格式变化</div>
+            </div>
+          </div>
+        </template>
+      </div>
+    </div>
+
+    <!-- Test Panel -->
+    <div class="modal-overlay" x-data="testPanel" x-show="visible" x-cloak style="display:none"><div class="modal" style="min-width:500px;max-width:640px">
+      <h3 x-text="'测试 — ' + providerName"></h3>
+      <div style="display:flex;gap:8px;margin-bottom:14px;align-items:center">
+        <strong style="font-size:13px;min-width:80px" x-text="providerName"></strong>
+        <select x-model="selectedModel" style="flex:1;padding:6px 8px;font-size:12px;border:1px solid var(--border);border-radius:var(--radius)">
+          <template x-for="m in models" :key="m.id">
+            <option :value="m.id" x-text="m.id"></option>
+          </template>
+        </select>
+        <select x-model="endpoint" x-show="providerType === 'openai'" style="padding:6px 8px;font-size:11px;border:1px solid var(--border);border-radius:var(--radius)">
+          <option value="chat">Chat</option>
+          <option value="responses">Responses</option>
+        </select>
+        <button class="btn btn-primary btn-sm" @click="run()" style="min-width:52px" :disabled="running" x-text="running ? '测试中' : '运行'"></button>
+      </div>
+      <div style="max-height:360px;overflow-y:auto;display:flex;flex-direction:column;gap:6px">
+        <template x-for="(r, i) in results" :key="i">
+          <div :style="'display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:var(--radius);font-size:12.5px;background:' + (r.ok ? 'var(--success-bg)' : 'var(--danger-bg)') + ';border-left:3px solid ' + (r.ok ? 'var(--success)' : 'var(--danger)')">
+            <span style="font-weight:600;min-width:140px;max-width:200px;overflow:hidden;text-overflow:ellipsis" x-text="r.model"></span>
+            <span style="font-size:11px;color:var(--text-muted);min-width:60px" x-text="r.time"></span>
+            <span style="flex:1" x-text="r.ok ? '✓ ' + r.latency + 'ms' : '✗ ' + (r.error || '不可达').slice(0, 80)"></span>
+          </div>
+        </template>
+        <div class="empty" style="padding:24px" x-show="results.length === 0">点击 "运行" 测试所选模型</div>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-ghost" @click="clear()" style="font-size:11.5px">清除结果</button>
+        <button class="btn btn-ghost" @click="visible = false">关闭</button>
+      </div>
+    </div></div>
+
+  </div>
+</div>
+
+<!-- Confirm Dialog -->
+<div class="confirm-overlay" x-data
+     :class="{ open: $store.app.showConfirm }"
+     x-cloak
+     style="display:none">
+  <div class="confirm-box">
+    <p x-text="$store.app.confirmMessage"></p>
+    <div class="btn-row">
+      <button class="btn btn-ghost" @click="$store.app.confirmResolve(false); $store.app.showConfirm = false">取消</button>
+      <button class="btn btn-danger" @click="$store.app.confirmResolve(true); $store.app.showConfirm = false">确定</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast-container" id="toastContainer"></div>
+
+
+</body>
+</html>

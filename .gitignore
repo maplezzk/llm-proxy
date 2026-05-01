@@ -1,0 +1,15 @@
+node_modules/
+dist/
+*.log
+.env
+.DS_Store
+# Added by code-review-graph
+.code-review-graph/
+
+.claude/
+
+# Swift / menubar
+menubar/.build/
+menubar/*.xcodeproj
+menubar/*.xcworkspace
+menubar/.swiftpm/

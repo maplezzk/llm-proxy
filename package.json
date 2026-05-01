@@ -1,0 +1,33 @@
+{
+  "name": "llm-proxy",
+  "version": "0.1.0",
+  "description": "本地统一 LLM 模型代理工具 - 热加载配置管理模块",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "llm-proxy": "./bin/llm-proxy.js"
+  },
+  "scripts": {
+    "build": "tsc && cp src/api/admin-ui.html dist/api/admin-ui.html && esbuild src/api/admin/app.ts --bundle --outfile=dist/api/admin-app.js --format=esm --minify",
+    "build:prod": "esbuild src/index.ts --bundle --platform=node --outfile=dist/bundle.js --format=esm",
+    "dev": "tsx src/index.ts",
+    "test": "node --import tsx --test test/**/*.test.ts",
+    "test:watch": "node --import tsx --watch --test test/**/*.test.ts",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "alpinejs": "^3.15.11",
+    "yaml": "^2.8.0"
+  },
+  "devDependencies": {
+    "@types/alpinejs": "^3.13.11",
+    "@types/node": "^22.0.0",
+    "esbuild": "^0.25.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
