@@ -54,7 +54,8 @@ export function handleGetLogs(ctx: ServerContext, req: IncomingMessage, res: Ser
   const before = url.searchParams.get('before') ? parseInt(url.searchParams.get('before')!, 10) : undefined
   const level = url.searchParams.get('level') || undefined
   const type = url.searchParams.get('type') || undefined
-  json(res, 200, { success: true, data: { logs: ctx.logger.getLogs(limit, before, level as any, type), stats: ctx.logger.getStats() } })
+  const date = url.searchParams.get('date') || undefined
+  json(res, 200, { success: true, data: { logs: ctx.logger.getLogs(limit, before, level as any, type, date), stats: ctx.logger.getStats() } })
 }
 
 export function handleGetLogLevel(ctx: ServerContext, _req: IncomingMessage, res: ServerResponse): void {

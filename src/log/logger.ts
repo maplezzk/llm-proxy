@@ -119,11 +119,24 @@ export class Logger {
     }
   }
 
+  /** 读取指定日期的日志文件内容 */
+  private readFile(date: string): LogEntry[] {
+    if (!this.logDir) return []
+    const filePath = join(this.logDir, `llm-proxy-${date}.log`)
+    if (!existsSync(filePath)) return []
+    try {
+      const content = readFileSync(filePath, 'utf-8')
+      return content.trim().split('\n').filter(Boolean).map(l => parseLogLine(l)).filter(Boolean) as LogEntry[]
+    } catch {
+      return []
+    }
+  }
+
   /** 直接从日志文件读取条目，用于弥补内存不足的历史日志 */
-  private readFromFiles(limit: number, before?: number, level?: LogLevel, type?: string): LogEntry[] {
+  private readFromFiles(limit: number, before?: number, level?: LogLevel, type?: string, date?: string): LogEntry[] {
     if (!this.logDir || !existsSync(this.logDir)) return []
 
-    const files = this.getLogFiles()
+    const files = date ? [`llm-proxy-${date}.log`] : this.getLogFiles()
     const result: LogEntry[] = []
     let fileId = this.nextId + 1_000_000 // 用大 ID 避免与内存 ID 冲突
 
@@ -205,12 +218,26 @@ export class Logger {
     this.logLevel = level
   }
 
-  getLogs(limit = 100, before?: number, level?: LogLevel, type?: string): LogEntry[] {
-    // 1. 从内存取
-    let result = this.entries
-    if (before) {
-      result = result.filter((e) => e.id < before)
+  getLogs(limit = 100, before?: number, level?: LogLevel, type?: string, date?: string): LogEntry[] {
+    let result: LogEntry[]
+
+    if (date && this.logDir) {
+      // 指定日期：直接从文件读，不查内存
+      result = this.readFile(date)
+    } else {
+      // 未指定日期：从内存取
+      result = this.entries
+      if (before) {
+        result = result.filter((e) => e.id < before)
+      }
+      // 内存不够，从文件补
+      if (result.length < limit && this.logDir) {
+        const fileEntries = this.readFromFiles(limit - result.length, before, level, type)
+        result = [...result, ...fileEntries]
+      }
     }
+
+    // 应用过滤器
     if (level) {
       result = result.filter((e) => e.level === level)
     }
@@ -218,14 +245,7 @@ export class Logger {
       result = result.filter((e) => e.type === type)
     }
 
-    // 2. 如果内存不够，从文件补
-    const memCount = result.length
-    if (memCount < limit && this.logDir) {
-      const fileEntries = this.readFromFiles(limit - memCount, before, level, type)
-      result = [...result, ...fileEntries]
-    }
-
-    // 3. 按 ID 倒序，取最新 limit 条
+    // 按 ID 倒序，取最新 limit 条
     result.sort((a, b) => b.id - a.id)
     return result.slice(0, limit)
   }
