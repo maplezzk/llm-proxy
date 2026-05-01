@@ -234,7 +234,6 @@ export class Logger {
     if (date && this.logDir) {
       // 指定日期：从文件读 + 从内存筛
       const fileEntries = this.readFile(date)
-      // 内存中也筛出该日期的（可能是刚启动时从文件加载的，ID 有效可排序）
       const memByDate = this.entries.filter(e => e.timestamp.startsWith(date))
       // 合并，用 timestamp+message 去重
       const seenKeys = new Set<string>()
@@ -245,6 +244,10 @@ export class Logger {
           seenKeys.add(key)
           result.push(e)
         }
+      }
+      // 兜底：日期没查到任何数据时（如今天还没写日志），回退到全部
+      if (result.length === 0) {
+        result = this.entries
       }
     } else {
       // 未指定日期：从内存取

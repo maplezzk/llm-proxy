@@ -9,7 +9,7 @@ export function logsPage() {
     allLogs: [] as any[],
     filter: 'all',
     levelFilter: 'all',
-    dateFilter: todayStr(),
+    dateFilter: '',
     search: '',
     page: 1,
     pageSize: 50,
