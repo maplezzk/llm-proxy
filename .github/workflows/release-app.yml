@@ -28,7 +28,9 @@ jobs:
         uses: oven-sh/setup-bun@v1
 
       - name: Install dependencies
-        run: npm ci
+        run: |
+          brew install librsvg
+          npm ci
 
       - name: Build app
         run: bash app/scripts/build.sh

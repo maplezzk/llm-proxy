@@ -30,9 +30,10 @@ cp "$BUILD_DIR/release/LLMProxy" "$APP/Contents/MacOS/"
 cp "$BUILD_DIR/llm-proxy" "$APP/Contents/Resources/"
 cp "$BUILD_DIR/admin-ui.html" "$APP/Contents/Resources/"
 cp "$BUILD_DIR/admin-app.js" "$APP/Contents/Resources/"
-# Generate app icon from SVG
+# Generate app icon
 if command -v rsvg-convert &>/dev/null; then
-  rsvg-convert -w 512 -h 512 "$ROOT_DIR/app/assets/app-icon.svg" -o "$APP/Contents/Resources/AppIcon.png"
+  rsvg-convert -w 1024 -h 1024 "$ROOT_DIR/app/assets/app-icon.svg" -o "$APP/Contents/Resources/AppIcon.png"
+  sips -s format icns "$APP/Contents/Resources/AppIcon.png" --out "$APP/Contents/Resources/AppIcon.icns" 2>/dev/null
 elif [ -f "$ROOT_DIR/app/assets/app-icon.icns" ]; then
   cp "$ROOT_DIR/app/assets/app-icon.icns" "$APP/Contents/Resources/AppIcon.icns"
 fi
