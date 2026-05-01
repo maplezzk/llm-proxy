@@ -1,12 +1,33 @@
 {
   "name": "llm-proxy",
   "version": "0.1.0",
-  "description": "本地统一 LLM 模型代理工具 - 热加载配置管理模块",
+  "description": "本地统一 LLM 模型代理工具 — 多协议路由、协议互转、流式 SSE 转换、token 统计、协议抓包调试",
   "type": "module",
   "main": "dist/index.js",
   "bin": {
     "llm-proxy": "./bin/llm-proxy.js"
   },
+  "files": [
+    "dist",
+    "bin"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/maplezzk/llm-proxy"
+  },
+  "keywords": [
+    "llm",
+    "proxy",
+    "anthropic",
+    "openai",
+    "protocol-translation",
+    "sse",
+    "streaming",
+    "cli"
+  ],
   "scripts": {
     "build": "tsc && cp src/api/admin-ui.html dist/api/admin-ui.html && esbuild src/api/admin/app.ts --bundle --outfile=dist/api/admin-app.js --format=esm --minify",
     "build:prod": "esbuild src/index.ts --bundle --platform=node --outfile=dist/bundle.js --format=esm",
@@ -14,7 +35,8 @@
     "test": "node --import tsx --test test/**/*.test.ts",
     "test:watch": "node --import tsx --watch --test test/**/*.test.ts",
     "typecheck": "tsc --noEmit",
-    "clean": "rm -rf dist"
+    "clean": "rm -rf dist",
+    "prepublishOnly": "npm run build && npm test"
   },
   "dependencies": {
     "alpinejs": "^3.15.11",
