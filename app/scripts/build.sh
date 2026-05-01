@@ -7,6 +7,7 @@ BUILD_DIR="$ROOT_DIR/app/.build"
 echo "=== 1. Build llm-proxy binary ==="
 cd "$ROOT_DIR"
 npm run build
+echo "DEBUG: pwd=$(pwd), ls src/index.ts=$(ls src/index.ts 2>&1)"
 npx esbuild src/index.ts --bundle --platform=node --outfile=dist/bundle.js --format=esm
 ARCH="$(uname -m)"
 [ "$ARCH" = "arm64" ] && TARGET="aarch64-apple-darwin" || TARGET="x86_64-apple-darwin"
