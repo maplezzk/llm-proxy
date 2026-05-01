@@ -1,4 +1,4 @@
-const { app, Tray, Menu, nativeImage, BrowserWindow, dialog } = require('electron')
+const { app, Tray, Menu, nativeImage, BrowserWindow } = require('electron')
 const { spawn } = require('child_process')
 const path = require('path')
 const http = require('http')
@@ -12,10 +12,19 @@ let pollingTimer = null
 const PROXY_PORT = parseInt(process.env.LLM_PROXY_PORT || '9000')
 const ADMIN_URL = `http://127.0.0.1:${PROXY_PORT}/admin/`
 
+// ── Tray icon (18x18 PNG as base64) ──
+const TRAY_ICON_B64 =
+  'iVBORw0KGgoAAAANSUhEUgAAABIAAAASCAYAAABWzo5XAAAAAXNSR0IArs4c6QAAATRJREFUOE' +
+  '+tk79KA0EQxr+Z2as4FdJYBCxs7ewEeQELH0DfwCfwDcQH8AFs8wAWNnYCdhZaWIiFKFhYCVY2' +
+  'gghKKKJiLpfs7e3uzM6u5M8GyXyzP76Zndn8ZhZCiBBCCCEUOMe4mUIphZTSQgjBGGN93/eFE' +
+  'GQYhuT7Pi2KoqjXaJqWRVFExWLRNE3TdF1XAOB7P1YUBYQQYlU8RFEU1XXdsG07mKZpOE1TGo' +
+  'ZhkKbpMI5j6vu+5/s+930/z/N8MBgM1nXdPNM0LQAAjuN4FAqFgmma/Xa7Xeic2+12jwAkSRK' +
+  '/iUajeL/f5+v1+uR2u5MA/BWjAbtarVYFABv9R0S0Q+mmlTIMw7rWugiCwKhpNY/04sqSWnjn' +
+  'z5dKJZemqQMsI0LI3oDn4HPJcRzH7ytv4EI5Hn4xMAAAAASUVORK5CYII='
+
 // ── Proxy management ──
 
 function getProxyBinary() {
-  // In production, use llm-proxy CLI; in dev, use npm run dev
   if (app.isPackaged) {
     return path.join(process.resourcesPath, 'bin', 'llm-proxy')
   }
@@ -30,7 +39,6 @@ function startProxy() {
     cmd = bin
     args = ['start', '--port', String(PROXY_PORT)]
   } else {
-    // Dev mode: use node to run the bin script (which uses tsx)
     cmd = 'node'
     args = [bin, 'start', '--port', String(PROXY_PORT)]
   }
@@ -65,9 +73,9 @@ function isPortOpen() {
 
 // ── API helpers ──
 
-function apiGet(path) {
+function apiGet(apiPath) {
   return new Promise(resolve => {
-    http.get(`http://127.0.0.1:${PROXY_PORT}${path}`, res => {
+    http.get(`http://127.0.0.1:${PROXY_PORT}${apiPath}`, res => {
       let data = ''
       res.on('data', c => data += c)
       res.on('end', () => { try { resolve(JSON.parse(data)) } catch { resolve(null) } })
@@ -75,11 +83,11 @@ function apiGet(path) {
   })
 }
 
-function apiPut(path, body) {
+function apiPut(apiPath, body) {
   return new Promise(resolve => {
     const d = JSON.stringify(body)
     const req = http.request({
-      hostname: '127.0.0.1', port: PROXY_PORT, path,
+      hostname: '127.0.0.1', port: PROXY_PORT, path: apiPath,
       method: 'PUT', headers: { 'Content-Type': 'application/json', 'Content-Length': d.length }
     }, res => resolve(res.statusCode === 200))
     req.on('error', () => resolve(false))
@@ -97,9 +105,8 @@ async function refreshState() {
     apiGet('/admin/config'),
     apiGet('/admin/log-level'),
   ])
-  const running = health?.success === true
   return {
-    running,
+    running: health?.success === true,
     adapters: adapters?.data?.adapters || [],
     providers: config?.data?.providers || [],
     logLevel: logLevel?.data?.level || 'info',
@@ -128,30 +135,25 @@ async function rebuildMenu() {
   if (!tray) return
 
   const state = await refreshState()
-  const menuItems = []
+  const items = []
 
-  // Status
-  const statusLabel = state.running ? '●  llm-proxy 运行中' : '○  llm-proxy 未运行'
-  menuItems.push({ label: statusLabel, enabled: false })
+  items.push({ label: state.running ? '●  llm-proxy 运行中' : '○  llm-proxy 未运行', enabled: false })
+  items.push({ type: 'separator' })
 
-  menuItems.push({ type: 'separator' })
-
-  // Service control
   if (state.running) {
-    menuItems.push({ label: '⏹ 停止服务', click: () => handleToggle() })
-    menuItems.push({ label: '↺ 重启服务', click: () => handleRestart() })
+    items.push({ label: '⏹ 停止服务', click: () => handleToggle() })
+    items.push({ label: '↺ 重启服务', click: () => handleRestart() })
   } else {
-    menuItems.push({ label: '▶ 启动服务', click: () => handleToggle() })
+    items.push({ label: '▶ 启动服务', click: () => handleToggle() })
   }
 
-  menuItems.push({ type: 'separator' })
+  items.push({ type: 'separator' })
 
-  // Adapters
   if (state.adapters.length === 0) {
-    menuItems.push({ label: '无法连接到 llm-proxy', enabled: false })
+    items.push({ label: '无法连接到 llm-proxy', enabled: false })
   } else {
     for (const adapter of state.adapters) {
-      menuItems.push({ label: adapter.name, enabled: false })
+      items.push({ label: adapter.name, enabled: false })
       for (const mapping of adapter.models) {
         const submenu = []
         for (const provider of state.providers) {
@@ -166,20 +168,17 @@ async function rebuildMenu() {
           }
           submenu.push({ type: 'separator' })
         }
-        // Remove trailing separator
         if (submenu.length && submenu[submenu.length - 1].type === 'separator') submenu.pop()
-        menuItems.push({ label: '  ' + mapping.sourceModelId, submenu })
+        items.push({ label: '  ' + mapping.sourceModelId, submenu })
       }
-      menuItems.push({ type: 'separator' })
+      items.push({ type: 'separator' })
     }
   }
 
-  // Actions
-  menuItems.push({ label: '刷新', click: () => rebuildMenu() })
+  items.push({ label: '刷新', click: () => rebuildMenu() })
 
-  // Log level
   const logLevel = state.logLevel || 'info'
-  menuItems.push({
+  items.push({
     label: `日志级别: ${logLevel}`,
     submenu: ['debug', 'info', 'warn', 'error'].map(l => ({
       label: l === logLevel ? '✓ ' + l : '  ' + l,
@@ -187,13 +186,11 @@ async function rebuildMenu() {
     })),
   })
 
-  menuItems.push({ label: '打开 Admin UI', click: () => openAdmin() })
+  items.push({ label: '打开 Admin UI', click: () => openAdmin() })
+  items.push({ type: 'separator' })
+  items.push({ label: '退出', click: () => app.quit() })
 
-  menuItems.push({ type: 'separator' })
-  menuItems.push({ label: '退出', click: () => app.quit() })
-
-  const menu = Menu.buildFromTemplate(menuItems)
-  tray.setContextMenu(menu)
+  tray.setContextMenu(Menu.buildFromTemplate(items))
 }
 
 // ── Handlers ──
@@ -202,7 +199,7 @@ async function handleToggle() {
   const running = await isPortOpen()
   if (running) {
     stopProxy()
-    await waitFor(!isPortOpen, 3000)
+    await waitFor(async () => !(await isPortOpen()), 3000)
   } else {
     startProxy()
     await waitFor(isPortOpen, 6000)
@@ -212,7 +209,7 @@ async function handleToggle() {
 
 async function handleRestart() {
   stopProxy()
-  await waitFor(!isPortOpen, 3000)
+  await waitFor(async () => !(await isPortOpen()), 3000)
   startProxy()
   await waitFor(isPortOpen, 6000)
   await rebuildMenu()
@@ -264,38 +261,52 @@ function startPolling() {
 // ── App lifecycle ──
 
 app.whenReady().then(async () => {
-  // Hide from dock (tray-only macOS app)
   app.setActivationPolicy('accessory')
 
-  // Create tray
-  const iconPath = path.join(__dirname, '..', 'src', 'api', 'tray-icon.png')
-  console.log('[electron] tray icon path:', iconPath, 'exists:', require('fs').existsSync(iconPath))
-  const icon = nativeImage.createFromPath(iconPath)
-  if (icon.isEmpty()) console.error('[electron] tray icon is empty!')
-  tray = new Tray(icon.resize({ width: 18, height: 18 }))
-  // macOS: treat as template image for dark mode support
+  // Use app icon as tray icon (fallback to a colored 1px if not found)
+  let icon
+  try {
+    icon = nativeImage.createFromPath(path.join(__dirname, '..', 'src', 'api', 'tray-icon.png'))
+  } catch {}
+  if (!icon || icon.isEmpty()) {
+    // Create a simple colored icon: 18x18 with 3 white dots
+    const size = 18
+    const buf = Buffer.alloc(size * size * 4)
+    for (let y = 0; y < size; y++) {
+      for (let x = 0; x < size; x++) {
+        const i = (y * size + x) * 4
+        const d1 = Math.sqrt((x - 5) ** 2 + (y - 5) ** 2)
+        const d2 = Math.sqrt((x - 5) ** 2 + (y - 13) ** 2)
+        const d3 = Math.sqrt((x - 13) ** 2 + (y - 9) ** 2)
+        if (d1 <= 2 || d2 <= 2 || d3 <= 2) {
+          buf[i] = 0; buf[i + 1] = 0; buf[i + 2] = 0; buf[i + 3] = 255
+        }
+      }
+    }
+    icon = nativeImage.createFromBuffer(buf, { width: size, height: size })
+  }
+  icon = icon.resize({ width: 18, height: 18 })
+
+  console.log('[electron] tray icon empty:', icon.isEmpty(), 'size:', icon.getSize())
+  tray = new Tray(icon)
   if (process.platform === 'darwin') {
-    tray.setIgnoreDoubleClickEvents(true)
+    // Auto-invert for dark/light mode
+    tray.setImage(icon)
   }
   tray.setToolTip('LLM Proxy')
   console.log('[electron] tray created')
 
-  // Start proxy
   startProxy()
   await waitFor(isPortOpen, 6000)
 
-  // Build menu
   console.log('[electron] building menu...')
   await rebuildMenu()
-  console.log('[electron] menu built, ready')
+  console.log('[electron] ready')
 
-  // Polling
   startPolling()
 })
 
-app.on('window-all-closed', () => {
-  // Don't quit on window close - stay in tray
-})
+app.on('window-all-closed', () => {})
 
 app.on('before-quit', () => {
   clearInterval(pollingTimer)
