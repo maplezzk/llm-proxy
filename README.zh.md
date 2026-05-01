@@ -19,7 +19,11 @@
 ## 安装
 
 **macOS（推荐）：**
-从 [Releases](https://github.com/maplezzk/llm-proxy/releases) 下载 `LLMProxy.dmg`，拖入 `/Applications` 即可。内含完整代理服务和管理界面。
+从 [Releases](https://github.com/maplezzk/llm-proxy/releases) 下载 `LLMProxy.dmg`，拖入 `/Applications`。如果 macOS 阻止运行，执行：
+```bash
+xattr -cr /Applications/LLMProxy.app
+```
+再次打开即可。内含完整代理服务和管理界面。
 
 **仅 CLI：**
 ```bash
