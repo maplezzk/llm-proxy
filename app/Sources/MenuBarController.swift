@@ -95,18 +95,15 @@ class MenuBarController: NSObject {
 
         // 服务控制
         if serviceRunning {
-            let stopItem = NSMenuItem(title: "停止服务", action: #selector(stopService), keyEquivalent: "")
+            let stopItem = NSMenuItem(title: "⏹  停止服务", action: #selector(stopService), keyEquivalent: "")
             stopItem.target = self
-            stopItem.image = menuIcon("stop")
             menu.addItem(stopItem)
-            let restartItem = NSMenuItem(title: "重启服务", action: #selector(restartService), keyEquivalent: "")
+            let restartItem = NSMenuItem(title: "↺  重启服务", action: #selector(restartService), keyEquivalent: "")
             restartItem.target = self
-            restartItem.image = menuIcon("restart")
             menu.addItem(restartItem)
         } else {
-            let startItem = NSMenuItem(title: "启动服务", action: #selector(startService), keyEquivalent: "")
+            let startItem = NSMenuItem(title: "▶  启动服务", action: #selector(startService), keyEquivalent: "")
             startItem.target = self
-            startItem.image = menuIcon("start")
             menu.addItem(startItem)
         }
         menu.addItem(.separator())
@@ -165,9 +162,8 @@ class MenuBarController: NSObject {
 
         menu.addItem(.separator())
 
-        let refreshItem = NSMenuItem(title: "刷新", action: #selector(refreshMenu), keyEquivalent: "r")
+        let refreshItem = NSMenuItem(title: "🔄 刷新", action: #selector(refreshMenu), keyEquivalent: "r")
         refreshItem.target = self
-        refreshItem.image = menuIcon("refresh")
         menu.addItem(refreshItem)
 
         // 日志级别
@@ -298,14 +294,6 @@ class MenuBarController: NSObject {
         guard let resourcePath = Bundle.main.resourcePath else { return nil }
         let path = (resourcePath as NSString).appendingPathComponent("llm-proxy")
         return FileManager.default.isExecutableFile(atPath: path) ? path : nil
-    }
-
-    func menuIcon(_ name: String) -> NSImage? {
-        guard let path = Bundle.main.path(forResource: name, ofType: "svg"),
-              let image = NSImage(contentsOfFile: path) else { return nil }
-        image.isTemplate = true
-        image.size = NSSize(width: 16, height: 16)
-        return image
     }
 
     func runCLI(_ command: String) {

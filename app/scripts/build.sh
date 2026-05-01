@@ -33,10 +33,6 @@ cp "$BUILD_DIR/admin-app.js" "$APP/Contents/Resources/"
 cp "$ROOT_DIR/app/assets/app-icon.icns" "$APP/Contents/Resources/AppIcon.icns"
 cp "$ROOT_DIR/app/assets/tray-icon.png" "$APP/Contents/Resources/tray-icon.png"
 cp "$ROOT_DIR/app/assets/tray-icon@2x.png" "$APP/Contents/Resources/tray-icon@2x.png"
-cp "$ROOT_DIR/app/assets/icons/start.svg" "$APP/Contents/Resources/start.svg"
-cp "$ROOT_DIR/app/assets/icons/stop.svg" "$APP/Contents/Resources/stop.svg"
-cp "$ROOT_DIR/app/assets/icons/restart.svg" "$APP/Contents/Resources/restart.svg"
-cp "$ROOT_DIR/app/assets/icons/refresh.svg" "$APP/Contents/Resources/refresh.svg"
 
 cat > "$APP/Contents/Info.plist" << 'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
