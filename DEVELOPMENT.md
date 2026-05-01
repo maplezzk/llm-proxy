@@ -177,31 +177,41 @@ gh pr create --title "feat: ..." --body "..."
 
 ## Release Process
 
-Automated via GitHub Actions (OIDC Trusted Publisher).
+全自动版本管理，基于 [release-please](https://github.com/google-github-actions/release-please-action) + 语义化提交（Conventional Commits）。
 
-### Version management
+### 如何工作
+
+1. **合并 PR 到 main** → release-please 扫描新增 commit
+2. 根据 commit 类型自动计算版本号：
+   - `feat:` → minor（0.1.0 → 0.2.0）
+   - `fix:` → patch（0.1.0 → 0.1.1）
+   - `BREAKING CHANGE` 或 `feat!:` → major（0.1.0 → 1.0.0）
+   - `chore:`, `docs:`, `test:`, `refactor:` → **不触发发布**
+3. release-please 自动创建/更新一个 **Release PR**（含版本号修改 + changelog）
+4. 你审核 Release PR，确认后合并到 main
+5. 合并后 release-please 自动：
+   - 创建 GitHub Release + git tag
+   - 触发 npm publish（通过 `release.yml`）
+   - 触发 macOS app 构建上传（通过 `release-app.yml`）
+
+### 日常开发流程
 
 ```bash
-npm version patch   # 0.1.0 → 0.1.1 (bug fix)
-npm version minor   # 0.1.0 → 0.2.0 (new feature)
-npm version major   # 0.1.0 → 1.0.0 (breaking change)
+# 正常开发，用 conventional commit 提交
+git commit -m "feat: 新功能"
+git commit -m "fix: 修 bug"
 
-git push && git push --tags
+# PR 合并到 main 后，release-please 会自动处理版本号
+# 你只需在 Release PR 出现后审核并合并
 ```
 
-### How it works
+### 不触发发布
 
-1. PR merged to `main`
-2. `release.yml` detects version change in `package.json`
-3. If changed → publishes to npm (`@maplezzk/llm-proxy`) + creates GitHub Release
-4. If unchanged → skipped
+使用 `chore:` / `docs:` / `test:` / `refactor:` 类型的 commit 不会触发 release-please 创建 Release PR。
 
-### Skip release
+### 手动触发
 
-Add `[skip release]` to PR title:
-```
-[skip release] chore: 更新文档
-```
+在 GitHub Actions 中手动运行 `release.yml` 的 `workflow_dispatch` 也可触发发布。
 
 ---
 
@@ -210,7 +220,9 @@ Add `[skip release]` to PR title:
 | Workflow | Trigger | Actions |
 |----------|---------|---------|
 | `ci.yml` | PR → main, push → main | install → typecheck → test → build |
-| `release.yml` | PR merged to main | test → build → version check → npm publish + GitHub Release |
+| `release.yml` | push → main (releaes-please) | 扫描 commit，创建/更新 Release PR |
+| `release.yml` (publish) | Release PR merged | release-please 创建 GitHub Release + tag，自动发布 npm |
+| `release-app.yml` | Release published | 构建 macOS App，上传 DMG 到 Release，更新 Homebrew tap |
 
 ---
 
