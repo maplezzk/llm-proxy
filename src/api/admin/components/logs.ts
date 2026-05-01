@@ -9,7 +9,7 @@ export function logsPage() {
     allLogs: [] as any[],
     filter: 'all',
     levelFilter: 'all',
-    dateFilter: todayStr(),
+    dateFilter: '',
     search: '',
     page: 1,
     pageSize: 50,
@@ -33,9 +33,6 @@ export function logsPage() {
       }
       if (this.levelFilter !== 'all') {
         logs = logs.filter((l: any) => l.level === this.levelFilter)
-      }
-      if (this.dateFilter) {
-        logs = logs.filter((l: any) => l.timestamp.startsWith(this.dateFilter))
       }
       if (this.search) {
         const q = this.search.toLowerCase()
@@ -82,7 +79,9 @@ export function logsPage() {
     },
 
     async load() {
-      const data = await (window as any).Alpine.store('app').fetch('/admin/logs?limit=500').catch(() => null)
+      const params = new URLSearchParams({ limit: '1000' })
+      if (this.dateFilter) params.set('date', this.dateFilter)
+      const data = await (window as any).Alpine.store('app').fetch('/admin/logs?' + params.toString()).catch(() => null)
       this.allLogs = data?.data?.logs ?? []
       this.page = 1
     },

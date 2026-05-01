@@ -51,27 +51,6 @@ function truncateObj(obj: Record<string, unknown>, maxLen = 500): Record<string,
   return truncated
 }
 
-function generateCurlCommand(
-  method: string,
-  url: string,
-  headers: Record<string, string>,
-  body: Record<string, unknown>,
-): string {
-  const parts: string[] = ['curl']
-  if (method !== 'GET') parts.push(`-X ${method}`)
-  for (const [key, val] of Object.entries(headers)) {
-    const lower = key.toLowerCase()
-    let safeVal = val
-    if (lower === 'authorization') safeVal = 'Bearer sk-***'
-    else if (lower === 'x-api-key') safeVal = 'sk-***'
-    parts.push(`-H '${key}: ${safeVal}'`)
-  }
-  const bodyStr = JSON.stringify(body)
-  parts.push(`-d '${bodyStr.slice(0, 500)}'`)
-  parts.push(`'${maskUrl(url)}'`)
-  return parts.join(' \\\n  ')
-}
-
 export async function forwardRequest(
   req: ProviderRequest,
   res: ServerResponse,
@@ -80,16 +59,14 @@ export async function forwardRequest(
   const needsConversion = req.crossProtocol && isStream
   const bodyStr = JSON.stringify(req.body)
 
-  const curl = generateCurlCommand(req.method, req.url, req.headers, req.body)
   req.logger?.log('request', `上游请求: ${req.method} ${maskUrl(req.url)}`, {
     method: req.method,
     url: maskUrl(req.url),
     headers: maskHeaders(req.headers),
-    body: req.body,
     bodySize: bodyStr.length,
     crossProtocol: req.crossProtocol,
     stream: isStream,
-  }, 'debug', curl)
+  }, 'debug')
 
   try {
     const response = await fetch(req.url, {
@@ -106,8 +83,8 @@ export async function forwardRequest(
       req.logger?.log('request', `上游返回错误: ${response.status}`, {
         status: response.status,
         url: maskUrl(req.url),
-        responseBody: errorBody,
-      }, 'warn', curl)
+        responseBody: errorBody.slice(0, 500),
+      }, 'warn')
       let parsedError: Record<string, unknown>
       try { parsedError = JSON.parse(errorBody) } catch { parsedError = { raw: errorBody } }
       const upstreamError = (parsedError as { error?: { message?: string } }).error?.message ?? `HTTP ${response.status}`
@@ -138,7 +115,6 @@ export async function forwardRequest(
       req.logger?.log('request', `上游响应: ${response.status}`, {
         status: response.status,
         url: maskUrl(req.url),
-        body: parsed ?? text,
         bodySize: text.length,
       })
       let outBody: unknown = text
@@ -242,7 +218,7 @@ export async function forwardRequest(
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
-    req.logger?.log('request', `上游请求异常`, { url: maskUrl(req.url), error: message }, 'error', curl)
+    req.logger?.log('request', `上游请求异常`, { url: maskUrl(req.url), error: message }, 'error')
     if (!res.headersSent) {
       writeJson(res, 502, { error: { message: `上游请求失败: ${message}` } })
     }

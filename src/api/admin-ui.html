@@ -347,8 +347,8 @@ tbody tr:hover td { background: #f8f9fb; }
 
         <!-- Filter bar -->
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px">
-          <input type="date" x-model="dateFilter" @change="page=1" style="padding:5px 10px;font-size:12px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);width:135px">
-          <button class="filter-btn" @click="dateFilter='';page=1" x-show="dateFilter" style="font-size:10px;padding:3px 7px">✕</button>
+          <input type="date" x-model="dateFilter" @change="load()" style="padding:5px 10px;font-size:12px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);width:135px">
+          <button class="filter-btn" @click="dateFilter='';load()" x-show="dateFilter" style="font-size:10px;padding:3px 7px">✕</button>
           <span style="color:var(--border)">|</span>
           <button class="filter-btn" :class="{active:filter==='all'}" @click="filter='all';page=1">全部</button>
           <button class="filter-btn" :class="{active:filter==='request'}" @click="filter='request';page=1">请求</button>
