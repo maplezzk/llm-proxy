@@ -265,17 +265,26 @@ function startPolling() {
 
 app.whenReady().then(async () => {
   // Create tray
-  const iconPath = path.join(__dirname, 'src', 'api', 'favicon.png')
-  const icon = nativeImage.createFromPath(iconPath).resize({ width: 18, height: 18 })
-  tray = new Tray(icon)
+  const iconPath = path.join(__dirname, '..', 'src', 'api', 'tray-icon.png')
+  console.log('[electron] tray icon path:', iconPath, 'exists:', require('fs').existsSync(iconPath))
+  const icon = nativeImage.createFromPath(iconPath)
+  if (icon.isEmpty()) console.error('[electron] tray icon is empty!')
+  tray = new Tray(icon.resize({ width: 18, height: 18 }))
+  // macOS: treat as template image for dark mode support
+  if (process.platform === 'darwin') {
+    tray.setIgnoreDoubleClickEvents(true)
+  }
   tray.setToolTip('LLM Proxy')
+  console.log('[electron] tray created')
 
   // Start proxy
   startProxy()
   await waitFor(isPortOpen, 6000)
 
   // Build menu
+  console.log('[electron] building menu...')
   await rebuildMenu()
+  console.log('[electron] menu built, ready')
 
   // Polling
   startPolling()
