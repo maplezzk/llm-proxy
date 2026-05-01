@@ -294,6 +294,7 @@ class MenuBarController: NSObject {
         let task = Process()
         if let bundled = bundledBinaryPath() {
             task.executableURL = URL(fileURLWithPath: bundled)
+            task.currentDirectoryURL = URL(fileURLWithPath: Bundle.main.resourcePath!)
         } else {
             task.executableURL = URL(fileURLWithPath: "/opt/homebrew/bin/llm-proxy")
         }
