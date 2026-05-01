@@ -83,3 +83,5 @@ npm run build         # 构建
 - 配置通过 YAML 编辑 + `POST /admin/config/reload` 热加载
 - 运行时配置原子替换，进行中请求不受影响
 - 零依赖 Promise 链式 Mutex 处理并发
+
+CI test trigger
