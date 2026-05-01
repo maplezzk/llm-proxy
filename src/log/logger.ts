@@ -126,7 +126,17 @@ export class Logger {
     if (!existsSync(filePath)) return []
     try {
       const content = readFileSync(filePath, 'utf-8')
-      return content.trim().split('\n').filter(Boolean).map(l => parseLogLine(l)).filter(Boolean) as LogEntry[]
+      const lines = content.trim().split('\n').filter(Boolean)
+      const entries: LogEntry[] = []
+      let fileId = this.nextId + 1_000_000
+      for (let i = lines.length - 1; i >= 0; i--) {
+        const entry = parseLogLine(lines[i])
+        if (entry) {
+          entry.id = fileId++
+          entries.push(entry)
+        }
+      }
+      return entries
     } catch {
       return []
     }
@@ -222,8 +232,20 @@ export class Logger {
     let result: LogEntry[]
 
     if (date && this.logDir) {
-      // 指定日期：直接从文件读，不查内存
-      result = this.readFile(date)
+      // 指定日期：从文件读 + 从内存筛
+      const fileEntries = this.readFile(date)
+      // 内存中也筛出该日期的（可能是刚启动时从文件加载的，ID 有效可排序）
+      const memByDate = this.entries.filter(e => e.timestamp.startsWith(date))
+      // 合并，用 timestamp+message 去重
+      const seenKeys = new Set<string>()
+      result = []
+      for (const e of [...fileEntries, ...memByDate]) {
+        const key = `${e.timestamp}|${e.message}|${e.type}`
+        if (!seenKeys.has(key)) {
+          seenKeys.add(key)
+          result.push(e)
+        }
+      }
     } else {
       // 未指定日期：从内存取
       result = this.entries
@@ -245,8 +267,8 @@ export class Logger {
       result = result.filter((e) => e.type === type)
     }
 
-    // 按 ID 倒序，取最新 limit 条
-    result.sort((a, b) => b.id - a.id)
+    // 按 ID 倒序（文件条目 ID=0 排最后），取最新 limit 条
+    result.sort((a, b) => (b.id || 0) - (a.id || 0))
     return result.slice(0, limit)
   }
 
