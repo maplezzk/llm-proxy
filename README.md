@@ -147,3 +147,15 @@ npm test             # Run 115 tests
 # macOS app
 npm run build:app    # Build .app + .dmg
 ```
+
+## FAQ
+
+**Homebrew shows old version?** Refresh tap:
+```bash
+brew untap maplezzk/tap && brew tap maplezzk/tap && brew install --cask llm-proxy
+```
+
+**macOS blocks the app?** Remove quarantine:
+```bash
+xattr -cr /Applications/LLMProxy.app
+```

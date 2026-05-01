@@ -122,3 +122,15 @@ npm run dev          # 开发模式启动代理
 npm test             # 运行 115 个测试
 npm run build:app    # 构建 macOS .app + .dmg
 ```
+
+## FAQ
+
+**Homebrew 安装显示旧版本？** 强制刷新 tap：
+```bash
+brew untap maplezzk/tap && brew tap maplezzk/tap && brew install --cask llm-proxy
+```
+
+**macOS 阻止应用运行？** 清除隔离标记：
+```bash
+xattr -cr /Applications/LLMProxy.app
+```
