@@ -8,6 +8,7 @@
 
 - 🔀 **多协议支持**：单端口提供 Anthropic、OpenAI、OpenAI Responses 三种协议
 - 🔄 **协议互转**：三个协议间双向转换（流式 + 非流式）
+- 🖥️ **macOS 桌面应用**：原生菜单栏 App，内嵌代理服务，拖拽安装、零依赖
 - 📊 **管理界面**：Alpine.js 单页应用，包含仪表盘、Provider 管理、适配器配置、抓包调试
 - 🎯 **虚拟适配器**：自定义端点 + 模型重映射（`/{adapter-name}/v1/...`）
 - 📡 **SSE 流式**：4 个双向流转换器，每行带时间戳
@@ -17,6 +18,10 @@
 
 ## 安装
 
+**macOS（推荐）：**
+从 [Releases](https://github.com/maplezzk/llm-proxy/releases) 下载 `LLMProxy.dmg`，拖入 `/Applications` 即可。内含完整代理服务和管理界面。
+
+**仅 CLI：**
 ```bash
 npm install -g @maplezzk/llm-proxy
 ```
@@ -107,3 +112,9 @@ llm-proxy status    # 查看状态
 ## 开发
 
 详见 [DEVELOPMENT.md](./DEVELOPMENT.md)。
+
+```bash
+npm run dev          # 开发模式启动代理
+npm test             # 运行 115 个测试
+npm run build:app    # 构建 macOS .app + .dmg
+```

@@ -20,25 +20,26 @@ cd "$ROOT_DIR/app"
 swift build -c release
 
 echo "=== 3. Package .app ==="
-APP="$BUILD_DIR/LLMProxyMenuBar.app"
+APP="$BUILD_DIR/LLMProxy.app"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS"
 mkdir -p "$APP/Contents/Resources"
 
-cp "$BUILD_DIR/release/LLMProxyMenuBar" "$APP/Contents/MacOS/"
+cp "$BUILD_DIR/release/LLMProxy" "$APP/Contents/MacOS/"
 cp "$BUILD_DIR/llm-proxy" "$APP/Contents/Resources/"
 cp "$BUILD_DIR/admin-ui.html" "$APP/Contents/Resources/"
 cp "$BUILD_DIR/admin-app.js" "$APP/Contents/Resources/"
 [ -f "$ROOT_DIR/app/assets/app-icon.icns" ] && cp "$ROOT_DIR/app/assets/app-icon.icns" "$APP/Contents/Resources/AppIcon.icns"
+[ -f "$ROOT_DIR/app/assets/menubar-icon.icns" ] && cp "$ROOT_DIR/app/assets/menubar-icon.icns" "$APP/Contents/Resources/AppIcon.icns"
 
 cat > "$APP/Contents/Info.plist" << 'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <key>CFBundleExecutable</key><string>LLMProxyMenuBar</string>
-    <key>CFBundleIdentifier</key><string>com.llmproxy.app</string>
-    <key>CFBundleName</key><string>LLMProxyMenuBar</string>
+    <key>CFBundleExecutable</key><string>LLMProxy</string>
+    <key>CFBundleIdentifier</key><string>com.maplezzk.llm-proxy</string>
+    <key>CFBundleName</key><string>LLMProxy</string>
     <key>CFBundleVersion</key><string>1.0</string>
     <key>CFBundleShortVersionString</key><string>1.0</string>
     <key>LSUIElement</key><true/>
@@ -51,9 +52,9 @@ PLIST
 codesign --force --deep --sign - "$APP" 2>/dev/null || true
 
 echo "=== 4. Create DMG ==="
-DMG="$BUILD_DIR/LLMProxyMenuBar.dmg"
+DMG="$BUILD_DIR/LLMProxy.dmg"
 rm -f "$DMG"
-hdiutil create -fs HFS+ -srcfolder "$APP" -volname "LLMProxyMenuBar" "$DMG" 2>/dev/null
+hdiutil create -fs HFS+ -srcfolder "$APP" -volname "LLMProxy" "$DMG" 2>/dev/null
 
 echo ""
 echo "✅ Done"
