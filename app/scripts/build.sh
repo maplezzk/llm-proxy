@@ -1,16 +1,13 @@
 #!/bin/bash
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 BUILD_DIR="$ROOT_DIR/app/.build"
 
 echo "=== 1. Build llm-proxy binary ==="
 cd "$ROOT_DIR"
-echo "DEBUG: before build, cwd=$(pwd), src exists=$([ -d src ] && echo yes || echo no)"
-npx tsc
-cp src/api/admin-ui.html dist/api/admin-ui.html
-npx esbuild src/api/admin/app.ts --bundle --outfile=dist/api/admin-app.js --format=esm --minify
-echo "DEBUG: after build, cwd=$(pwd), src exists=$([ -d src ] && echo yes || echo no)"
+npm run build
 npx esbuild src/index.ts --bundle --platform=node --outfile=dist/bundle.js --format=esm
 ARCH="$(uname -m)"
 [ "$ARCH" = "arm64" ] && TARGET="aarch64-apple-darwin" || TARGET="x86_64-apple-darwin"
