@@ -8,8 +8,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.setActivationPolicy(.accessory)
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let btn = statusItem.button {
-            btn.image = NSImage(systemSymbolName: "arrow.triangle.branch", accessibilityDescription: "LLM Proxy")
-            btn.image?.isTemplate = true
+            if let img = Bundle.main.image(forResource: "tray-icon") {
+                img.isTemplate = true
+                btn.image = img
+            } else {
+                btn.image = NSImage(systemSymbolName: "arrow.triangle.branch", accessibilityDescription: "LLM Proxy")
+                btn.image?.isTemplate = true
+            }
         }
         menuBarController = MenuBarController(statusItem: statusItem)
         menuBarController.buildMenu()
