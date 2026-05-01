@@ -229,49 +229,35 @@ export class Logger {
   }
 
   getLogs(limit = 100, before?: number, level?: LogLevel, type?: string, date?: string): LogEntry[] {
-    let result: LogEntry[]
+    // 1. 从内存取
+    let result = this.entries
 
-    if (date && this.logDir) {
-      // 指定日期：从文件读 + 从内存筛
-      const fileEntries = this.readFile(date)
-      const memByDate = this.entries.filter(e => e.timestamp.startsWith(date))
-      // 合并，用 timestamp+message 去重
-      const seenKeys = new Set<string>()
-      result = []
-      for (const e of [...fileEntries, ...memByDate]) {
-        const key = `${e.timestamp}|${e.message}|${e.type}`
-        if (!seenKeys.has(key)) {
-          seenKeys.add(key)
-          result.push(e)
-        }
-      }
-      // 兜底：日期没查到任何数据时（如今天还没写日志），回退到全部
-      if (result.length === 0) {
-        result = this.entries
-      }
-    } else {
-      // 未指定日期：从内存取
-      result = this.entries
-      if (before) {
-        result = result.filter((e) => e.id < before)
-      }
-      // 内存不够，从文件补
-      if (result.length < limit && this.logDir) {
-        const fileEntries = this.readFromFiles(limit - result.length, before, level, type)
-        result = [...result, ...fileEntries]
-      }
+    // 2. 按日期筛
+    if (date) {
+      result = result.filter(e => e.timestamp.startsWith(date))
     }
 
-    // 应用过滤器
+    // 3. 按 before 筛
+    if (before) {
+      result = result.filter(e => e.id < before)
+    }
+
+    // 4. 内存不够从文件补
+    if (result.length < limit && this.logDir) {
+      const more = this.readFromFiles(limit - result.length, before, level, type, date)
+      result = [...result, ...more]
+    }
+
+    // 5. level/type 过滤器
     if (level) {
-      result = result.filter((e) => e.level === level)
+      result = result.filter(e => e.level === level)
     }
     if (type && type !== 'all') {
-      result = result.filter((e) => e.type === type)
+      result = result.filter(e => e.type === type)
     }
 
-    // 按 ID 倒序（文件条目 ID=0 排最后），取最新 limit 条
-    result.sort((a, b) => (b.id || 0) - (a.id || 0))
+    // 6. 按 ID 倒序，取最新 limit 条
+    result.sort((a, b) => b.id - a.id)
     return result.slice(0, limit)
   }
 
