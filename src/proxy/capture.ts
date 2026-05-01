@@ -1,10 +1,24 @@
 import type { ServerResponse } from 'node:http'
 
-export interface CaptureEntry {
+export interface CaptureMeta {
+  /** 适配器名称（仅适配器请求） */
+  adapterName?: string
+  /** 上游供应商名称，如 "deepseek" */
+  upstreamProvider?: string
+  /** 上游供应商协议，如 "openai" */
+  upstreamProtocol?: string
+  /** 上游供应商模型 ID，如 "deepseek-chat" */
+  upstreamModel?: string
+}
+
+export interface CaptureEntry extends CaptureMeta {
   id: number
   timestamp: number
+  /** 来源：proxy（代理入口）或适配器名称 */
   source: string
+  /** 代理端协议 */
   protocol: string
+  /** 代理端模型 */
   model: string
   pairId: number
   /** 客户端→代理（原始请求） */
@@ -31,7 +45,7 @@ export class CaptureBuffer {
   }
 
   /** 创建一条新请求的抓包记录，返回 pairId */
-  startRequest(source: string, protocol: string, model: string): number {
+  startRequest(source: string, protocol: string, model: string, meta?: CaptureMeta): number {
     const pairId = this.nextPairId++
     const entry: CaptureEntry = {
       id: this.nextId++,
@@ -44,6 +58,7 @@ export class CaptureBuffer {
       requestOut: null,
       responseIn: null,
       responseOut: null,
+      ...meta,
     }
     this.buffer.push(entry)
     this.entryMap.set(pairId, entry)

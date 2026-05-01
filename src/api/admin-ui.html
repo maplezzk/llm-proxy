@@ -726,9 +726,8 @@ tbody tr:hover td { background: #f8f9fb; }
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px">
           <span style="font-size:11px;color:var(--text-muted)">来源</span>
           <button class="filter-btn" :class="{active: !sourceFilter}" @click="sourceFilter = ''">全部</button>
-          <button class="filter-btn" :class="{active: sourceFilter === 'proxy'}" @click="sourceFilter = 'proxy'">代理</button>
-          <template x-for="s in [...new Set(entries.map(e => e.source))].filter(s => s.startsWith('adapter:')).sort()" :key="s">
-            <button class="filter-btn" :class="{active: sourceFilter === s}" @click="sourceFilter = s" x-text="s.slice(8)"></button>
+          <template x-for="s in sources" :key="s">
+            <button class="filter-btn" :class="{active: sourceFilter === s}" @click="sourceFilter = s" x-text="s === 'proxy' ? '代理' : s"></button>
           </template>
         </div>
 
@@ -737,13 +736,16 @@ tbody tr:hover td { background: #f8f9fb; }
           <table style="width:100%;font-size:12px;font-family:monospace">
             <thead><tr style="background:var(--bg-hover);position:sticky;top:0">
               <th style="width:40px;text-align:center">#</th>
-              <th style="width:150px">时间</th>
-              <th style="width:90px">来源</th>
-              <th style="width:80px">协议</th>
-              <th style="min-width:80px">模型</th>
-              <th style="width:120px">阶段</th>
-              <th style="width:90px;text-align:right">请求</th>
-              <th style="width:90px;text-align:right">响应</th>
+              <th style="width:145px">时间</th>
+              <th style="width:65px">来源</th>
+              <th style="width:50px">适配器</th>
+              <th style="width:50px">协议</th>
+              <th style="min-width:60px">入站模型</th>
+              <th style="width:65px">上游供应商</th>
+              <th style="width:50px">上游协议</th>
+              <th style="min-width:60px">上游模型</th>
+              <th style="width:80px;text-align:right">请求大小</th>
+              <th style="width:80px;text-align:right">响应大小</th>
             </tr></thead>
             <tbody>
               <template x-for="e in filteredEntries.slice().reverse()" :key="e.id">
@@ -751,17 +753,15 @@ tbody tr:hover td { background: #f8f9fb; }
                     :style="'cursor:pointer;background:' + (selectedId === e.id ? 'var(--accent-bg)' : 'transparent')">
                   <td style="text-align:center;color:var(--text-muted)" x-text="e.id"></td>
                   <td x-text="fmtTime(e.timestamp)"></td>
-                  <td style="color:var(--text-muted)" x-text="e.source?.startsWith('adapter:') ? e.source.slice(8) : e.source"></td>
-                  <td x-text="e.protocol"></td>
-                  <td x-text="e.model"></td>
-                  <td style="font-size:11px">
-                    <span x-show="e.requestIn" style="color:var(--success)" title="客户端→代理">▲</span>
-                    <span x-show="e.requestOut" style="color:var(--accent)" title="代理→上游">▼</span>
-                    <span x-show="e.responseIn" style="color:var(--success)" title="上游→代理">▲</span>
-                    <span x-show="e.responseOut" style="color:var(--accent)" title="代理→客户端">▼</span>
-                  </td>
-                  <td style="text-align:right;color:var(--text-muted)" x-text="fmtSize(e.requestIn) + ' / ' + fmtSize(e.requestOut)"></td>
-                  <td style="text-align:right;color:var(--text-muted)" x-text="fmtSize(e.responseIn) + ' / ' + fmtSize(e.responseOut)"></td>
+                  <td x-text="e.source === 'proxy' ? '代理' : e.source" style="color:var(--text-muted)"></td>
+                  <td x-text="e.adapterName || '—'" style="color:var(--text-muted);font-size:11px"></td>
+                  <td x-text="e.protocol" style="font-size:11px"></td>
+                  <td x-text="e.model" style="font-size:11px;max-width:120px;overflow:hidden;text-overflow:ellipsis"></td>
+                  <td x-text="e.upstreamProvider || '?'" style="font-size:11px;color:var(--text-muted)"></td>
+                  <td x-text="e.upstreamProtocol || '?'" style="font-size:11px"></td>
+                  <td x-text="e.upstreamModel || '?'" style="font-size:11px;max-width:120px;overflow:hidden;text-overflow:ellipsis;color:var(--text-muted)"></td>
+                  <td style="text-align:right"><span style="font-size:11px;color:var(--success)" x-text="fmtSize(e.requestIn)"></span><span style="font-size:10px;color:var(--text-muted)"> / </span><span style="font-size:11px;color:var(--accent)" x-text="fmtSize(e.requestOut)"></span></td>
+                  <td style="text-align:right"><span style="font-size:11px;color:var(--success)" x-text="fmtSize(e.responseIn)"></span><span style="font-size:10px;color:var(--text-muted)"> / </span><span style="font-size:11px;color:var(--accent)" x-text="fmtSize(e.responseOut)"></span></td>
                 </tr>
               </template>
             </tbody>
@@ -771,58 +771,21 @@ tbody tr:hover td { background: #f8f9fb; }
           </div>
         </div>
 
-        <!-- Detail split view -->
+        <!-- Detail: 4 phases stacked -->
         <template x-if="selected">
-          <div style="flex:1;display:flex;flex-direction:column;min-height:0">
-            <!-- Phase selector toolbar -->
-            <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;flex-wrap:wrap">
-              <button class="filter-btn" :class="{active: leftPhase === 'requestIn' && rightPhase === 'responseOut'}" @click="compareClient()" style="font-size:11px">🔁 客户端↔代理</button>
-              <button class="filter-btn" :class="{active: leftPhase === 'requestOut' && rightPhase === 'responseIn'}" @click="compareUpstream()" style="font-size:11px">🔁 代理↔上游</button>
-              <span style="color:var(--border);margin:0 2px">|</span>
-              <span style="font-size:11px;color:var(--text-muted)">左: </span>
-              <select x-model="leftPhase" @change="renderEditors()" style="font-size:11px;padding:3px 6px;border:1px solid var(--border);border-radius:4px;background:var(--surface)">
-                <template x-for="p in phases" :key="p.key">
-                  <option :value="p.key" x-text="p.label"></option>
-                </template>
-              </select>
-              <span style="font-size:11px;color:var(--text-muted)">右: </span>
-              <select x-model="rightPhase" @change="renderEditors()" style="font-size:11px;padding:3px 6px;border:1px solid var(--border);border-radius:4px;background:var(--surface)">
-                <template x-for="p in phases" :key="p.key">
-                  <option :value="p.key" x-text="p.label"></option>
-                </template>
-              </select>
-            </div>
-
-            <!-- Side by side editors -->
-            <div style="display:flex;gap:8px;flex:1;min-height:0">
-              <div style="flex:1;display:flex;flex-direction:column;min-width:0;border:1px solid var(--border);border-radius:var(--radius);overflow:hidden">
-                <div style="padding:6px 10px;font-size:11px;font-weight:600;background:var(--success-bg);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
-                  <span x-text="phases.find(p => p.key === leftPhase)?.label ?? leftPhase"></span>
-                  <div>
-                    <button @click="copyRaw(selected[leftPhase])" style="font-size:10px;padding:2px 6px;border:1px solid var(--border);border-radius:4px;background:var(--surface);cursor:pointer;opacity:0.7" title="复制原始内容">📋</button>
+          <div style="flex:1;display:flex;flex-direction:column;min-height:0;gap:6px;overflow-y:auto">
+            <template x-for="(p, i) in activePhases()" :key="p.key">
+              <div style="flex:0 0 auto;border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;display:flex;flex-direction:column">
+                <div :style="'padding:5px 10px;font-size:11px;font-weight:600;background:' + p.color + '22;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between'">
+                  <span x-text="p.label"></span>
+                  <div style="display:flex;align-items:center;gap:6px">
+                    <span style="font-size:10px;color:var(--text-muted)" x-text="fmtSize(selected[p.key])"></span>
+                    <button @click="copyRaw(selected[p.key])" style="font-size:10px;padding:2px 6px;border:1px solid var(--border);border-radius:4px;background:var(--surface);cursor:pointer;opacity:0.7" title="复制原始内容">📋</button>
                   </div>
                 </div>
-                <div class="jsoneditor-container" style="flex:1;min-height:200px"></div>
+                <div class="phase-editor-container" style="flex:1;min-height:120px"></div>
               </div>
-              <div style="flex:1;display:flex;flex-direction:column;min-width:0;border:1px solid var(--border);border-radius:var(--radius);overflow:hidden">
-                <div style="padding:6px 10px;font-size:11px;font-weight:600;background:var(--accent-bg);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
-                  <span x-text="phases.find(p => p.key === rightPhase)?.label ?? rightPhase"></span>
-                  <div>
-                    <button @click="copyRaw(selected[rightPhase])" style="font-size:10px;padding:2px 6px;border:1px solid var(--border);border-radius:4px;background:var(--surface);cursor:pointer;opacity:0.7" title="复制原始内容">📋</button>
-                  </div>
-                </div>
-                <div class="jsoneditor-container" style="flex:1;min-height:200px"></div>
-              </div>
-            </div>
-
-            <!-- Diff summary -->
-            <div style="margin-top:8px;padding:8px 12px;background:var(--bg-hover);border-radius:var(--radius);font-size:11.5px;line-height:1.6" x-show="selected[leftPhase] && selected[rightPhase]">
-              <div style="font-weight:600;margin-bottom:4px">转换差异</div>
-              <template x-for="d in getDiffLines(selected[leftPhase], selected[rightPhase])" :key="d">
-                <div x-text="d" :style="'color:' + (d.startsWith('+') ? 'var(--success)' : d.startsWith('-') ? 'var(--danger)' : d.startsWith('âš ') ? 'var(--warn)' : 'var(--text-muted)')"></div>
-              </template>
-              <div x-show="getDiffLines(selected[leftPhase], selected[rightPhase]).length === 0" style="color:var(--text-muted)">同协议透传，无格式变化</div>
-            </div>
+            </template>
           </div>
         </template>
       </div>
