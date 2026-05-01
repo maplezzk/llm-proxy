@@ -8,4 +8,8 @@ dist/
 
 .claude/
 
+# Bun compiled binary
 llm-proxy
+
+# macOS menubar build
+menubar/.build/

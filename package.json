@@ -56,7 +56,10 @@
     "appId": "com.maplezzk.llm-proxy",
     "productName": "LLM Proxy",
     "mac": {
-      "category": "public.app-category.developer-tools"
+      "category": "public.app-category.developer-tools",
+      "extendInfo": {
+        "LSUIElement": true
+      }
     },
     "extraResources": [
       {
