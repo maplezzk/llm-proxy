@@ -11,5 +11,5 @@ dist/
 # Bun compiled binary
 llm-proxy
 
-# macOS menubar build
-menubar/.build/
+# macOS app build
+app/.build/

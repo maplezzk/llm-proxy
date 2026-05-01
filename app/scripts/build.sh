@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-BUILD_DIR="$ROOT_DIR/menubar/.build"
+BUILD_DIR="$ROOT_DIR/app/.build"
 
 echo "=== 1. Build llm-proxy binary ==="
 cd "$ROOT_DIR"
@@ -15,8 +15,8 @@ chmod +x "$BUILD_DIR/llm-proxy"
 cp dist/api/admin-ui.html "$BUILD_DIR/admin-ui.html"
 cp dist/api/admin-app.js "$BUILD_DIR/admin-app.js"
 
-echo "=== 2. Build Swift menubar ==="
-cd "$ROOT_DIR/menubar"
+echo "=== 2. Build Swift app ==="
+cd "$ROOT_DIR/app"
 swift build -c release
 
 echo "=== 3. Package .app ==="
@@ -29,7 +29,7 @@ cp "$BUILD_DIR/release/LLMProxyMenuBar" "$APP/Contents/MacOS/"
 cp "$BUILD_DIR/llm-proxy" "$APP/Contents/Resources/"
 cp "$BUILD_DIR/admin-ui.html" "$APP/Contents/Resources/"
 cp "$BUILD_DIR/admin-app.js" "$APP/Contents/Resources/"
-[ -f "$ROOT_DIR/menubar/assets/menubar-icon.icns" ] && cp "$ROOT_DIR/menubar/assets/menubar-icon.icns" "$APP/Contents/Resources/AppIcon.icns"
+[ -f "$ROOT_DIR/app/assets/app-icon.icns" ] && cp "$ROOT_DIR/app/assets/app-icon.icns" "$APP/Contents/Resources/AppIcon.icns"
 
 cat > "$APP/Contents/Info.plist" << 'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
@@ -37,7 +37,7 @@ cat > "$APP/Contents/Info.plist" << 'PLIST'
 <plist version="1.0">
 <dict>
     <key>CFBundleExecutable</key><string>LLMProxyMenuBar</string>
-    <key>CFBundleIdentifier</key><string>com.llmproxy.menubar</string>
+    <key>CFBundleIdentifier</key><string>com.llmproxy.app</string>
     <key>CFBundleName</key><string>LLMProxyMenuBar</string>
     <key>CFBundleVersion</key><string>1.0</string>
     <key>CFBundleShortVersionString</key><string>1.0</string>
