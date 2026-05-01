@@ -177,7 +177,7 @@ gh pr create --title "feat: ..." --body "..."
 
 ## Release Process
 
-全自动版本管理，基于 [release-please](https://github.com/google-github-actions/release-please-action) + 语义化提交（Conventional Commits）。
+全自动版本管理，基于 [release-please](https://github.com/googleapis/release-please-action) + 语义化提交（Conventional Commits）。
 
 ### 如何工作
 
