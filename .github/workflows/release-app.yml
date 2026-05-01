@@ -1,12 +1,8 @@
 name: Release macOS App
 
 on:
-  pull_request:
-    types: [closed]
-    branches: [main]
-    paths:
-      - 'app/**'
-      - 'src/**'
+  release:
+    types: [published]
   workflow_dispatch:
 
 permissions:
@@ -15,7 +11,7 @@ permissions:
 jobs:
   build:
     runs-on: macos-latest
-    if: github.event_name == 'workflow_dispatch' || (github.event.pull_request.merged == true && !contains(github.event.pull_request.title, '[skip app]'))
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'release'
 
     steps:
       - uses: actions/checkout@v4
@@ -36,36 +32,22 @@ jobs:
       - name: Get version
         id: version
         run: |
-          VERSION=$(node -p "require('./package.json').version")
+          VERSION="${GITHUB_REF_NAME#v}"
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
       - name: Calculate SHA256
         id: sha
         run: |
-          VERSION=$(node -p "require('./package.json').version")
+          VERSION="${{ steps.version.outputs.version }}"
           SHA=$(shasum -a 256 app/.build/LLMProxy-v${VERSION}.dmg | cut -d' ' -f1)
           echo "sha=$SHA" >> $GITHUB_OUTPUT
 
-      - name: Create Release
-        uses: softprops/action-gh-release@v1
-        with:
-          tag_name: v${{ steps.version.outputs.version }}
-          name: LLMProxy v${{ steps.version.outputs.version }}
-          body: |
-            ## LLMProxy v${{ steps.version.outputs.version }}
-
-            macOS desktop app with built-in llm-proxy.
-
-            ### Install
-            Download `LLMProxy.dmg`, drag to `/Applications`.
-
-            Or via Homebrew:
-            ```bash
-            brew install --cask maplezzk/tap/llm-proxy
-            ```
-          files: app/.build/LLMProxy-v${{ steps.version.outputs.version }}.dmg
+      - name: Upload DMG to Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          gh release upload "v${VERSION}" "app/.build/LLMProxy-v${VERSION}.dmg"
 
       - name: Update Homebrew tap
         run: |
