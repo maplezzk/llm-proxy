@@ -100,12 +100,6 @@ export function capturePage() {
       return this.entries.find((e: any) => e.id === this.selectedId) ?? null
     },
 
-    activePhases(): any[] {
-      const entry = this.selected
-      if (!entry) return []
-      return PHASES.filter(p => entry[p.key])
-    },
-
     renderEditors() {
       for (const ed of editors) { ed?.destroy() }
       editors = []
@@ -119,21 +113,25 @@ export function capturePage() {
       const containers = document.querySelectorAll('.phase-editor-container')
       if (containers.length === 0) return
 
-      const active = this.activePhases()
       containers.forEach((el, i) => {
         const htmlEl = el as HTMLElement
         htmlEl.innerHTML = ''
-        const phase = active[i]
-        if (!phase) return
-
         htmlEl.style.cssText = 'overflow:auto;padding:12px;font-size:11px;font-family:monospace;white-space:pre-wrap;line-height:1.6;background:var(--surface);color:var(--text);border-radius:0;min-height:80px'
+
+        const phase = PHASES[i]
+        if (!phase) return
 
         const data = entry[phase.key]
         if (!data) {
           htmlEl.textContent = '(暂无数据)'
+          htmlEl.style.display = 'flex'
+          htmlEl.style.alignItems = 'center'
+          htmlEl.style.justifyContent = 'center'
+          htmlEl.style.color = 'var(--text-dim)'
           return
         }
 
+        htmlEl.style.display = ''
         const isStream = phase.key === 'responseIn' || phase.key === 'responseOut'
         if (isStream) {
           htmlEl.textContent = data
