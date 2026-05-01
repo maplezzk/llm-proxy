@@ -8,8 +8,8 @@ dist/
 
 .claude/
 
-# Swift / menubar
-menubar/.build/
-menubar/*.xcodeproj
-menubar/*.xcworkspace
-menubar/.swiftpm/
+# Bun compiled binary
+llm-proxy
+
+# macOS app build
+app/.build/

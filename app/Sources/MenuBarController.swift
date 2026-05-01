@@ -284,9 +284,19 @@ class MenuBarController: NSObject {
         }
     }
 
+    func bundledBinaryPath() -> String? {
+        guard let resourcePath = Bundle.main.resourcePath else { return nil }
+        let path = (resourcePath as NSString).appendingPathComponent("llm-proxy")
+        return FileManager.default.isExecutableFile(atPath: path) ? path : nil
+    }
+
     func runCLI(_ command: String) {
         let task = Process()
-        task.executableURL = URL(fileURLWithPath: "/opt/homebrew/bin/llm-proxy")
+        if let bundled = bundledBinaryPath() {
+            task.executableURL = URL(fileURLWithPath: bundled)
+        } else {
+            task.executableURL = URL(fileURLWithPath: "/opt/homebrew/bin/llm-proxy")
+        }
         task.arguments = [command]
         try? task.run()
     }

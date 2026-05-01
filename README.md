@@ -8,6 +8,7 @@ A local LLM proxy server — single port serving both admin UI and AI API, with 
 
 - 🔀 **Multi-Protocol**: Anthropic, OpenAI, and OpenAI Responses on a single port
 - 🔄 **Protocol Translation**: Bidirectional conversion across all three protocols (streaming + non-streaming)
+- 🖥️ **macOS App**: Native menu bar app with built-in proxy — zero dependencies, drag & drop install
 - 📊 **Admin UI**: Alpine.js SPA with dashboard, provider management, adapter config, and capture debugger
 - 🎯 **Virtual Adapters**: Custom endpoints with model remapping (`/{adapter-name}/v1/...`)
 - 📡 **SSE Streaming**: 4 bidirectional stream converters with per-line timestamps
@@ -17,6 +18,10 @@ A local LLM proxy server — single port serving both admin UI and AI API, with 
 
 ## Install
 
+**macOS (recommended):**
+Download the latest `LLMProxy.dmg` from [Releases](https://github.com/maplezzk/llm-proxy/releases), drag to `/Applications`. Includes everything — CLI, proxy, and admin UI.
+
+**CLI only:**
 ```bash
 npm install -g @maplezzk/llm-proxy
 ```
@@ -129,3 +134,12 @@ Client → POST /v1/chat/completions
 ## Development
 
 See [DEVELOPMENT.md](./DEVELOPMENT.md) for full development workflow.
+
+```bash
+# CLI
+npm run dev          # Start proxy in dev mode
+npm test             # Run 115 tests
+
+# macOS app
+npm run build:app    # Build .app + .dmg
+```

@@ -30,6 +30,7 @@
   ],
   "scripts": {
     "build": "tsc && cp src/api/admin-ui.html dist/api/admin-ui.html && esbuild src/api/admin/app.ts --bundle --outfile=dist/api/admin-app.js --format=esm --minify",
+    "build:app": "bash app/scripts/build.sh",
     "build:prod": "esbuild src/index.ts --bundle --platform=node --outfile=dist/bundle.js --format=esm",
     "dev": "tsx src/index.ts",
     "test": "node --import tsx --test test/**/*.test.ts",

@@ -2,11 +2,11 @@
 import PackageDescription
 
 let package = Package(
-    name: "LLMProxyMenuBar",
+    name: "LLMProxy",
     platforms: [.macOS(.v13)],
     targets: [
         .executableTarget(
-            name: "LLMProxyMenuBar",
+            name: "LLMProxy",
             path: "Sources"
         )
     ]

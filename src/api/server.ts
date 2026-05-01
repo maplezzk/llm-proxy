@@ -48,6 +48,9 @@ let adminUIHtml: string | null = null
 function getAdminUIHtml(): string {
   if (adminUIHtml) return adminUIHtml
   const __dirname = dirname(fileURLToPath(import.meta.url))
+  // Also check CWD (bun compiled binary might be launched with cwd set to assets dir)
+  const cwdPath = join(process.cwd(), 'admin-ui.html')
+  try { adminUIHtml = readFileSync(cwdPath, 'utf-8'); return adminUIHtml } catch {}
   const htmlPath = join(__dirname, 'admin-ui.html')
   try { adminUIHtml = readFileSync(htmlPath, 'utf-8') } catch { adminUIHtml = '<h1>Admin UI not found</h1>' }
   return adminUIHtml
@@ -62,6 +65,8 @@ let adminAppJs: string | null = null
 function getAdminAppJs(): string {
   if (adminAppJs) return adminAppJs
   const __dirname = dirname(fileURLToPath(import.meta.url))
+  // Also check CWD for bun compiled binary
+  try { adminAppJs = readFileSync(join(process.cwd(), 'admin-app.js'), 'utf-8'); return adminAppJs } catch {}
   for (const dir of [__dirname, join(__dirname, '..', '..', 'dist', 'api')]) {
     try { adminAppJs = readFileSync(join(dir, 'admin-app.js'), 'utf-8'); return adminAppJs } catch {}
   }
