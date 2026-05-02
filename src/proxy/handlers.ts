@@ -41,7 +41,7 @@ async function handleRequest(
   try {
     route = routeModel(ctx.store, pre.modelName)
   } catch (err) {
-    ctx.logger.log('request', `模型未找到: ${pre.modelName}`, { model: pre.modelName, type: inboundType }, 'warn')
+    ctx.logger.log('request', `Model not found: ${pre.modelName}`, { model: pre.modelName, type: inboundType }, 'warn')
     res.writeHead(404, { 'Content-Type': 'application/json' })
     res.end(JSON.stringify({
       error: { message: err instanceof Error ? err.message : String(err) },

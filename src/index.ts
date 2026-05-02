@@ -63,7 +63,7 @@ async function main(): Promise<void> {
 
   const handler = COMMANDS[command]
   if (!handler) {
-    console.error(`未知命令: ${command}`)
+    console.error(`Unknown command: ${command}`)
     printHelp()
     process.exit(1)
   }

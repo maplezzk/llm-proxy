@@ -139,7 +139,7 @@ export function createProxyServer(opts: ServerOptions): Server {
           await route.handler(ctx, req, res)
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err)
-          ctx.logger.log('request', `处理异常`, { url, method, error: message }, 'error')
+          ctx.logger.log('request', `Request error`, { url, method, error: message }, 'error')
           if (!res.headersSent) {
             res.writeHead(500, { 'Content-Type': 'application/json' })
             res.end(JSON.stringify({ error: { message } }))
