@@ -35,6 +35,8 @@ cp "$ROOT_DIR/app/assets/tray-icon.png" "$APP/Contents/Resources/tray-icon.png"
 cp "$ROOT_DIR/app/assets/tray-icon@2x.png" "$APP/Contents/Resources/tray-icon@2x.png"
 cp -R "$ROOT_DIR/app/Sources/en.lproj" "$APP/Contents/Resources/"
 cp -R "$ROOT_DIR/app/Sources/zh.lproj" "$APP/Contents/Resources/"
+# 拷贝 SPM resource bundle（ImageAssets.swift 的 loadTrayIcon 直接引用 Bundle.module）
+cp -R "$BUILD_DIR/arm64-apple-macosx/release/LLMProxy_LLMProxy.bundle" "$APP/Contents/Resources/"
 
 cat > "$APP/Contents/Info.plist" << 'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
