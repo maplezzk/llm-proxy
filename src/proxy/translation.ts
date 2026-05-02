@@ -612,6 +612,10 @@ export async function transformInboundRequest(
 
   if (sameProtocol) {
     const upstreamBody: Record<string, unknown> = { ...body, model: route.modelId }
+    // 客户端没传 stream 时默认非流式，避免上游默认返回 SSE
+    if (upstreamBody.stream === undefined) {
+      upstreamBody.stream = false
+    }
     // max_tokens: 0 → 不传（让上游用默认值）, 应用路由级默认值
     sanitizeMaxTokens(upstreamBody, route)
     injectThinkingConfig(upstreamBody, route)
@@ -633,6 +637,7 @@ export async function transformInboundRequest(
     : inboundType === 'openai'
       ? extractFullOpenAI(body)
       : extractFullAnthropic(body)
+
   params.model = route.modelId
   // max_tokens: 0 → undefined（不传，让 builder 走默认值）, 应用路由级默认值
   if (params.max_tokens === 0) params.max_tokens = undefined
@@ -655,6 +660,10 @@ export async function transformInboundRequest(
   sanitizeMaxTokens(upstreamBody, route)
   // 注入 thinking 配置到转换后的请求体
   injectThinkingConfig(upstreamBody, route)
+  // 客户端没传 stream 时默认非流式
+  if (upstreamBody.stream === undefined) {
+    upstreamBody.stream = false
+  }
   // thinking 模式检测：配置开启了 或 消息中已有 thinking 块，都需要补全
   if (route.providerType === 'anthropic') {
     const msgs = upstreamBody.messages as Array<Record<string, unknown>> | undefined
