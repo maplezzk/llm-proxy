@@ -29,9 +29,10 @@ export async function parseAndAuth(
   maxBodyBytes?: number
 ): Promise<ParseResult | null> {
   // 1. 读取 Body（含大小限制）
+  const effectiveMaxBytes = maxBodyBytes ?? store.getConfig().config.maxBodySize ?? 10_000_000
   let rawBody: string
   try {
-    rawBody = await readBody(req, maxBodyBytes)
+    rawBody = await readBody(req, effectiveMaxBytes)
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     if (message.includes('超过大小限制')) {

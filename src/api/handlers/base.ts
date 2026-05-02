@@ -19,6 +19,7 @@ export function handleGetConfig(ctx: ServerContext, _req: IncomingMessage, res: 
           ...(m.thinking?.reasoning_effort ? { reasoning_effort: m.thinking.reasoning_effort } : {}),
         })),
       })),
+      max_body_size: config.maxBodySize,
       adapters: (config.adapters ?? []).map((a) => ({
         name: a.name,
         type: a.type,
@@ -71,7 +72,7 @@ export async function handleSetLogLevel(ctx: ServerContext, req: IncomingMessage
     return
   }
   const { config } = ctx.store.getConfig()
-  const newConfig = { providers: config.providers, adapters: config.adapters, proxyKey: config.proxyKey, logLevel: level }
+  const newConfig = { providers: config.providers, adapters: config.adapters, proxyKey: config.proxyKey, logLevel: level, maxBodySize: config.maxBodySize }
   await ctx.store.writeConfig(newConfig)
   ctx.logger.setLevel(level)
   ctx.logger.log('system', `Log level changed to ${level} (persisted)`, { level })
@@ -86,7 +87,7 @@ export function handleGetProxyKey(_ctx: ServerContext, _req: IncomingMessage, re
 export async function handleSetProxyKey(ctx: ServerContext, req: IncomingMessage, res: ServerResponse): Promise<void> {
   const body = JSON.parse(await (await import('../../lib/http-utils.js')).readBody(req))
   const { config } = ctx.store.getConfig()
-  const newConfig = { providers: config.providers, adapters: config.adapters, proxyKey: body.key || undefined, logLevel: config.logLevel }
+  const newConfig = { providers: config.providers, adapters: config.adapters, proxyKey: body.key || undefined, logLevel: config.logLevel, maxBodySize: config.maxBodySize }
   await ctx.store.writeConfig(newConfig)
   const verb = body.key ? 'set' : 'removed'
   ctx.logger.log('system', `Proxy API key ${verb}`)
