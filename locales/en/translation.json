@@ -152,6 +152,8 @@
       "formName": "Name",
       "formNamePlaceholder": "my-tool",
       "formType": "Type",
+      "formDefaultMaxTokens": "Default Max Tokens",
+      "defaultMaxTokensHint": "Leave empty to use the upstream API's default",
       "formModelMapping": "Model Mapping",
       "sourceModelId": "Source Model ID",
       "targetModelId": "Target Model ID",
@@ -234,7 +236,8 @@
     },
     "restart": {
       "stopping": "Stopping proxy (PID: {{pid}})...",
-      "restarting": "Proxy stopped, restarting..."
+      "restarting": "Proxy stopped, restarting...",
+      "stalePid": "Found stale PID file, cleaning up..."
     },
     "reload": {
       "success": "Configuration reloaded (version: {{version}})",

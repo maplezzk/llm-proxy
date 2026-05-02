@@ -169,6 +169,9 @@ export async function cmdRestart(opts: StartOptions): Promise<void> {
       setTimeout(() => { clearInterval(check); resolve() }, 5000)
     })
     console.error(t('cli.restart.restarting'))
+  } else if (pid !== null) {
+    console.error(t('cli.restart.stalePid'))
+    try { unlinkSync(DEFAULT_PID_PATH) } catch { /* ignore */ }
   }
   await cmdStart(opts)
 }

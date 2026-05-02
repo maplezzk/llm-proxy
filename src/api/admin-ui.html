@@ -629,6 +629,9 @@ tbody tr:hover td { background: #f8f9fb; }
         <option value="openai-responses">OpenAI (Responses)</option>
         <option value="anthropic">Anthropic</option>
       </select>
+      <label x-text="$t('admin.adapters.formDefaultMaxTokens')"></label>
+      <input x-model="form.max_tokens" type="number" min="0" step="1" placeholder="4096" style="width:120px">
+      <span style="font-size:11px;color:var(--text-dim)" x-text="$t('admin.adapters.defaultMaxTokensHint')"></span>
       <label x-text="$t('admin.adapters.formModelMapping')"></label>
       <div class="dynamic-rows">
         <template x-for="(m, i) in form.models" :key="i">

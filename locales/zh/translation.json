@@ -152,6 +152,8 @@
       "formName": "名称",
       "formNamePlaceholder": "my-tool",
       "formType": "类型",
+      "formDefaultMaxTokens": "默认 Max Tokens",
+      "defaultMaxTokensHint": "留空使用上游 API 的默认值",
       "formModelMapping": "模型映射",
       "sourceModelId": "适配前模型 ID",
       "targetModelId": "适配后模型 ID",
@@ -234,7 +236,8 @@
     },
     "restart": {
       "stopping": "正在停止代理 (PID: {{pid}})...",
-      "restarting": "代理已停止，正在重启..."
+      "restarting": "代理已停止，正在重启...",
+      "stalePid": "发现残留 PID 文件，清理中..."
     },
     "reload": {
       "success": "配置重载成功 (版本: {{version}})",

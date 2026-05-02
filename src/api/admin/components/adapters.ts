@@ -16,7 +16,7 @@ export function adaptersPage() {
     search: '',
     editingName: null as string | null,
     showModal: false,
-    form: { name: '', type: 'openai', models: [] as any[] },
+    form: { name: '', type: 'openai', max_tokens: '', models: [] as any[] },
     adapterTestModal: { visible: false, adapterName: '', selectedModelId: '', models: [] as any[], results: [] as any[], running: false },
 
     init() {
@@ -46,13 +46,14 @@ export function adaptersPage() {
 
     openForm(name?: string | null) {
       this.editingName = name ?? null
-      this.form = { name: '', type: 'openai', models: [] }
+      this.form = { name: '', type: 'openai', max_tokens: '', models: [] }
       if (name) {
         const a = this.adapters.find((x: any) => x.name === name)
         if (a) {
           this.form = {
             name: a.name,
             type: a.type,
+            max_tokens: a.max_tokens ?? '',
             models: (a.models || []).map((m: any) => ({
               sourceModelId: m.sourceModelId,
               provider: m.provider,
@@ -99,7 +100,7 @@ export function adaptersPage() {
         return
       }
 
-      const body = { name, type, models: validModels }
+      const body = { name, type, max_tokens: parseInt(this.form.max_tokens, 10) || undefined, models: validModels }
       let res
       if (this.editingName) {
         res = await (window as any).Alpine.store('app').fetch(`/admin/adapters/${this.editingName}`, {
