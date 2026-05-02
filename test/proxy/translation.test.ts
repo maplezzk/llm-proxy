@@ -857,4 +857,100 @@ describe('proxy/response-conversion', () => {
       assert.strictEqual(thinking.signature, expectedSig, '应自动生成 SHA-256 签名')
     })
   })
+
+  describe('stream 默认值 fallback', () => {
+    it('同协议 Anthropic→Anthropic: 未传 stream → 设为 false', async () => {
+      const result = await transformInboundRequest('anthropic', anthropicRoute, {
+        model: 'claude-sonnet-4',
+        messages: [{ role: 'user', content: 'hi' }],
+        max_tokens: 100,
+      })
+      assert.strictEqual(result.crossProtocol, false)
+      assert.strictEqual(
+        (result.body as Record<string, unknown>).stream,
+        false,
+        '未传 stream 时应默认 false',
+      )
+    })
+
+    it('同协议 Anthropic→Anthropic: stream: true → 保持 true', async () => {
+      const result = await transformInboundRequest('anthropic', anthropicRoute, {
+        model: 'claude-sonnet-4',
+        messages: [{ role: 'user', content: 'hi' }],
+        stream: true,
+      })
+      assert.strictEqual(
+        (result.body as Record<string, unknown>).stream,
+        true,
+        'stream:true 应保持 true',
+      )
+    })
+
+    it('同协议 Anthropic→Anthropic: stream: false → 保持 false', async () => {
+      const result = await transformInboundRequest('anthropic', anthropicRoute, {
+        model: 'claude-sonnet-4',
+        messages: [{ role: 'user', content: 'hi' }],
+        stream: false,
+      })
+      assert.strictEqual(
+        (result.body as Record<string, unknown>).stream,
+        false,
+        'stream:false 应保持 false',
+      )
+    })
+
+    it('跨协议 OpenAI Chat→Anthropic: 未传 stream → 设为 false', async () => {
+      const result = await transformInboundRequest('openai', anthropicRoute, {
+        model: 'claude-sonnet-4',
+        messages: [{ role: 'user', content: 'hi' }],
+        max_tokens: 100,
+      })
+      assert.strictEqual(result.crossProtocol, true)
+      assert.strictEqual(
+        (result.body as Record<string, unknown>).stream,
+        false,
+        '跨协议未传 stream 时应默认 false',
+      )
+    })
+
+    it('跨协议 OpenAI Chat→Anthropic: stream: true → 保持 true', async () => {
+      const result = await transformInboundRequest('openai', anthropicRoute, {
+        model: 'claude-sonnet-4',
+        messages: [{ role: 'user', content: 'hi' }],
+        stream: true,
+      })
+      assert.strictEqual(
+        (result.body as Record<string, unknown>).stream,
+        true,
+        '跨协议 stream:true 应保持 true',
+      )
+    })
+
+    it('跨协议 Anthropic→OpenAI: 未传 stream → 设为 false', async () => {
+      const result = await transformInboundRequest('anthropic', openaiRoute, {
+        model: 'claude-sonnet-4',
+        messages: [{ role: 'user', content: 'hi' }],
+        max_tokens: 100,
+      })
+      assert.strictEqual(result.crossProtocol, true)
+      assert.strictEqual(
+        (result.body as Record<string, unknown>).stream,
+        false,
+        '跨协议未传 stream 时应默认 false',
+      )
+    })
+
+    it('跨协议 Anthropic→OpenAI: stream: true → 保持 true', async () => {
+      const result = await transformInboundRequest('anthropic', openaiRoute, {
+        model: 'claude-sonnet-4',
+        messages: [{ role: 'user', content: 'hi' }],
+        stream: true,
+      })
+      assert.strictEqual(
+        (result.body as Record<string, unknown>).stream,
+        true,
+        '跨协议 stream:true 应保持 true',
+      )
+    })
+  })
 })
