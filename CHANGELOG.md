@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.7](https://github.com/maplezzk/llm-proxy/compare/v0.5.6...v0.5.7) (2026-05-02)
+
+
+### Bug Fixes
+
+* 避免数组字面量直接初始化 Bundle.module 导致启动崩溃 ([#53](https://github.com/maplezzk/llm-proxy/issues/53)) ([c9d5ff7](https://github.com/maplezzk/llm-proxy/commit/c9d5ff773137df557f0b37522011b10a7b227248))
+
 ## [0.5.6](https://github.com/maplezzk/llm-proxy/compare/v0.5.5...v0.5.6) (2026-05-02)
 
 
