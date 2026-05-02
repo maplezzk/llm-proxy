@@ -38,6 +38,7 @@ export interface Config {
   adapters?: AdapterConfig[]
   proxyKey?: string
   logLevel?: LogLevel
+  locale?: string
 }
 
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error'
@@ -66,6 +67,7 @@ export interface ConfigFile {
   adapters?: AdapterConfigFile[]
   proxy_key?: string
   log_level?: string
+  locale?: string
 }
 
 export interface ValidationError {
