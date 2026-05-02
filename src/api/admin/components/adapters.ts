@@ -1,3 +1,15 @@
+import i18next from 'i18next'
+
+function t(key: string, opts?: Record<string, unknown>): string {
+  return i18next.t(key, opts)
+}
+
+const toast = (msg: string, type = 'info') =>
+  (window as any).Alpine.store('app').toast(msg, type)
+
+const confirm = (msg: string) =>
+  (window as any).Alpine.store('app').confirm(msg)
+
 export function adaptersPage() {
   return {
     adapters: [] as any[],
@@ -83,7 +95,7 @@ export function adaptersPage() {
           return base
         })
       if (!name || validModels.length === 0) {
-        ;(window as any).Alpine.store('app').toast('请填写名称和模型映射', 'error')
+        toast(t('admin.common.validationName'), 'error')
         return
       }
 
@@ -99,29 +111,29 @@ export function adaptersPage() {
         })
       }
       if (!res.success) {
-        ;(window as any).Alpine.store('app').toast(res.error || '保存失败', 'error')
+        toast(res.error || t('admin.adapters.saveFailed'), 'error')
         return
       }
-      ;(window as any).Alpine.store('app').toast(this.editingName ? '适配器已更新' : '适配器已创建', 'success')
+      toast(this.editingName ? t('admin.adapters.updated') : t('admin.adapters.created'), 'success')
       this.showModal = false
       this.load()
     },
 
     async confirmDelete(name: string) {
-      const ok = await (window as any).Alpine.store('app').confirm(`确定删除适配器 "${name}" 吗？`)
+      const ok = await confirm(t('admin.adapters.deleteConfirm', { name }))
       if (!ok) return
       const res = await (window as any).Alpine.store('app').fetch(`/admin/adapters/${name}`, { method: 'DELETE' })
       if (!res.success) {
-        ;(window as any).Alpine.store('app').toast(res.error || '删除失败', 'error')
+        toast(res.error || t('admin.adapters.deleteFailed'), 'error')
         return
       }
-      ;(window as any).Alpine.store('app').toast('适配器已删除', 'success')
+      toast(t('admin.adapters.deleted'), 'success')
       this.load()
     },
 
     openTestPanel(adapterName: string) {
       const a = this.adapters.find((x: any) => x.name === adapterName)
-      if (!a) { (window as any).Alpine.store('app').toast('适配器未找到', 'error'); return }
+      if (!a) { toast(t('admin.adapters.notFound'), 'error'); return }
       const models = (a.models || []).map((m: any) => ({ id: m.sourceModelId, status: m.status }))
       this.adapterTestModal = {
         visible: true,
@@ -135,12 +147,12 @@ export function adaptersPage() {
 
     async runAdapterTest() {
       const { adapterName, selectedModelId } = this.adapterTestModal
-      if (!selectedModelId) { (window as any).Alpine.store('app').toast('请选择模型', 'error'); return }
+      if (!selectedModelId) { toast(t('admin.common.validationName'), 'error'); return }
       this.adapterTestModal.running = true
       const res = await (window as any).Alpine.store('app').fetch('/admin/test-adapter', {
         method: 'POST',
         body: JSON.stringify({ adapterName, modelId: selectedModelId }),
-      }).catch(() => ({ success: true, data: { reachable: false, latency: 0, error: '请求失败' } }))
+      }).catch(() => ({ success: true, data: { reachable: false, latency: 0, error: t('admin.test.requestFailed') } }))
       this.adapterTestModal.running = false
       const d = res.data || {}
       this.adapterTestModal.results.unshift({
