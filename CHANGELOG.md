@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.4](https://github.com/maplezzk/llm-proxy/compare/v0.5.3...v0.5.4) (2026-05-02)
+
+
+### Bug Fixes
+
+* 统一开发/生产环境托盘图标加载，移除 SF Symbol 回退 ([#47](https://github.com/maplezzk/llm-proxy/issues/47)) ([52eff3f](https://github.com/maplezzk/llm-proxy/commit/52eff3f91b70d81e7918b094bbdec63b53264722))
+
 ## [0.5.3](https://github.com/maplezzk/llm-proxy/compare/v0.5.2...v0.5.3) (2026-05-02)
 
 
