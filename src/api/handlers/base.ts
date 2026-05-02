@@ -1,5 +1,6 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { ServerContext } from '../server.js'
+import { t } from '../../lib/i18n.js'
 import { json } from './index.js'
 
 export function handleGetConfig(ctx: ServerContext, _req: IncomingMessage, res: ServerResponse): void {
@@ -30,11 +31,11 @@ export function handleGetConfig(ctx: ServerContext, _req: IncomingMessage, res: 
 export async function handleReload(ctx: ServerContext, _req: IncomingMessage, res: ServerResponse): Promise<void> {
   const result = await ctx.store.reload()
   if (result.success) {
-    ctx.logger.log('system', '配置重载成功', { version: result.version })
+    ctx.logger.log('system', t('backend.config.reloadSuccess'), { version: result.version })
     json(res, 200, { success: true, data: { version: result.version } })
   } else {
-    ctx.logger.log('system', '配置重载失败', { errors: result.errors })
-    json(res, 400, { success: false, error: '配置校验失败', errors: result.errors })
+    ctx.logger.log('system', t('backend.config.reloadFailed'), { errors: result.errors })
+    json(res, 400, { success: false, error: t('backend.config.validationFailed'), errors: result.errors })
   }
 }
 
@@ -66,19 +67,19 @@ export async function handleSetLogLevel(ctx: ServerContext, req: IncomingMessage
   const body = JSON.parse(await (await import('../../lib/http-utils.js')).readBody(req))
   const level = body.level
   if (!['debug', 'info', 'warn', 'error'].includes(level)) {
-    json(res, 400, { success: false, error: '无效的日志级别' })
+    json(res, 400, { success: false, error: t('backend.config.validationFailed') })
     return
   }
   const { config } = ctx.store.getConfig()
   const newConfig = { providers: config.providers, adapters: config.adapters, proxyKey: config.proxyKey, logLevel: level }
   await ctx.store.writeConfig(newConfig)
   ctx.logger.setLevel(level)
-  ctx.logger.log('system', `日志级别已更改为 ${level}（已持久化）`, { level })
+  ctx.logger.log('system', `Log level changed to ${level} (persisted)`, { level })
   json(res, 200, { success: true, data: { level } })
 }
 
-export function handleGetProxyKey(ctx: ServerContext, _req: IncomingMessage, res: ServerResponse): void {
-  const { config } = ctx.store.getConfig()
+export function handleGetProxyKey(_ctx: ServerContext, _req: IncomingMessage, res: ServerResponse): void {
+  const { config } = _ctx.store.getConfig()
   json(res, 200, { success: true, data: { set: !!config.proxyKey, key: config.proxyKey ? '***' : null } })
 }
 
@@ -87,8 +88,8 @@ export async function handleSetProxyKey(ctx: ServerContext, req: IncomingMessage
   const { config } = ctx.store.getConfig()
   const newConfig = { providers: config.providers, adapters: config.adapters, proxyKey: body.key || undefined, logLevel: config.logLevel }
   await ctx.store.writeConfig(newConfig)
-  const verb = body.key ? '设置' : '移除'
-  ctx.logger.log('system', `代理 API Key 已${verb}`)
+  const verb = body.key ? 'set' : 'removed'
+  ctx.logger.log('system', `Proxy API key ${verb}`)
   json(res, 200, { success: true, data: { set: !!body.key } })
 }
 
@@ -102,7 +103,7 @@ export function handleDebugCaptures(ctx: ServerContext, _req: IncomingMessage, r
 
 export function handleDebugCapturesStream(ctx: ServerContext, _req: IncomingMessage, res: ServerResponse): void {
   if (!ctx.capture) {
-    json(res, 404, { success: false, error: '抓包未启用' })
+    json(res, 404, { success: false, error: 'Capture not enabled' })
     return
   }
   res.writeHead(200, {
@@ -110,11 +111,9 @@ export function handleDebugCapturesStream(ctx: ServerContext, _req: IncomingMess
     'Cache-Control': 'no-cache',
     Connection: 'keep-alive',
   })
-  // Send existing captures first
   const all = ctx.capture.getAll()
   for (const entry of all) {
     res.write(`data: ${JSON.stringify(entry)}\n\n`)
   }
-  // Subscribe for new ones
   ctx.capture.subscribe(res)
 }

@@ -4,6 +4,7 @@ import type { Config, AdapterConfig } from '../../config/types.js'
 import { validateConfig } from '../../config/validator.js'
 import { readBody } from '../../lib/http-utils.js'
 import { json } from './index.js'
+import { t } from '../../lib/i18n.js'
 
 const ADAPTER_PATH_RE = /^\/admin\/adapters\/([a-zA-Z0-9_-]+)$/
 

@@ -4,6 +4,7 @@ import type { Config, Provider } from '../../config/types.js'
 import { validateConfig } from '../../config/validator.js'
 import { readBody } from '../../lib/http-utils.js'
 import { json } from './index.js'
+import { t } from '../../lib/i18n.js'
 
 function configFromProvider(provider: Provider): Config {
   return { providers: [provider], adapters: [] }
