@@ -701,7 +701,7 @@ tbody tr:hover td { background: #f8f9fb; }
             <span style="flex:1" x-text="r.ok ? '✓ ' + r.latency + 'ms' : '✗ ' + (r.error || '不可达').slice(0, 80)"></span>
           </div>
         </template>
-        <div class="empty" style="padding:24px" x-show="adapterTestModal.results.length === 0">点击 "Run" 测试所选映射模型</div>
+        <div class="empty" style="padding:24px" x-show="adapterTestModal.results.length === 0" x-text="$t('admin.adapters.noResults')"></div>
       </div>
       <div class="btn-row">
         <button class="btn btn-ghost" @click="adapterTestModal.results = []" style="font-size:11.5px" x-text="$t('admin.adapters.clearResults')"></button>
@@ -728,7 +728,7 @@ tbody tr:hover td { background: #f8f9fb; }
 
         <!-- Filter bar -->
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px">
-          <span style="font-size:11px;color:var(--text-muted)">来源</span>
+          <span style="font-size:11px;color:var(--text-muted)" x-text="$t('admin.capture.source')"></span>
           <button class="filter-btn" :class="{active: !sourceFilter}" @click="sourceFilter = ''" x-text="$t('admin.capture.filterAll')"></button>
           <template x-for="s in sources" :key="s">
             <button class="filter-btn" :class="{active: sourceFilter === s}" @click="sourceFilter = s" x-text="s === 'proxy' ? '代理' : s"></button>
@@ -740,7 +740,7 @@ tbody tr:hover td { background: #f8f9fb; }
           <table style="width:100%;font-size:12px;font-family:monospace">
             <thead><tr style="background:var(--bg-hover);position:sticky;top:0">
               <th style="width:36px;text-align:center">#</th>
-              <th style="width:150px">时间</th>
+              <th style="width:150px" x-text="$t('admin.capture.time')"></th>
               <th x-text="$t('admin.capture.sourceCol')"></th>
               <th x-text="$t('admin.capture.adapter')"></th>
               <th x-text="$t('admin.capture.inboundProtocol')"></th>
@@ -748,8 +748,8 @@ tbody tr:hover td { background: #f8f9fb; }
               <th x-text="$t('admin.capture.upstreamProvider')"></th>
               <th x-text="$t('admin.capture.upstreamProtocol')"></th>
               <th x-text="$t('admin.capture.upstreamModel')"></th>
-              <th style="width:90px;text-align:right">请求大小</th>
-              <th style="width:90px;text-align:right">响应大小</th>
+              <th style="width:90px;text-align:right" x-text="$t('admin.capture.requestSize')"></th>
+              <th style="width:90px;text-align:right" x-text="$t('admin.capture.responseSize')"></th>
             </tr></thead>
             <tbody>
               <template x-for="e in filteredEntries.slice().reverse()" :key="e.id">
@@ -771,7 +771,7 @@ tbody tr:hover td { background: #f8f9fb; }
             </tbody>
           </table>
           <div style="padding:24px;text-align:center;color:var(--text-muted);font-size:13px" x-show="entries.length === 0">
-            暂无数据包 — 发起一次代理请求即可捕获
+            
           </div>
         </div>
 
@@ -819,7 +819,7 @@ tbody tr:hover td { background: #f8f9fb; }
             <span style="flex:1" x-text="r.ok ? '✓ ' + r.latency + 'ms' : '✗ ' + (r.error || '不可达').slice(0, 80)"></span>
           </div>
         </template>
-        <div class="empty" style="padding:24px" x-show="results.length === 0">点击 "运行" 测试所选模型</div>
+        <div class="empty" style="padding:24px" x-show="results.length === 0" x-text="$t('admin.test.noResults')"></div>
       </div>
       <div class="btn-row">
         <button class="btn btn-ghost" @click="clear()" style="font-size:11.5px" x-text="$t('admin.test.clearResults')"></button>
