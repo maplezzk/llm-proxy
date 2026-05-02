@@ -54,6 +54,7 @@ config.yaml                # 配置文件（~/.llm-proxy/config.yaml）
 
 ```yaml
 log_level: debug          # debug|info|warn|error
+locale: zh                # 可选，zh|en，默认从 LANG 环境变量检测
 proxy_key: sk-xxx         # 可选，设置后 /v1/* 需认证
 providers:
   - name: deepseek
@@ -111,6 +112,35 @@ adapters:
 ### 抓包调试
 
 打开 `/admin/#capture` → 点「开始抓包」→ 发请求 → 点击行查看左右对比（JSON 用 jsoneditor，SSE 用原始文本）+ 差异分析。
+
+## 多语言支持 (i18n)
+
+llm-proxy 支持中文和英文双语界面，使用 i18next 作为 i18n 库。
+
+### 翻译文件
+
+- `locales/{lang}/translation.json` — 前后端共享的翻译 JSON 文件
+- 当前支持 `zh`（中文）和 `en`（英文），英文为默认 fallback
+- 使用点分命名空间：`admin.dashboard.status`、`cli.start.configNotFound`
+
+### 使用方式
+
+- **前端 (Alpine.js)**: 模板中使用 `$t('key')`，组件中使用 `i18next.t()`
+- **后端/CLI**: 导入 `t()` 函数：`import { t } from '../lib/i18n.js'`
+- **类型安全**: `src/types/i18n.generated.ts` 在 `npm run build` 时自动生成
+
+### 语言切换
+
+- **Admin UI**: 侧栏底部语言按钮，或浏览器语言自动检测，选择存入 localStorage
+- **CLI**: `LANG=zh llm-proxy start` 环境变量，或 `config.yaml` 中 `locale: zh`
+- 默认语言：英文
+
+### 添加新语言
+
+1. 创建 `locales/{lang}/translation.json`，结构参考 `locales/zh/translation.json`
+2. 在 `src/lib/i18n.ts` 的 `createI18n()` 中添加资源加载
+3. 在 `src/api/admin/i18n.ts` 的 import 和 resources 中添加
+4. 运行 `npm run generate:i18n-types` 更新类型
 
 ## 测试
 
