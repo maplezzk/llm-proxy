@@ -235,6 +235,7 @@ export type TranslationKey =
   | 'cli.reload.failed'
   | 'cli.reload.success'
   | 'cli.restart.restarting'
+  | 'cli.restart.stalePid'
   | 'cli.restart.stopping'
   | 'cli.start.adminApi'
   | 'cli.start.aiApi'
