@@ -284,19 +284,23 @@ tbody tr:hover td { background: #f8f9fb; }
          href="#"
          @click.prevent="$store.app.switchTab(tab)">
         <span class="icon" x-html="$store.app.tabIcons[tab]"></span>
-        <span x-text="$store.app.tabNames[tab]"></span>
+        <span x-text="$store.app.getTabName(tab)"></span>
       </a>
     </template>
   </div>
   <div class="sidebar-footer" x-data>
     <span class="dot" :class="{ running: $store.app.status === 'running' }"></span>
-    <span x-text="$store.app.status === 'running' ? '运行中' : $store.app.status === 'offline' ? '未连接' : '加载中'"></span>
+    <span x-text="$store.app.status === 'running' ? $t('admin.sidebar.running') : $store.app.status === 'offline' ? $t('admin.sidebar.offline') : $t('admin.sidebar.loading')"></span>
+    <span style="flex:1"></span>
+    <button @click="$store.app.switchLang($store.app.language === 'zh' ? 'en' : 'zh')" style="font-size:11px;cursor:pointer;background:none;border:none;color:var(--sidebar-text);padding:2px 4px;border-radius:4px">
+      🌐 <span x-text="$store.app.language === 'zh' ? 'EN' : '中文'"></span>
+    </button>
   </div>
 </div>
 
 <div class="main">
   <div class="topbar" x-data>
-    <h2 x-text="$store.app.tabNames[$store.app.currentTab] || '仪表盘'"></h2>
+    <h2 x-text="$store.app.getTabName($store.app.currentTab) || $t('admin.nav.dashboard')"></h2>
   </div>
   <div class="content">
 
@@ -322,14 +326,14 @@ tbody tr:hover td { background: #f8f9fb; }
         </template>
       </div>
       <div class="section" style="margin-top:20px" x-data="proxyKeyForm">
-        <div class="section-header"><h3>代理 API Key</h3></div>
+        <div class="section-header"><h3 x-text="$t('admin.dashboard.proxyKey')"></h3></div>
         <div style="display:flex;align-items:center;gap:8px">
-          <input type="password" x-model="key" placeholder="不设置则无需鉴权" style="flex:1;padding:6px 10px;font-size:13px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);color:var(--text)">
-          <button class="btn btn-primary btn-sm" @click="save()" :disabled="saving" x-text="saving ? '保存中...' : '保存'"></button>
-          <button class="btn btn-ghost btn-sm" @click="remove()" :disabled="saving" x-show="hasKey">移除</button>
+          <input type="password" x-model="key" :placeholder="$t('admin.dashboard.proxyKeyPlaceholder')" style="flex:1;padding:6px 10px;font-size:13px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);color:var(--text)">
+          <button class="btn btn-primary btn-sm" @click="save()" :disabled="saving" x-text="saving ? $t('admin.common.saving') : $t('admin.common.save')"></button>
+          <button class="btn btn-ghost btn-sm" @click="remove()" :disabled="saving" x-show="hasKey" x-text="$t('admin.common.remove')"></button>
         </div>
-        <div style="font-size:11px;color:var(--text-muted);margin-top:4px" x-show="hasKey" x-text="'已设置 (请求需带 Authorization: Bearer <key> 或 x-api-key 头)'"></div>
-        <div style="font-size:11px;color:var(--text-muted);margin-top:4px" x-show="!hasKey">未设置 — 所有请求可直接访问</div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:4px" x-show="hasKey" x-text="$t('admin.dashboard.proxyKeySet')"></div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:4px" x-show="!hasKey" x-text="$t('admin.dashboard.proxyKeyNotSet')"></div>
       </div>
     </div>
 
@@ -834,8 +838,8 @@ tbody tr:hover td { background: #f8f9fb; }
   <div class="confirm-box">
     <p x-text="$store.app.confirmMessage"></p>
     <div class="btn-row">
-      <button class="btn btn-ghost" @click="$store.app.confirmResolve(false); $store.app.showConfirm = false">取消</button>
-      <button class="btn btn-danger" @click="$store.app.confirmResolve(true); $store.app.showConfirm = false">确定</button>
+      <button class="btn btn-ghost" @click="$store.app.confirmResolve(false); $store.app.showConfirm = false" x-text="$t('admin.confirm.cancel')"></button>
+      <button class="btn btn-danger" @click="$store.app.confirmResolve(true); $store.app.showConfirm = false" x-text="$t('admin.confirm.confirm')"></button>
     </div>
   </div>
 </div>

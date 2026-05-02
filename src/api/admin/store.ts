@@ -1,4 +1,6 @@
 import Alpine from 'alpinejs'
+import i18next from 'i18next'
+import { switchLang } from './i18n.js'
 
 export function initStore() {
   const store: any = {
@@ -8,14 +10,17 @@ export function initStore() {
     status: 'loading',
     tokenStats: null,
 
+    // i18n state
+    language: i18next.language?.startsWith('zh') ? 'zh' : 'en',
+
     // Router state
     currentTab: 'dashboard',
     tabNames: {
-      dashboard: '仪表盘',
-      providers: '模型供应商',
-      adapters: '适配器',
-      logs: '日志',
-      capture: '协议抓包',
+      dashboard: () => i18next.t('admin.nav.dashboard'),
+      providers: () => i18next.t('admin.nav.providers'),
+      adapters: () => i18next.t('admin.nav.adapters'),
+      logs: () => i18next.t('admin.nav.logs'),
+      capture: () => i18next.t('admin.nav.capture'),
     },
     tabIcons: {
       dashboard: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>`,
@@ -62,6 +67,16 @@ export function initStore() {
     switchTab(tab: string) {
       this.currentTab = tab
       location.hash = '#' + tab
+    },
+
+    switchLang(lang: string) {
+      this.language = lang
+      switchLang(lang)
+    },
+
+    getTabName(key: string): string {
+      const fn = this.tabNames[key]
+      return typeof fn === 'function' ? fn() : key
     },
 
     // Dashboard polling
