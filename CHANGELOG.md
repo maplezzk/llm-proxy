@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.5.0](https://github.com/maplezzk/llm-proxy/compare/v0.4.1...v0.5.0) (2026-05-02)
+
+
+### Features
+
+* 添加 max_body_size 配置参数控制请求体大小限制 ([#33](https://github.com/maplezzk/llm-proxy/issues/33)) ([fefb4ab](https://github.com/maplezzk/llm-proxy/commit/fefb4ab882f811de55ec350b6813ac1a99aef064))
+* 适配器支持 max_tokens 配置，max_tokens=0 时不传该字段 ([#36](https://github.com/maplezzk/llm-proxy/issues/36)) ([4f65f0c](https://github.com/maplezzk/llm-proxy/commit/4f65f0c094c266404f8aafadf6e09b573537519e))
+
+
+### Bug Fixes
+
+* restart 命令增加 stale PID 检测，适配器表单添加 max_tokens 字段 ([#37](https://github.com/maplezzk/llm-proxy/issues/37)) ([27ca1c6](https://github.com/maplezzk/llm-proxy/commit/27ca1c6f96d025042ebbb6f91fe111527f8c5995))
+* 日志消息全部改为英文 ([#35](https://github.com/maplezzk/llm-proxy/issues/35)) ([b32e411](https://github.com/maplezzk/llm-proxy/commit/b32e411a1908ab747c0bf445f9deb4a46d78e2d9))
+
 ## [0.4.1](https://github.com/maplezzk/llm-proxy/compare/v0.4.0...v0.4.1) (2026-05-02)
 
 
