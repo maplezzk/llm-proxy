@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.1](https://github.com/maplezzk/llm-proxy/compare/v0.5.0...v0.5.1) (2026-05-02)
+
+
+### Bug Fixes
+
+* 客户端未传 stream 时显式设为 false，防止上游默认返回 SSE ([#38](https://github.com/maplezzk/llm-proxy/issues/38)) ([ec97f84](https://github.com/maplezzk/llm-proxy/commit/ec97f84ce41e0fccbdaa0a035357f355b9b08612))
+
 ## [0.5.0](https://github.com/maplezzk/llm-proxy/compare/v0.4.1...v0.5.0) (2026-05-02)
 
 
