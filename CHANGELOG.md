@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.6](https://github.com/maplezzk/llm-proxy/compare/v0.5.5...v0.5.6) (2026-05-02)
+
+
+### Bug Fixes
+
+* macOS 26.4.1 中 CFBundleIdentifier 含连字符导致菜单栏图标不显示 ([#51](https://github.com/maplezzk/llm-proxy/issues/51)) ([92a427c](https://github.com/maplezzk/llm-proxy/commit/92a427cfd1b547cf3aba48eb175b52a77393e321))
+
 ## [0.5.5](https://github.com/maplezzk/llm-proxy/compare/v0.5.4...v0.5.5) (2026-05-02)
 
 
