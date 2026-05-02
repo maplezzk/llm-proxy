@@ -44,17 +44,9 @@ class MenuBarController: NSObject {
 
     @MainActor
     func updateStatusIcon() {
-        if let btn = statusItem.button {
-            if let img = Bundle.main.image(forResource: "tray-icon") {
-                img.isTemplate = true
-                btn.image = img
-            } else {
-                btn.image = NSImage(
-                    systemSymbolName: "arrow.triangle.branch",
-                    accessibilityDescription: "LLM Proxy"
-                )
-                btn.image?.isTemplate = true
-            }
+        if let btn = statusItem.button, let img = loadTrayIcon() {
+            img.isTemplate = true
+            btn.image = img
         }
     }
 

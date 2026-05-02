@@ -12,6 +12,7 @@ let package = Package(
             resources: [
                 .process("en.lproj"),
                 .process("zh.lproj"),
+                .process("Assets"),
             ]
         )
     ]
