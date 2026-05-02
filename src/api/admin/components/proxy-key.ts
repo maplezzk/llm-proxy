@@ -1,3 +1,5 @@
+import i18next from 'i18next'
+
 export function proxyKeyForm() {
   return {
     key: '',
@@ -23,7 +25,10 @@ export function proxyKeyForm() {
       this.saving = false
       if (res?.success) {
         this.hasKey = !!this.key
-        ;(window as any).Alpine.store('app').toast(this.key ? '代理 Key 已设置' : '代理 Key 已移除', 'success')
+        ;(window as any).Alpine.store('app').toast(
+          this.key ? i18next.t('admin.dashboard.proxyKeySetSuccess') : i18next.t('admin.dashboard.proxyKeyRemoveSuccess'),
+          'success'
+        )
         this.key = ''
         this.load()
       }

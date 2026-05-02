@@ -343,9 +343,9 @@ tbody tr:hover td { background: #f8f9fb; }
          :class="{ active: $store.app.currentTab === 'logs' }">
       <div class="section">
         <div class="section-header" style="display:flex;align-items:center;justify-content:space-between">
-          <h3>日志</h3>
+          <h3 x-text="$t('admin.logs.title')"></h3>
           <div style="display:flex;align-items:center;gap:16px;font-size:11px;color:var(--text-muted)">
-            <span>共 <strong style="color:var(--text)" x-text="totalCount"></strong> 条匹配 · 第 <strong style="color:var(--text)" x-text="page"></strong>/<strong style="color:var(--text)" x-text="totalPages"></strong> 页</span>
+            <span x-text="$t('admin.logs.matchCount', { count: totalCount, page: page, totalPages: totalPages })"></span>
           </div>
         </div>
 
@@ -354,19 +354,19 @@ tbody tr:hover td { background: #f8f9fb; }
           <input type="date" x-model="dateFilter" @change="load()" style="padding:5px 10px;font-size:12px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);width:135px">
           <button class="filter-btn" @click="dateFilter='';load()" x-show="dateFilter" style="font-size:10px;padding:3px 7px">✕</button>
           <span style="color:var(--border)">|</span>
-          <button class="filter-btn" :class="{active:filter==='all'}" @click="filter='all';page=1">全部</button>
-          <button class="filter-btn" :class="{active:filter==='request'}" @click="filter='request';page=1">请求</button>
-          <button class="filter-btn" :class="{active:filter==='system'}" @click="filter='system';page=1">系统</button>
+          <button class="filter-btn" :class="{active:filter==='all'}" @click="filter='all';page=1" x-text="$t('admin.logs.filterAll')"></button>
+          <button class="filter-btn" :class="{active:filter==='request'}" @click="filter='request';page=1" x-text="$t('admin.logs.filterRequest')"></button>
+          <button class="filter-btn" :class="{active:filter==='system'}" @click="filter='system';page=1" x-text="$t('admin.logs.filterSystem')"></button>
           <span style="color:var(--border)">|</span>
-          <button class="filter-btn" :class="{active:levelFilter==='all'}" @click="levelFilter='all';page=1">全部</button>
+          <button class="filter-btn" :class="{active:levelFilter==='all'}" @click="levelFilter='all';page=1" x-text="$t('admin.logs.filterAll')"></button>
           <button class="filter-btn" :class="{active:levelFilter==='error'}" @click="levelFilter='error';page=1" style="border-color:var(--danger);color:var(--danger)" x-bind:style="levelFilter==='error' ? 'background:var(--danger);color:#fff;border-color:var(--danger)' : 'border-color:var(--danger);color:var(--danger)'">error</button>
           <button class="filter-btn" :class="{active:levelFilter==='warn'}" @click="levelFilter='warn';page=1" style="border-color:var(--warn);color:var(--warn)" x-bind:style="levelFilter==='warn' ? 'background:var(--warn);color:#fff;border-color:var(--warn)' : 'border-color:var(--warn);color:var(--warn)'">warn</button>
           <button class="filter-btn" :class="{active:levelFilter==='info'}" @click="levelFilter='info';page=1">info</button>
           <button class="filter-btn" :class="{active:levelFilter==='debug'}" @click="levelFilter='debug';page=1" style="color:var(--text-muted)">debug</button>
           <span style="color:var(--border)">|</span>
-          <input type="text" x-model="search" @input="page=1" placeholder="搜索…" style="flex:1;min-width:100px;padding:5px 10px;font-size:12px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text)">
+          <input type="text" x-model="search" @input="page=1" x-bind:placeholder="$t('admin.logs.searchPlaceholder')" style="flex:1;min-width:100px;padding:5px 10px;font-size:12px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text)">
           <div style="display:flex;align-items:center;gap:4px">
-            <span style="font-size:11px;color:var(--text-muted)">记录级别</span>
+            <span style="font-size:11px;color:var(--text-muted)" x-text="$t('admin.logs.logLevel')"></span>
             <select x-model="currentLogLevel" @change="setLogLevel($event.target.value)" style="padding:4px 8px;font-size:11px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text)">
               <option value="debug">debug</option>
               <option value="info">info</option>
@@ -374,7 +374,7 @@ tbody tr:hover td { background: #f8f9fb; }
               <option value="error">error</option>
             </select>
           </div>
-          <button class="btn btn-primary btn-sm" @click="load()" style="padding:5px 12px;font-size:11px">刷新</button>
+          <button class="btn btn-primary btn-sm" @click="load()" style="padding:5px 12px;font-size:11px" x-text="$t('admin.common.refresh')"></button>
         </div>
 
         <!-- Log table -->
@@ -382,10 +382,10 @@ tbody tr:hover td { background: #f8f9fb; }
           <table class="log-table">
             <thead><tr>
               <th style="width:36px"></th>
-              <th style="width:170px">时间</th>
-              <th style="width:52px">级别</th>
-              <th style="width:260px">消息</th>
-              <th>详情</th>
+              <th style="width:170px" x-text="$t('admin.logs.time')"></th>
+              <th style="width:52px" x-text="$t('admin.logs.level')"></th>
+              <th style="width:260px" x-text="$t('admin.logs.message')"></th>
+              <th x-text="$t('admin.logs.detail')"></th>
             </tr></thead>
             <tbody>
               <template x-for="log in pagedLogs" :key="log.id">
@@ -403,8 +403,8 @@ tbody tr:hover td { background: #f8f9fb; }
                     <template x-if="log.details">
                       <div>
                         <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px">
-                          <span class="log-detail-toggle" @click="log._closed = !log._closed" x-text="log._closed ? '展开' : '收起'"></span>
-                          <span class="log-detail-toggle" @click="copyJson(log.details)" x-show="!log._closed">复制</span>
+                          <span class="log-detail-toggle" @click="log._closed = !log._closed" x-text="log._closed ? $t('admin.common.expand') : $t('admin.common.collapse')"></span>
+                          <span class="log-detail-toggle" @click="copyJson(log.details)" x-show="!log._closed" x-text="$t('admin.common.copy')"></span>
                         </div>
                         <div class="log-detail" :class="{collapsed: log._closed}" x-text="formatDetails(log.details)"></div>
                       </div>
@@ -414,8 +414,8 @@ tbody tr:hover td { background: #f8f9fb; }
               </template>
             </tbody>
           </table>
-          <div style="padding:32px;text-align:center;color:var(--text-muted);font-size:13px" x-show="filteredLogs.length === 0 && allLogs.length === 0">暂无日志</div>
-          <div style="padding:32px;text-align:center;color:var(--text-muted);font-size:13px" x-show="filteredLogs.length === 0 && allLogs.length > 0">没有匹配的日志</div>
+          <div style="padding:32px;text-align:center;color:var(--text-muted);font-size:13px" x-show="filteredLogs.length === 0 && allLogs.length === 0" x-text="$t('admin.logs.empty')"></div>
+          <div style="padding:32px;text-align:center;color:var(--text-muted);font-size:13px" x-show="filteredLogs.length === 0 && allLogs.length > 0" x-text="$t('admin.logs.noMatch')"></div>
         </div>
 
         <!-- Pagination -->
