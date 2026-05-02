@@ -37,10 +37,13 @@
     "test:watch": "node --import tsx --watch --test test/**/*.test.ts",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist",
-    "prepublishOnly": "npm run build && npm test"
+    "prepublishOnly": "npm run build && npm test",
+    "generate:i18n-types": "tsx scripts/generate-i18n-types.ts",
+    "prebuild": "npm run generate:i18n-types"
   },
   "dependencies": {
     "alpinejs": "^3.15.11",
+    "i18next": "^26.0.8",
     "yaml": "^2.8.0"
   },
   "devDependencies": {

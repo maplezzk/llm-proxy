@@ -1,3 +1,15 @@
+import i18next from 'i18next'
+
+function t(key: string, opts?: Record<string, unknown>): string {
+  return i18next.t(key, opts)
+}
+
+const toast = (msg: string, type = 'info') =>
+  (window as any).Alpine.store('app').toast(msg, type)
+
+const confirm = (msg: string) =>
+  (window as any).Alpine.store('app').confirm(msg)
+
 export function providersPage() {
   return {
     providers: [] as any[],
@@ -78,11 +90,11 @@ export function providersPage() {
           return base
         })
       if (!name || validModels.length === 0) {
-        ;(window as any).Alpine.store('app').toast('请填写名称和模型列表', 'error')
+        toast(t('admin.providers.validationName'), 'error')
         return
       }
       if (!this.editingName && !apiKey) {
-        ;(window as any).Alpine.store('app').toast('请填写 API Key', 'error')
+        toast(t('admin.providers.validationApiKey'), 'error')
         return
       }
 
@@ -98,23 +110,23 @@ export function providersPage() {
         })
       }
       if (!res.success) {
-        ;(window as any).Alpine.store('app').toast(res.error || '保存失败', 'error')
+        toast(res.error || t('admin.providers.saveFailed'), 'error')
         return
       }
-      ;(window as any).Alpine.store('app').toast(this.editingName ? '模型供应商已更新' : '模型供应商已创建', 'success')
+      toast(this.editingName ? t('admin.providers.updated') : t('admin.providers.created'), 'success')
       this.showModal = false
       this.load()
     },
 
     async confirmDelete(name: string) {
-      const ok = await (window as any).Alpine.store('app').confirm(`确定删除模型供应商 "${name}" 吗？`)
+      const ok = await confirm(t('admin.providers.deleteConfirm', { name }))
       if (!ok) return
       const res = await (window as any).Alpine.store('app').fetch(`/admin/providers/${name}`, { method: 'DELETE' })
       if (!res.success) {
-        ;(window as any).Alpine.store('app').toast(res.error || '删除失败', 'error')
+        toast(res.error || t('admin.providers.deleteFailed'), 'error')
         return
       }
-      ;(window as any).Alpine.store('app').toast('模型供应商已删除', 'success')
+      toast(t('admin.providers.deleted'), 'success')
       this.load()
     },
 
@@ -122,11 +134,11 @@ export function providersPage() {
       const { name, type, apiKey, apiBase } = this.form
       const effectiveName = name || this.editingName
       if (!effectiveName) {
-        ;(window as any).Alpine.store('app').toast('请先填写供应商名称', 'error')
+        toast(t('admin.providers.validationProviderName'), 'error')
         return
       }
       if (!apiKey && !this.editingName) {
-        ;(window as any).Alpine.store('app').toast('请填写 API Key', 'error')
+        toast(t('admin.providers.validationApiKey'), 'error')
         return
       }
       this.pullModal = { visible: true, models: [], existing: [], loading: true, error: '' }
@@ -140,7 +152,7 @@ export function providersPage() {
       }).catch(() => null)
 
       if (!res?.success) {
-        this.pullModal = { visible: true, models: [], existing: [], loading: false, error: res?.error || '请求失败' }
+        this.pullModal = { visible: true, models: [], existing: [], loading: false, error: res?.error || t('admin.providers.pullModelsError') }
         return
       }
       this.pullModal = { visible: true, models: res.data.models || [], existing: res.data.existing || [], loading: false, error: '' }
@@ -156,17 +168,18 @@ export function providersPage() {
           added++
         }
       }
-      ;(window as any).Alpine.store('app').toast(
-        `已导入 ${added} 个模型${this.pullModal.models.length - added > 0 ? `（跳过 ${this.pullModal.models.length - added} 个已存在）` : ''}`,
-        'success'
-      )
+      const total = this.pullModal.models.length
+      const msg = total > added
+        ? `${t('admin.providers.importedModels', { added })}${t('admin.providers.importedModelsSkip', { skipped: total - added })}`
+        : t('admin.providers.importedModels', { added })
+      toast(msg, 'success')
       this.pullModal.visible = false
     },
 
     openTestPanel(name: string) {
       const config = (window as any).Alpine.store('app').config
       const p = config?.providers?.find((x: any) => x.name === name)
-      if (!p) { ;(window as any).Alpine.store('app').toast('供应商未找到', 'error'); return }
+      if (!p) { toast(t('admin.providers.notFound'), 'error'); return }
       window.dispatchEvent(new CustomEvent('open-test-panel', {
         detail: { providerName: name, provider: p },
       }))

@@ -5,6 +5,7 @@ import { StatusTracker } from '../status/tracker.js'
 import { TokenTracker } from '../status/token-tracker.js'
 import { CaptureBuffer } from '../proxy/capture.js'
 import { Logger, type LogLevel } from '../log/logger.js'
+import { createI18n, detectLang } from '../lib/i18n.js'
 import type { Server } from 'node:http'
 
 const DEFAULT_CONFIG_PATH = `${process.env.HOME ?? '/tmp'}/.llm-proxy/config.yaml`
@@ -37,26 +38,39 @@ function isProcessRunning(pid: number): boolean {
 }
 
 export async function cmdStart(opts: StartOptions): Promise<void> {
+  // Initialize i18n from env before config is loaded
+  let { t } = createI18n(detectLang(process.env.LANG))
+
   const configPath = opts.config ?? DEFAULT_CONFIG_PATH
 
   if (!existsSync(configPath)) {
-    console.error(`错误: 配置文件不存在: ${configPath}`)
+    console.error(t('cli.start.configNotFound', { path: configPath }))
     process.exit(1)
   }
 
   const existingPid = getPid()
   if (existingPid !== null && isProcessRunning(existingPid)) {
-    console.error(`错误: 代理已在运行 (PID: ${existingPid})`)
+    console.error(t('cli.start.alreadyRunning', { pid: String(existingPid) }))
     process.exit(1)
   }
 
   let store: ConfigStore
   try {
     store = await ConfigStore.create(configPath)
-    console.error('配置加载成功')
+    console.error(t('cli.start.configLoaded'))
   } catch (err) {
-    console.error(`配置加载失败: ${err instanceof Error ? err.message : String(err)}`)
+    console.error(t('cli.start.configLoadFailed', { error: err instanceof Error ? err.message : String(err) }))
     process.exit(1)
+  }
+
+  // Re-init i18n if config specifies a locale
+  const configLocale = store.getConfig().config.locale
+  if (configLocale && ['zh', 'en'].includes(configLocale)) {
+    const result = createI18n(configLocale)
+    t = result.t
+  } else {
+    // Re-init with env lang in case ConfigStore already loaded
+    t = createI18n(detectLang(process.env.LANG)).t
   }
 
   const tracker = new StatusTracker()
@@ -85,59 +99,66 @@ export async function cmdStart(opts: StartOptions): Promise<void> {
   })
 
   process.on('SIGTERM', () => {
-    console.error('\n收到 SIGTERM，正在关闭...')
+    console.error(t('cli.start.sigterm'))
     try { unlinkSync(DEFAULT_PID_PATH) } catch { /* ignore */ }
     server.close()
     process.exit(0)
   })
 
-  logger.log('system', '代理启动', { host, port, config: configPath })
+  logger.log('system', t('cli.start.started', { host, port, config: configPath }), { host, port, config: configPath })
 
   server.listen(port, host, () => {
     writeFileSync(DEFAULT_PID_PATH, String(process.pid))
-    console.error(`代理已启动: http://${host}:${port}`)
-    console.error(`  管理 API:  http://${host}:${port}/admin/`)
-    console.error(`  AI API:    http://${host}:${port}/v1/`)
-    console.error(`PID: ${process.pid}`)
-    console.error(`配置文件: ${configPath}`)
+    console.error(t('cli.start.started', { host, port }))
+    console.error(t('cli.start.adminApi', { host, port }))
+    console.error(t('cli.start.aiApi', { host, port }))
+    console.error(t('cli.start.pid', { pid: String(process.pid) }))
+    console.error(t('cli.start.configFile', { configPath }))
   })
 }
 
 export async function cmdStop(): Promise<void> {
+  // Initialize i18n from env (no config loaded yet)
+  const { t } = createI18n(detectLang(process.env.LANG))
+
   const pid = getPid()
   if (pid === null) {
-    console.error('未找到运行中的代理')
+    console.error(t('cli.stop.notRunning'))
     return
   }
 
   if (!isProcessRunning(pid)) {
-    console.error('发现残留 PID 文件，清理中...')
+    console.error(t('cli.stop.stalePid'))
     try { unlinkSync(DEFAULT_PID_PATH) } catch { /* ignore */ }
     return
   }
 
-  console.error(`正在停止代理 (PID: ${pid})...`)
+  console.error(t('cli.stop.stopping', { pid: String(pid) }))
   process.kill(pid, 'SIGTERM')
 }
 
 export async function cmdStatus(): Promise<void> {
+  const { t } = createI18n(detectLang(process.env.LANG))
+
   const pid = getPid()
   if (pid === null || !isProcessRunning(pid)) {
     if (pid !== null) {
       try { unlinkSync(DEFAULT_PID_PATH) } catch { /* ignore */ }
     }
-    console.error('代理未运行')
+    console.error(t('cli.status.notRunning'))
     return
   }
-  console.error(`代理正在运行 (PID: ${pid})`)
+  console.error(t('cli.status.running', { pid: String(pid) }))
 }
 
 export async function cmdRestart(opts: StartOptions): Promise<void> {
+  const { t } = createI18n(detectLang(process.env.LANG))
+
   const pid = getPid()
   if (pid !== null && isProcessRunning(pid)) {
-    console.error(`正在停止代理 (PID: ${pid})...`)
+    console.error(t('cli.restart.stopping', { pid: String(pid) }))
     process.kill(pid, 'SIGTERM')
-    // 等待进程退出
+    // Wait for process to exit
     await new Promise<void>((resolve) => {
       const check = setInterval(() => {
         if (!isProcessRunning(pid)) {
@@ -147,12 +168,14 @@ export async function cmdRestart(opts: StartOptions): Promise<void> {
       }, 200)
       setTimeout(() => { clearInterval(check); resolve() }, 5000)
     })
-    console.error('代理已停止，正在重启...')
+    console.error(t('cli.restart.restarting'))
   }
   await cmdStart(opts)
 }
 
 export async function cmdReload(opts: { port?: number }): Promise<void> {
+  const { t } = createI18n(detectLang(process.env.LANG))
+
   const port = opts.port ?? DEFAULT_PORT
   const url = `http://${DEFAULT_HOST}:${port}/admin/config/reload`
 
@@ -160,18 +183,18 @@ export async function cmdReload(opts: { port?: number }): Promise<void> {
     const response = await fetch(url, { method: 'POST' })
     const data = await response.json()
     if (data.success) {
-      console.log(`配置重载成功 (版本: ${data.data.version})`)
+      console.log(t('cli.reload.success', { version: data.data.version }))
     } else {
-      console.error(`配置重载失败: ${data.error}`)
+      console.error(t('cli.reload.failed', { error: data.error }))
       if (data.errors) {
         for (const e of data.errors) {
-          console.error(`  - ${e.message}`)
+          console.error(t('cli.reload.errorItem', { message: e.message }))
         }
       }
       process.exit(1)
     }
   } catch (err) {
-    console.error(`无法连接到代理: ${err instanceof Error ? err.message : String(err)}`)
+    console.error(t('cli.reload.connectionFailed', { error: err instanceof Error ? err.message : String(err) }))
     process.exit(1)
   }
 }

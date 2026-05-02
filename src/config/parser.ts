@@ -71,6 +71,7 @@ export function loadConfigFromYaml(filePath: string): Config {
     })),
     proxyKey: interpolated.proxy_key,
     logLevel: (['debug','info','warn','error'].includes(interpolated.log_level as string) ? interpolated.log_level : undefined) as Config['logLevel'],
+    locale: interpolated.locale,
   }
 }
 
@@ -100,6 +101,7 @@ export function serializeConfigToYaml(config: Config): string {
     })),
     proxy_key: config.proxyKey,
     log_level: config.logLevel,
+    locale: config.locale,
   }
   return stringifyYaml(file)
 }

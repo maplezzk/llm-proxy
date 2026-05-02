@@ -13,3 +13,4 @@ llm-proxy
 
 # macOS app build
 app/.build/
+src/types/i18n.generated.ts

@@ -1,0 +1,16 @@
+"status.running" = "● llm-proxy 运行中";
+"status.notRunning" = "○ llm-proxy 未运行";
+"action.stop" = "⏹  停止服务";
+"action.restart" = "↺  重启服务";
+"action.start" = "▶  启动服务";
+"status.cannotConnect" = "无法连接到 llm-proxy";
+"action.refresh" = "刷新";
+"action.logLevel" = "日志级别: %@";
+"action.openAdmin" = "打开 Admin UI";
+"action.quit" = "退出 LLMProxy";
+"status.stopping" = "◌ 正在停止...";
+"status.restarting" = "◌ 正在重启...";
+"status.starting" = "◌ 正在启动...";
+"error.switchFailed" = "切换失败: %@";
+"error.setLogLevelFailed" = "设置日志级别失败: %@";
+"app.title" = "LLM Proxy";

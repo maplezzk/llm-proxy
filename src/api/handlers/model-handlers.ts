@@ -3,6 +3,7 @@ import type { ServerContext } from '../server.js'
 import { readBody, getDefaultApiBase } from '../../lib/http-utils.js'
 import { resolveAdapterRoute, AdapterError } from '../../adapter/router.js'
 import { json } from './index.js'
+import { t } from '../../lib/i18n.js'
 
 const API_KEY_PATTERN = /sk-[a-zA-Z0-9-]+/g
 

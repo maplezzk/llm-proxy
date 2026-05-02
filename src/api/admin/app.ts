@@ -1,5 +1,7 @@
 import Alpine from 'alpinejs'
+import i18next from 'i18next'
 import { initStore } from './store.js'
+import { initAdminI18n } from './i18n.js'
 import { dashboardPage } from './components/dashboard.js'
 import { logsPage } from './components/logs.js'
 import { providersPage } from './components/providers.js'
@@ -7,6 +9,14 @@ import { testPanel } from './components/test-panel.js'
 import { adaptersPage } from './components/adapters.js'
 import { proxyKeyForm } from './components/proxy-key.js'
 import { capturePage } from './components/capture.js'
+
+// Initialize i18n before Alpine components
+initAdminI18n()
+
+// Register $t() magic helper for use in templates: x-text="$t('admin.nav.dashboard')"
+Alpine.magic('t', () => (key: string, options?: Record<string, unknown>) => {
+  return i18next.t(key, options)
+})
 
 initStore()
 

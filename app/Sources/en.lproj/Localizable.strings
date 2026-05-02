@@ -1,0 +1,16 @@
+"status.running" = "● llm-proxy Running";
+"status.notRunning" = "○ llm-proxy Not Running";
+"action.stop" = "⏹  Stop Service";
+"action.restart" = "↺  Restart Service";
+"action.start" = "▶  Start Service";
+"status.cannotConnect" = "Cannot connect to llm-proxy";
+"action.refresh" = "Refresh";
+"action.logLevel" = "Log Level: %@";
+"action.openAdmin" = "Open Admin UI";
+"action.quit" = "Quit LLMProxy";
+"status.stopping" = "◌ Stopping...";
+"status.restarting" = "◌ Restarting...";
+"status.starting" = "◌ Starting...";
+"error.switchFailed" = "Switch failed: %@";
+"error.setLogLevelFailed" = "Set log level failed: %@";
+"app.title" = "LLM Proxy";
