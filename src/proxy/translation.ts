@@ -612,6 +612,8 @@ export async function transformInboundRequest(
 
   if (sameProtocol) {
     const upstreamBody: Record<string, unknown> = { ...body, model: route.modelId }
+    // max_tokens: 0 → 不传（让上游用默认值）, 应用路由级默认值
+    sanitizeMaxTokens(upstreamBody, route)
     injectThinkingConfig(upstreamBody, route)
     // thinking 模式检测：配置开启了 或 消息中已有 thinking 块，都需要补全
     if (route.providerType === 'anthropic') {
@@ -632,6 +634,11 @@ export async function transformInboundRequest(
       ? extractFullOpenAI(body)
       : extractFullAnthropic(body)
   params.model = route.modelId
+  // max_tokens: 0 → undefined（不传，让 builder 走默认值）, 应用路由级默认值
+  if (params.max_tokens === 0) params.max_tokens = undefined
+  if (params.max_tokens === undefined && route.max_tokens !== undefined) {
+    params.max_tokens = route.max_tokens
+  }
 
   let upstreamBody: Record<string, unknown>
   if (route.providerType === 'anthropic') {
@@ -644,6 +651,8 @@ export async function transformInboundRequest(
     upstreamBody = buildOpenAIFromAnthropic(params)
   }
 
+  // max_tokens 二次兜底，处理 builder 中可能遗留的 0
+  sanitizeMaxTokens(upstreamBody, route)
   // 注入 thinking 配置到转换后的请求体
   injectThinkingConfig(upstreamBody, route)
   // thinking 模式检测：配置开启了 或 消息中已有 thinking 块，都需要补全
@@ -714,6 +723,24 @@ function ensureThinkingBlocks(messages: Array<Record<string, unknown>>): void {
       const placeholder = generatePlaceholderThinking(content)
       content.unshift({ type: 'thinking', thinking: placeholder, signature: makeSignature(placeholder) })
     }
+  }
+}
+
+/**
+ * 归一化 max_tokens：0 → 不传（让上游用默认值），应用路由级默认值。
+ * 同协议和跨协议路径都调用此函数。
+ */
+function sanitizeMaxTokens(
+  upstreamBody: Record<string, unknown>,
+  route: RouterResult
+): void {
+  // 0 或负数 → 不传
+  if (typeof upstreamBody.max_tokens === 'number' && upstreamBody.max_tokens <= 0) {
+    delete upstreamBody.max_tokens
+  }
+  // 没传且路由有默认值 → 用路由的
+  if (upstreamBody.max_tokens === undefined && route.max_tokens !== undefined) {
+    upstreamBody.max_tokens = route.max_tokens
   }
 }
 
