@@ -1,6 +1,6 @@
 import type { IncomingMessage } from 'node:http'
 
-export function readBody(req: IncomingMessage, maxBytes = 1_000_000): Promise<string> {
+export function readBody(req: IncomingMessage, maxBytes = 10_000_000): Promise<string> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = []
     let totalBytes = 0
