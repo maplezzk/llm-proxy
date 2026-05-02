@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.5](https://github.com/maplezzk/llm-proxy/compare/v0.5.4...v0.5.5) (2026-05-02)
+
+
+### Bug Fixes
+
+* npm 全局安装后 bin entry 找不到 tsx 和 src 源码 ([#49](https://github.com/maplezzk/llm-proxy/issues/49)) ([181d47a](https://github.com/maplezzk/llm-proxy/commit/181d47a7c342203d5369472c25494ff0db3d8cc2))
+
 ## [0.5.4](https://github.com/maplezzk/llm-proxy/compare/v0.5.3...v0.5.4) (2026-05-02)
 
 
