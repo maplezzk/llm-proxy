@@ -256,8 +256,12 @@ export class Logger {
       result = result.filter(e => e.type === type)
     }
 
-    // 6. 按 ID 倒序，取最新 limit 条
-    result.sort((a, b) => b.id - a.id)
+    // 6. 按时间戳倒序，时间戳相同时按 ID 倒序（ID 单调递增保证同毫秒内的顺序）
+    result.sort((a, b) => {
+      const tsCmp = b.timestamp.localeCompare(a.timestamp)
+      if (tsCmp !== 0) return tsCmp
+      return b.id - a.id
+    })
     return result.slice(0, limit)
   }
 

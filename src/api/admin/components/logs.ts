@@ -27,7 +27,8 @@ export function logsPage() {
     },
 
     get filteredLogs() {
-      let logs = this.allLogs
+      // 先复制避免 排序 修改原数组
+      let logs = this.allLogs.slice().sort((a: any, b: any) => b.timestamp.localeCompare(a.timestamp))
       if (this.filter !== 'all') {
         logs = logs.filter((l: any) => l.type === this.filter)
       }
