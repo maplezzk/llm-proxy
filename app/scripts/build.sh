@@ -42,6 +42,7 @@ cat > "$APP/Contents/Info.plist" << 'PLIST'
     <key>CFBundleExecutable</key><string>LLMProxy</string>
     <key>CFBundleIdentifier</key><string>com.maplezzk.llm-proxy</string>
     <key>CFBundleName</key><string>LLMProxy</string>
+    <key>CFBundleIconFile</key><string>AppIcon</string>
     <key>CFBundleVersion</key><string>1.0</string>
     <key>CFBundleShortVersionString</key><string>1.0</string>
     <key>LSUIElement</key><true/>
