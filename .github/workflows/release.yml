@@ -64,3 +64,80 @@ jobs:
             echo "Publishing stable version $VERSION"
             npm publish --provenance
           fi
+
+  # macOS app 构建并上传到 Release（不依赖独立的 release-app.yml 事件触发）
+  build-macos:
+    needs: release-please
+    if: ${{ needs.release-please.outputs.release_created }}
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Setup bun
+        uses: oven-sh/setup-bun@v1
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build app
+        run: bash app/scripts/build.sh
+
+      - name: Get version
+        id: version
+        run: |
+          VERSION="${{ needs.release-please.outputs.tag_name }}"
+          VERSION="${VERSION#v}"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Calculate SHA256
+        id: sha
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          SHA=$(shasum -a 256 app/.build/LLMProxy-v${VERSION}.dmg | cut -d' ' -f1)
+          echo "sha=$SHA" >> $GITHUB_OUTPUT
+
+      - name: Upload DMG to Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          gh release upload "v${VERSION}" "app/.build/LLMProxy-v${VERSION}.dmg"
+
+      - name: Update Homebrew tap
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          SHA="${{ steps.sha.outputs.sha }}"
+
+          git clone https://x-access-token:${{ secrets.TAP_REPO_PAT }}@github.com/maplezzk/homebrew-tap.git tap-repo
+          cd tap-repo
+
+          cat > Casks/llm-proxy.rb << EOF
+          cask "llm-proxy" do
+            version "$VERSION"
+            sha256 "$SHA"
+
+            url "https://github.com/maplezzk/llm-proxy/releases/download/v#{version}/LLMProxy-v#{version}.dmg"
+            name "LLMProxy"
+            desc "macOS desktop app for llm-proxy — multi-protocol LLM proxy"
+            homepage "https://github.com/maplezzk/llm-proxy"
+
+            depends_on macos: ">= :ventura"
+
+            app "LLMProxy.app"
+
+            zap trash: [
+              "~/Library/Preferences/com.maplezzk.llm-proxy.plist",
+            ]
+          end
+          EOF
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Casks/llm-proxy.rb
+          git rm -f Casks/llm-proxy-menubar.rb 2>/dev/null || true
+          git commit -m "chore: update llm-proxy cask to v$VERSION" || echo "no changes"
+          git push origin main
