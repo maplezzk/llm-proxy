@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.2](https://github.com/maplezzk/llm-proxy/compare/v0.5.1...v0.5.2) (2026-05-02)
+
+
+### Bug Fixes
+
+* macOS app 安装包 Info.plist 缺少 CFBundleIconFile 导致显示默认图标 ([#42](https://github.com/maplezzk/llm-proxy/issues/42)) ([392dd4c](https://github.com/maplezzk/llm-proxy/commit/392dd4c0c3c0a75bf959156e1d4d46b6a0897307))
+
 ## [0.5.1](https://github.com/maplezzk/llm-proxy/compare/v0.5.0...v0.5.1) (2026-05-02)
 
 
