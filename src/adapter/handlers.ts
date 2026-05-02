@@ -67,7 +67,7 @@ export async function handleAdapterRequest(
       ? (err.code === 'ADAPTER_NOT_FOUND' || err.code === 'MODEL_MAPPING_NOT_FOUND' ? 404 : 502)
       : 502
     const message = err instanceof Error ? err.message : String(err)
-    ctx.logger.log('request', `适配器路由失败: ${adapterName}`, { adapter: adapterName, model: pre.modelName, error: message }, 'warn')
+    ctx.logger.log('request', `Adapter route failed: ${adapterName}`, { adapter: adapterName, model: pre.modelName, error: message }, 'warn')
     res.writeHead(status, { 'Content-Type': 'application/json' })
     res.end(JSON.stringify({ error: { message } }))
     return

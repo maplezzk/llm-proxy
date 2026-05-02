@@ -41,7 +41,7 @@ export async function handleTestModel(ctx: ServerContext, req: IncomingMessage, 
     return
   }
 
-  ctx.logger.log('system', '收到模型测试请求', { type, model, providerName: body.providerName })
+  ctx.logger.log('system', 'Model test request received', { type, model, providerName: body.providerName })
 
   if (type !== 'openai' && type !== 'anthropic' && type !== 'openai-responses') {
     json(res, 400, { success: false, error: 'type 必须为 openai、anthropic 或 openai-responses' })
@@ -93,12 +93,12 @@ export async function handleTestModel(ctx: ServerContext, req: IncomingMessage, 
     }
 
     const providerName = (body.providerName as string) || ''
-    ctx.logger.log('system', '模型测试', { type, model, reachable, latency, provider: providerName }, reachable ? 'info' : 'warn')
+    ctx.logger.log('system', 'Model test', { type, model, reachable, latency, provider: providerName }, reachable ? 'info' : 'warn')
     json(res, 200, { success: true, data: { reachable, latency, model, error } })
   } catch (err) {
     const latency = Date.now() - startTime
     const message = sanitizeError(err instanceof Error ? err.message : String(err))
-    ctx.logger.log('system', '模型测试失败', { type, model, latency, error: message }, 'error')
+    ctx.logger.log('system', 'Model test failed', { type, model, latency, error: message }, 'error')
     json(res, 200, { success: true, data: { reachable: false, latency, model, error: message } })
   }
 }
@@ -120,7 +120,7 @@ export async function handleTestAdapter(ctx: ServerContext, req: IncomingMessage
     return
   }
 
-  ctx.logger.log('system', '收到适配器测试请求', { adapter: adapterName, model: modelId })
+  ctx.logger.log('system', 'Adapter test request received', { adapter: adapterName, model: modelId })
 
   let route
   try {
@@ -128,7 +128,7 @@ export async function handleTestAdapter(ctx: ServerContext, req: IncomingMessage
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     const code = err instanceof AdapterError ? err.code : 'UNKNOWN'
-    ctx.logger.log('system', '适配器测试路由解析失败', { adapter: adapterName, model: modelId, error: message, code }, 'warn')
+    ctx.logger.log('system', 'Adapter test route resolution failed', { adapter: adapterName, model: modelId, error: message, code }, 'warn')
     json(res, 400, { success: false, error: message })
     return
   }
@@ -171,7 +171,7 @@ export async function handleTestAdapter(ctx: ServerContext, req: IncomingMessage
       error = sanitizeError(`HTTP ${response.status}: ${text.slice(0, 200)}`)
     }
 
-    ctx.logger.log('system', '适配器测试', {
+    ctx.logger.log('system', 'Adapter test', {
       adapter: adapterName,
       model: modelId,
       targetModel,
@@ -183,7 +183,7 @@ export async function handleTestAdapter(ctx: ServerContext, req: IncomingMessage
   } catch (err) {
     const latency = Date.now() - startTime
     const message = sanitizeError(err instanceof Error ? err.message : String(err))
-    ctx.logger.log('system', '适配器测试失败', { adapter: adapterName, model: modelId, targetModel, provider: route.route.providerName, latency, error: message }, 'error')
+    ctx.logger.log('system', 'Adapter test failed', { adapter: adapterName, model: modelId, targetModel, provider: route.route.providerName, latency, error: message }, 'error')
     json(res, 200, { success: true, data: { reachable: false, latency, model: modelId, error: message } })
   }
 }
@@ -220,7 +220,7 @@ export async function handlePullModels(ctx: ServerContext, req: IncomingMessage,
     return
   }
 
-  ctx.logger.log('system', '收到模型拉取请求', { provider: providerName, type, apiBase })
+  ctx.logger.log('system', 'Model pull request received', { provider: providerName, type, apiBase })
 
   const headers: Record<string, string> = {}
   if (type === 'anthropic') {
@@ -257,11 +257,11 @@ export async function handlePullModels(ctx: ServerContext, req: IncomingMessage,
 
     const existing = models.filter((m) => existingSet.has(m.id)).map((m) => m.id)
 
-    ctx.logger.log('system', '远程模型拉取', { provider: providerName, count: models.length, existing: existing.length })
+    ctx.logger.log('system', 'Remote models pulled', { provider: providerName, count: models.length, existing: existing.length })
     json(res, 200, { success: true, data: { models, existing } })
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
-    ctx.logger.log('system', '远程模型拉取失败', { provider: providerName, error: message }, 'error')
+    ctx.logger.log('system', 'Remote model pull failed', { provider: providerName, error: message }, 'error')
     json(res, 400, { success: false, error: sanitizeError(message) })
   }
 }

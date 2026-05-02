@@ -38,8 +38,8 @@ export async function handleCreateProvider(ctx: ServerContext, req: IncomingMess
   const newConfig: Config = structuredClone(config)
   newConfig.providers.push(newProvider)
   await ctx.store.writeConfig(newConfig)
-  ctx.logger.log('system', '收到创建 Provider 请求', { name, type, apiBase: api_base })
-  ctx.logger.log('system', 'Provider 已创建', { name, type })
+  ctx.logger.log('system', 'Create provider request received', { name, type, apiBase: api_base })
+  ctx.logger.log('system', 'Provider created', { name, type })
   json(res, 200, { success: true, data: { name } })
 }
 
@@ -91,8 +91,8 @@ export async function handleUpdateProvider(ctx: ServerContext, req: IncomingMess
   }
 
   await ctx.store.writeConfig(newConfig)
-  ctx.logger.log('system', '收到更新 Provider 请求', { name: providerName, newName: finalName, type: type ?? '', apiBase: api_base })
-  ctx.logger.log('system', 'Provider 已更新', { name: finalName, previously: providerName !== finalName ? providerName : undefined })
+  ctx.logger.log('system', 'Update provider request received', { name: providerName, newName: finalName, type: type ?? '', apiBase: api_base })
+  ctx.logger.log('system', 'Provider updated', { name: finalName, previously: providerName !== finalName ? providerName : undefined })
   json(res, 200, { success: true, data: { name: finalName } })
 }
 
@@ -117,7 +117,7 @@ export async function handleDeleteProvider(ctx: ServerContext, req: IncomingMess
   const newConfig: Config = structuredClone(config)
   newConfig.providers.splice(idx, 1)
   await ctx.store.writeConfig(newConfig)
-  ctx.logger.log('system', '收到删除 Provider 请求', { name: providerName })
-  ctx.logger.log('system', 'Provider 已删除', { name: providerName })
+  ctx.logger.log('system', 'Delete provider request received', { name: providerName })
+  ctx.logger.log('system', 'Provider deleted', { name: providerName })
   json(res, 200, { success: true, data: { name: providerName } })
 }

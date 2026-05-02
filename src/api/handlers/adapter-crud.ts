@@ -66,8 +66,8 @@ export async function handleCreateAdapter(ctx: ServerContext, req: IncomingMessa
   if (!newConfig.adapters) newConfig.adapters = []
   newConfig.adapters.push(newAdapter)
   await ctx.store.writeConfig(newConfig)
-  ctx.logger.log('system', '收到创建适配器请求', { name, type, modelCount: models.length })
-  ctx.logger.log('system', '适配器已创建', { name, type })
+  ctx.logger.log('system', 'Create adapter request received', { name, type, modelCount: models.length })
+  ctx.logger.log('system', 'Adapter created', { name, type })
   json(res, 200, { success: true, data: { name } })
 }
 
@@ -100,8 +100,8 @@ export async function handleUpdateAdapter(ctx: ServerContext, req: IncomingMessa
     models: models ?? newConfig.adapters[idx].models,
   }
   await ctx.store.writeConfig(newConfig)
-  ctx.logger.log('system', '收到更新适配器请求', { name: adapterName, newName: finalName, type: type ?? '', modelCount: models?.length })
-  ctx.logger.log('system', '适配器已更新', { name: adapterName })
+  ctx.logger.log('system', 'Update adapter request received', { name: adapterName, newName: finalName, type: type ?? '', modelCount: models?.length })
+  ctx.logger.log('system', 'Adapter updated', { name: adapterName })
   json(res, 200, { success: true, data: { name: adapterName } })
 }
 
@@ -121,7 +121,7 @@ export async function handleDeleteAdapter(ctx: ServerContext, req: IncomingMessa
   if (!newConfig.adapters) { json(res, 500, { success: false, error: '服务器状态异常' }); return }
   newConfig.adapters.splice(idx, 1)
   await ctx.store.writeConfig(newConfig)
-  ctx.logger.log('system', '收到删除适配器请求', { name: adapterName })
-  ctx.logger.log('system', '适配器已删除', { name: adapterName })
+  ctx.logger.log('system', 'Delete adapter request received', { name: adapterName })
+  ctx.logger.log('system', 'Adapter deleted', { name: adapterName })
   json(res, 200, { success: true, data: { name: adapterName } })
 }

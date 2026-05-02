@@ -37,12 +37,12 @@ export async function parseAndAuth(
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     if (message.includes('BODY_TOO_LARGE')) {
-      logger.log('request', `${logLabel} 请求体超限`, { logLabel }, 'warn')
+      logger.log('request', `${logLabel} body size limit exceeded`, { logLabel }, 'warn')
       res.writeHead(413, { 'Content-Type': 'application/json' })
       res.end(JSON.stringify({ error: { message: t('backend.errors.bodyTooLarge') } }))
       return null
     }
-    logger.log('request', `${logLabel} 读取请求体失败`, { logLabel, error: message }, 'warn')
+    logger.log('request', `${logLabel} failed to read request body`, { logLabel, error: message }, 'warn')
     res.writeHead(400, { 'Content-Type': 'application/json' })
     res.end(JSON.stringify({ error: { message: t('backend.errors.readBodyFailed') } }))
     return null
@@ -53,7 +53,7 @@ export async function parseAndAuth(
   try {
     body = JSON.parse(rawBody)
   } catch {
-    logger.log('request', `${logLabel} 入站 JSON 解析失败`, { rawBody: rawBody.slice(0, 200) }, 'warn')
+    logger.log('request', `${logLabel} inbound JSON parse failed`, { rawBody: rawBody.slice(0, 200) }, 'warn')
     res.writeHead(400, { 'Content-Type': 'application/json' })
     res.end(JSON.stringify({ error: { message: t('backend.errors.invalidJson') } }))
     return null
@@ -65,7 +65,7 @@ export async function parseAndAuth(
     const auth = req.headers['authorization'] ?? req.headers['x-api-key'] ?? ''
     const key = String(auth).replace(/^Bearer\s+/i, '').trim()
     if (key !== config.proxyKey) {
-      logger.log('request', `${logLabel} 认证失败`, { auth: key ? 'sk-***' : '(空)' }, 'warn')
+      logger.log('request', `${logLabel} auth failed`, { auth: key ? 'sk-***' : '(empty)' }, 'warn')
       res.writeHead(401, { 'Content-Type': 'application/json' })
       res.end(JSON.stringify({ error: { message: '代理 API Key 无效' } }))
       return null
@@ -112,7 +112,7 @@ export async function forwardPipeline(
   const startTime = Date.now()
   const modelName = String(body.model ?? '')
 
-  ctx.logger.log('request', `入站: ${logLabel}`, {
+  ctx.logger.log('request', `Inbound: ${logLabel}`, {
     type: inboundType,
     model: body.model,
     stream: isStream,
@@ -154,7 +154,7 @@ export async function forwardPipeline(
 
     const latency = Date.now() - startTime
     ctx.tracker.recordRequest(route.providerName, latency, true)
-    ctx.logger.log('request', `${logLabel} 完成 → ${route.providerName}/${route.providerType}`, {
+    ctx.logger.log('request', `${logLabel} done → ${route.providerName}/${route.providerType}`, {
       model: modelName,
       modelId: route.modelId,
       provider: route.providerName,
@@ -167,7 +167,7 @@ export async function forwardPipeline(
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     ctx.tracker.recordRequest(route.providerName, 0, false)
-    ctx.logger.log('request', `${logLabel} 失败 → ${route.providerName}`, {
+    ctx.logger.log('request', `${logLabel} failed → ${route.providerName}`, {
       model: modelName,
       provider: route.providerName,
       type: inboundType,
