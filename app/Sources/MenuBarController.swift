@@ -44,17 +44,9 @@ class MenuBarController: NSObject {
 
     @MainActor
     func updateStatusIcon() {
-        if let btn = statusItem.button {
-            if let img = Bundle.main.image(forResource: "tray-icon") {
-                img.isTemplate = true
-                btn.image = img
-            } else {
-                btn.image = NSImage(
-                    systemSymbolName: "arrow.triangle.branch",
-                    accessibilityDescription: "LLM Proxy"
-                )
-                btn.image?.isTemplate = true
-            }
+        if let btn = statusItem.button, let img = loadTrayIcon() {
+            img.isTemplate = true
+            btn.image = img
         }
     }
 
@@ -301,10 +293,21 @@ class MenuBarController: NSObject {
             task.executableURL = URL(fileURLWithPath: bundled)
             task.currentDirectoryURL = URL(fileURLWithPath: Bundle.main.resourcePath!)
         } else {
-            task.executableURL = URL(fileURLWithPath: "/opt/homebrew/bin/llm-proxy")
+            let fallback = "/opt/homebrew/bin/llm-proxy"
+            if FileManager.default.isExecutableFile(atPath: fallback) {
+                task.executableURL = URL(fileURLWithPath: fallback)
+            } else {
+                NSLog("[LLMProxy] ❌ 找不到 llm-proxy 二进制 (bundled 和 /opt/homebrew/bin 都不存在)")
+                return
+            }
         }
         task.arguments = [command]
-        try? task.run()
+        do {
+            try task.run()
+            NSLog("[LLMProxy] ✅ 执行 llm-proxy \(command)")
+        } catch {
+            NSLog("[LLMProxy] ❌ 启动 llm-proxy 失败: \(error.localizedDescription)")
+        }
     }
 
     @objc func quitApp() {
