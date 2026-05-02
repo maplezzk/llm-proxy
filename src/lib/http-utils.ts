@@ -8,7 +8,7 @@ export function readBody(req: IncomingMessage, maxBytes = 10_000_000): Promise<s
       totalBytes += chunk.length
       if (totalBytes > maxBytes) {
         req.destroy()
-        reject(new Error('请求体超过大小限制'))
+        reject(new Error('BODY_TOO_LARGE'))
         return
       }
       chunks.push(chunk)
