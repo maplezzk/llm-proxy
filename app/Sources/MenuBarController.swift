@@ -82,9 +82,8 @@ class MenuBarController: NSObject {
 
         // 状态行
         let statusMenuItem = NSMenuItem()
-        let dot = serviceRunning ? "● " : "○ "
-        let statusText = serviceRunning ? "llm-proxy 运行中" : "llm-proxy 未运行"
-        let attrTitle = NSMutableAttributedString(string: dot + statusText)
+        let statusText = serviceRunning ? loc("status.running") : loc("status.notRunning")
+        let attrTitle = NSMutableAttributedString(string: statusText)
         let color: NSColor = serviceRunning ? .systemGreen : .systemGray
         attrTitle.addAttribute(.foregroundColor, value: color, range: NSRange(location: 0, length: attrTitle.length))
         attrTitle.addAttribute(.font, value: NSFont.systemFont(ofSize: 13, weight: .medium), range: NSRange(location: 0, length: attrTitle.length))
@@ -95,21 +94,21 @@ class MenuBarController: NSObject {
 
         // 服务控制
         if serviceRunning {
-            let stopItem = NSMenuItem(title: "⏹  停止服务", action: #selector(stopService), keyEquivalent: "")
+            let stopItem = NSMenuItem(title: loc("action.stop"), action: #selector(stopService), keyEquivalent: "")
             stopItem.target = self
             menu.addItem(stopItem)
-            let restartItem = NSMenuItem(title: "↺  重启服务", action: #selector(restartService), keyEquivalent: "")
+            let restartItem = NSMenuItem(title: loc("action.restart"), action: #selector(restartService), keyEquivalent: "")
             restartItem.target = self
             menu.addItem(restartItem)
         } else {
-            let startItem = NSMenuItem(title: "▶  启动服务", action: #selector(startService), keyEquivalent: "")
+            let startItem = NSMenuItem(title: loc("action.start"), action: #selector(startService), keyEquivalent: "")
             startItem.target = self
             menu.addItem(startItem)
         }
         menu.addItem(.separator())
 
         if adapters.isEmpty {
-            let item = NSMenuItem(title: "无法连接到 llm-proxy", action: nil, keyEquivalent: "")
+            let item = NSMenuItem(title: loc("status.cannotConnect"), action: nil, keyEquivalent: "")
             item.isEnabled = false
             menu.addItem(item)
         } else {
@@ -162,12 +161,12 @@ class MenuBarController: NSObject {
 
         menu.addItem(.separator())
 
-        let refreshItem = NSMenuItem(title: "刷新", action: #selector(refreshMenu), keyEquivalent: "r")
+        let refreshItem = NSMenuItem(title: loc("action.refresh"), action: #selector(refreshMenu), keyEquivalent: "r")
         refreshItem.target = self
         menu.addItem(refreshItem)
 
         // 日志级别
-        let logLevelItem = NSMenuItem(title: "日志级别: \(currentLogLevel)", action: nil, keyEquivalent: "")
+        let logLevelItem = NSMenuItem(title: loc("action.logLevel", currentLogLevel), action: nil, keyEquivalent: "")
         let logLevelMenu = NSMenu()
         for level in ["debug", "info", "warn", "error"] {
             let item = NSMenuItem(title: level, action: #selector(changeLogLevel(_:)), keyEquivalent: "")
@@ -179,13 +178,13 @@ class MenuBarController: NSObject {
         logLevelItem.submenu = logLevelMenu
         menu.addItem(logLevelItem)
 
-        let adminItem = NSMenuItem(title: "打开 Admin UI", action: #selector(openAdmin), keyEquivalent: "")
+        let adminItem = NSMenuItem(title: loc("action.openAdmin"), action: #selector(openAdmin), keyEquivalent: "")
         adminItem.target = self
         menu.addItem(adminItem)
 
         menu.addItem(.separator())
 
-        let quitItem = NSMenuItem(title: "退出 LLMProxy", action: #selector(quitApp), keyEquivalent: "q")
+        let quitItem = NSMenuItem(title: loc("action.quit"), action: #selector(quitApp), keyEquivalent: "q")
         quitItem.target = self
         menu.addItem(quitItem)
 
@@ -220,7 +219,7 @@ class MenuBarController: NSObject {
             try await client.updateAdapter(action.adapter, mappings: newMappings)
             await refresh()
         } catch {
-            showError("切换失败: \(error.localizedDescription)")
+            showError(loc("error.switchFailed", error.localizedDescription))
         }
     }
 
@@ -238,14 +237,14 @@ class MenuBarController: NSObject {
                 currentLogLevel = level
                 rebuildMenu()
             } catch {
-                showError("设置日志级别失败: \(error.localizedDescription)")
+                showError(loc("error.setLogLevelFailed", error.localizedDescription))
             }
         }
     }
 
     @MainActor @objc func stopService() {
         runCLI("stop")
-        setTransientStatus("正在停止...")
+        setTransientStatus(loc("status.stopping"))
         Task { @MainActor in
             try? await Task.sleep(nanoseconds: 1_500_000_000)
             await refresh()
@@ -254,7 +253,7 @@ class MenuBarController: NSObject {
 
     @MainActor @objc func restartService() {
         runCLI("restart")
-        setTransientStatus("正在重启...")
+        setTransientStatus(loc("status.restarting"))
         Task { @MainActor in
             try? await Task.sleep(nanoseconds: 3_000_000_000)
             await refresh()
@@ -263,7 +262,7 @@ class MenuBarController: NSObject {
 
     @MainActor @objc func startService() {
         runCLI("start")
-        setTransientStatus("正在启动...")
+        setTransientStatus(loc("status.starting"))
         Task { @MainActor in
             try? await Task.sleep(nanoseconds: 2_000_000_000)
             await refresh()
@@ -274,7 +273,7 @@ class MenuBarController: NSObject {
     func setTransientStatus(_ text: String) {
         guard let menu = statusItem.menu,
               let first = menu.items.first else { return }
-        let attrTitle = NSMutableAttributedString(string: "◌ " + text)
+        let attrTitle = NSMutableAttributedString(string: text)
         attrTitle.addAttribute(.foregroundColor, value: NSColor.systemOrange,
                                range: NSRange(location: 0, length: attrTitle.length))
         attrTitle.addAttribute(.font, value: NSFont.systemFont(ofSize: 13, weight: .medium),
@@ -318,7 +317,7 @@ class MenuBarController: NSObject {
 
     func showError(_ msg: String) {
         let alert = NSAlert()
-        alert.messageText = "LLM Proxy"
+        alert.messageText = loc("app.title")
         alert.informativeText = msg
         alert.runModal()
     }

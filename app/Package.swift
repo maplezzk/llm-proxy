@@ -3,11 +3,16 @@ import PackageDescription
 
 let package = Package(
     name: "LLMProxy",
+    defaultLocalization: "en",
     platforms: [.macOS(.v13)],
     targets: [
         .executableTarget(
             name: "LLMProxy",
-            path: "Sources"
+            path: "Sources",
+            resources: [
+                .process("en.lproj"),
+                .process("zh.lproj"),
+            ]
         )
     ]
 )
