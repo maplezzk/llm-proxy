@@ -9,7 +9,8 @@
   },
   "files": [
     "dist",
-    "bin"
+    "bin",
+    "locales"
   ],
   "publishConfig": {
     "access": "public"
