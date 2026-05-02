@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.3](https://github.com/maplezzk/llm-proxy/compare/v0.5.2...v0.5.3) (2026-05-02)
+
+
+### Bug Fixes
+
+* macOS app 因 SPM 资源 bundle 未打包导致启动崩溃 ([#45](https://github.com/maplezzk/llm-proxy/issues/45)) ([e976212](https://github.com/maplezzk/llm-proxy/commit/e97621245035a8ae51f0f9ecf879d1f22c311b2a))
+
 ## [0.5.2](https://github.com/maplezzk/llm-proxy/compare/v0.5.1...v0.5.2) (2026-05-02)
 
 
