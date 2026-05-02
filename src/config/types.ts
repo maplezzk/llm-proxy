@@ -30,6 +30,8 @@ export interface AdapterModelMapping {
 export interface AdapterConfig {
   name: string
   type: ProviderType
+  /** 默认 max_tokens，客户端没传时使用 */
+  max_tokens?: number
   models: AdapterModelMapping[]
 }
 
@@ -61,6 +63,7 @@ export interface ProviderConfigFile {
 export interface AdapterConfigFile {
   name: string
   type: ProviderType
+  max_tokens?: number
   models: { source_model_id: string; provider: string; target_model_id: string; thinking?: ThinkingConfigFile; reasoning_effort?: string }[]
 }
 

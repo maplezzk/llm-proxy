@@ -56,6 +56,7 @@ export function resolveAdapterRoute(
       apiBase,
       modelId: model.id,
       thinking,
+      max_tokens: adapter.max_tokens,
     },
     inboundType: adapter.type,
   }
