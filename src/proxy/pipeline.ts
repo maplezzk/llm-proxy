@@ -9,6 +9,7 @@ import type { InboundType } from './translation.js'
 import { readBody } from '../lib/http-utils.js'
 import { transformInboundRequest } from './translation.js'
 import { forwardRequest } from './provider.js'
+import { t } from '../lib/i18n.js'
 
 export interface ParseResult {
   body: Record<string, unknown>
@@ -29,20 +30,21 @@ export async function parseAndAuth(
   maxBodyBytes?: number
 ): Promise<ParseResult | null> {
   // 1. 读取 Body（含大小限制）
+  const effectiveMaxBytes = maxBodyBytes ?? store.getConfig().config.maxBodySize ?? 10_000_000
   let rawBody: string
   try {
-    rawBody = await readBody(req, maxBodyBytes)
+    rawBody = await readBody(req, effectiveMaxBytes)
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
-    if (message.includes('超过大小限制')) {
+    if (message.includes('BODY_TOO_LARGE')) {
       logger.log('request', `${logLabel} 请求体超限`, { logLabel }, 'warn')
       res.writeHead(413, { 'Content-Type': 'application/json' })
-      res.end(JSON.stringify({ error: { message: '请求体超过大小限制' } }))
+      res.end(JSON.stringify({ error: { message: t('backend.errors.bodyTooLarge') } }))
       return null
     }
     logger.log('request', `${logLabel} 读取请求体失败`, { logLabel, error: message }, 'warn')
     res.writeHead(400, { 'Content-Type': 'application/json' })
-    res.end(JSON.stringify({ error: { message: '读取请求体失败' } }))
+    res.end(JSON.stringify({ error: { message: t('backend.errors.readBodyFailed') } }))
     return null
   }
 
@@ -53,7 +55,7 @@ export async function parseAndAuth(
   } catch {
     logger.log('request', `${logLabel} 入站 JSON 解析失败`, { rawBody: rawBody.slice(0, 200) }, 'warn')
     res.writeHead(400, { 'Content-Type': 'application/json' })
-    res.end(JSON.stringify({ error: { message: '请求体不是有效的 JSON' } }))
+    res.end(JSON.stringify({ error: { message: t('backend.errors.invalidJson') } }))
     return null
   }
 

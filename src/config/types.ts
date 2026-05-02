@@ -39,6 +39,8 @@ export interface Config {
   proxyKey?: string
   logLevel?: LogLevel
   locale?: string
+  /** 请求体大小限制（字节），不设则默认 10MB */
+  maxBodySize?: number
 }
 
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error'
@@ -68,6 +70,7 @@ export interface ConfigFile {
   proxy_key?: string
   log_level?: string
   locale?: string
+  max_body_size?: number
 }
 
 export interface ValidationError {

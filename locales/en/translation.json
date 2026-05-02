@@ -285,6 +285,11 @@
     "proxy": {
       "requestError": "Request error",
       "modelNotFound": "Model not found: {{model}}"
+    },
+    "errors": {
+      "bodyTooLarge": "Request body exceeds size limit",
+      "readBodyFailed": "Failed to read request body",
+      "invalidJson": "Request body is not valid JSON"
     }
   }
 }

@@ -1,6 +1,6 @@
 import type { IncomingMessage } from 'node:http'
 
-export function readBody(req: IncomingMessage, maxBytes = 1_000_000): Promise<string> {
+export function readBody(req: IncomingMessage, maxBytes = 10_000_000): Promise<string> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = []
     let totalBytes = 0
@@ -8,7 +8,7 @@ export function readBody(req: IncomingMessage, maxBytes = 1_000_000): Promise<st
       totalBytes += chunk.length
       if (totalBytes > maxBytes) {
         req.destroy()
-        reject(new Error('请求体超过大小限制'))
+        reject(new Error('BODY_TOO_LARGE'))
         return
       }
       chunks.push(chunk)

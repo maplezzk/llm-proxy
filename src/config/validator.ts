@@ -9,6 +9,11 @@ const RESERVED_ADAPTER_NAMES = new Set(['admin', 'v1', 'messages', 'chat', 'comp
 export function validateConfig(config: Config): ValidationError[] {
   const errors = validateProviders(config)
   errors.push(...validateAdapters(config))
+  if (config.maxBodySize != null) {
+    if (!Number.isInteger(config.maxBodySize) || config.maxBodySize < 1) {
+      errors.push({ field: 'max_body_size', message: 'max_body_size 必须为正整数（字节数）' })
+    }
+  }
   return errors
 }
 
