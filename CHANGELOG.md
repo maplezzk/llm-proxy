@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.8.0](https://github.com/maplezzk/llm-proxy/compare/v0.7.1...v0.8.0) (2026-05-03)
+
+
+### Features
+
+* **admin-ui:** 侧栏增加配置重载按钮 ([#66](https://github.com/maplezzk/llm-proxy/issues/66)) ([4b508bd](https://github.com/maplezzk/llm-proxy/commit/4b508bd38a64d0a8c6727f088bccc83980b92d93))
+* **macos-app:** 菜单栏增加重载配置菜单项 ([#67](https://github.com/maplezzk/llm-proxy/issues/67)) ([88bbd7a](https://github.com/maplezzk/llm-proxy/commit/88bbd7ae969c9159c2be44b2fa46eafe3fed6a6e))
+
 ## [0.7.1](https://github.com/maplezzk/llm-proxy/compare/v0.7.0...v0.7.1) (2026-05-03)
 
 
