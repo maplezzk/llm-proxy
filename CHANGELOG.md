@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.0](https://github.com/maplezzk/llm-proxy/compare/v0.6.0...v0.7.0) (2026-05-03)
+
+
+### Features
+
+* **macos-app:** 捕获子进程 stdout/stderr 到日志文件，菜单栏增加打开日志目录 ([#61](https://github.com/maplezzk/llm-proxy/issues/61)) ([52d09c0](https://github.com/maplezzk/llm-proxy/commit/52d09c0b59c65d8bf4712a701168baee4e06c07c))
+
 ## [0.6.0](https://github.com/maplezzk/llm-proxy/compare/v0.5.8...v0.6.0) (2026-05-03)
 
 
