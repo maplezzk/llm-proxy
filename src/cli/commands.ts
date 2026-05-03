@@ -5,7 +5,7 @@ import { StatusTracker } from '../status/tracker.js'
 import { TokenTracker } from '../status/token-tracker.js'
 import { CaptureBuffer } from '../proxy/capture.js'
 import { Logger, type LogLevel } from '../log/logger.js'
-import { createI18n, detectLang } from '../lib/i18n.js'
+import { createI18n } from '../lib/i18n.js'
 import type { Server } from 'node:http'
 import type { Config } from '../config/types.js'
 
@@ -39,8 +39,8 @@ function isProcessRunning(pid: number): boolean {
 }
 
 export async function cmdStart(opts: StartOptions): Promise<void> {
-  // Initialize i18n from env before config is loaded
-  let { t } = createI18n(detectLang(process.env.LANG))
+  // Default to English; config file's locale field can override to 'zh'
+  let { t } = createI18n('en')
 
   const configPath = opts.config ?? DEFAULT_CONFIG_PATH
 
@@ -50,7 +50,7 @@ export async function cmdStart(opts: StartOptions): Promise<void> {
     mkdirSync(configDir, { recursive: true })
     const defaultConfig: Config = { providers: [], logLevel: 'info' }
     store = new ConfigStore(configPath, defaultConfig)
-    console.error('\n  🆕  首次使用？打开管理页面配置你的第一个 AI 供应商：')
+    console.error('\n  🆕  First time? Open the admin UI to set up your first AI provider:')
     console.error(`      http://${DEFAULT_HOST}:${DEFAULT_PORT}/admin/\n`)
   } else {
     try {
@@ -67,9 +67,6 @@ export async function cmdStart(opts: StartOptions): Promise<void> {
   if (configLocale && ['zh', 'en'].includes(configLocale)) {
     const result = createI18n(configLocale)
     t = result.t
-  } else {
-    // Re-init with env lang in case ConfigStore already loaded
-    t = createI18n(detectLang(process.env.LANG)).t
   }
 
   const tracker = new StatusTracker()
@@ -117,8 +114,7 @@ export async function cmdStart(opts: StartOptions): Promise<void> {
 }
 
 export async function cmdStop(): Promise<void> {
-  // Initialize i18n from env (no config loaded yet)
-  const { t } = createI18n(detectLang(process.env.LANG))
+  const { t } = createI18n('en')
 
   const pid = getPid()
   if (pid === null) {
@@ -137,7 +133,7 @@ export async function cmdStop(): Promise<void> {
 }
 
 export async function cmdStatus(): Promise<void> {
-  const { t } = createI18n(detectLang(process.env.LANG))
+  const { t } = createI18n('en')
 
   const pid = getPid()
   if (pid === null || !isProcessRunning(pid)) {
@@ -151,7 +147,7 @@ export async function cmdStatus(): Promise<void> {
 }
 
 export async function cmdRestart(opts: StartOptions): Promise<void> {
-  const { t } = createI18n(detectLang(process.env.LANG))
+  const { t } = createI18n('en')
 
   const pid = getPid()
   if (pid !== null && isProcessRunning(pid)) {
@@ -176,7 +172,7 @@ export async function cmdRestart(opts: StartOptions): Promise<void> {
 }
 
 export async function cmdReload(opts: { port?: number }): Promise<void> {
-  const { t } = createI18n(detectLang(process.env.LANG))
+  const { t } = createI18n('en')
 
   const port = opts.port ?? DEFAULT_PORT
   const url = `http://${DEFAULT_HOST}:${port}/admin/config/reload`

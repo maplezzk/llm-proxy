@@ -39,14 +39,14 @@ llm-proxy start
 # 打开管理界面 → http://127.0.0.1:9000/admin/
 ```
 
-首次启动会自动创建配置目录。打开管理页面后，你可以直接在网页中添加 AI 供应商、配置适配器、设置代理密钥等，无需手动编辑 YAML 文件。
+On first launch, the config directory is created automatically. Open the admin UI to configure everything in your browser — no manual YAML editing needed.
 
-管理页面支持：
-- **Provider 管理**：添加/编辑/删除 AI 供应商，支持从 API 拉取模型列表
-- **Adapter 配置**：创建虚拟端点，实现模型映射和多协议适配
-- **代理密钥**：设置 API 认证密钥
-- **在线测试**：直接发送测试请求验证配置
-- **协议抓包**：实时查看请求/响应报文
+The admin UI supports:
+- **Provider management**: Add/edit/delete AI providers, pull model lists from APIs
+- **Adapter config**: Create virtual endpoints with model remapping and protocol adaptation
+- **Proxy key**: Set API authentication key
+- **Live test**: Send test requests directly to verify configuration
+- **Protocol capture**: Real-time request/response inspection
 
 ## 配置
 
