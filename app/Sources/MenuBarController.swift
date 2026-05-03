@@ -366,7 +366,6 @@ class MenuBarController: NSObject {
             task.terminationHandler = { proc in
                 stdoutPipe.fileHandleForReading.readabilityHandler = nil
                 stderrPipe.fileHandleForReading.readabilityHandler = nil
-                let ts = dateFmt.string(from: Date())
                 let msg = "[SYSTEM] llm-proxy \(command) 已退出 (pid: \(proc.processIdentifier), code: \(proc.terminationStatus))"
                 NSLog("[LLMProxy] \(msg)")
                 appendToLog(msg)
