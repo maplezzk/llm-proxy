@@ -1,6 +1,6 @@
 {
   "name": "@maplezzk/llm-proxy",
-  "version": "0.5.7",
+  "version": "0.5.8",
   "description": "本地统一 LLM 模型代理工具 — 多协议路由、协议互转、流式 SSE 转换、token 统计、协议抓包调试",
   "type": "module",
   "main": "dist/index.js",
