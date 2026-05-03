@@ -7,6 +7,7 @@
 "action.refresh" = "刷新";
 "action.logLevel" = "日志级别: %@";
 "action.openAdmin" = "打开 Admin UI";
+"action.openLogs" = "打开日志目录";
 "action.quit" = "退出 LLMProxy";
 "status.stopping" = "◌ 正在停止...";
 "status.restarting" = "◌ 正在重启...";
