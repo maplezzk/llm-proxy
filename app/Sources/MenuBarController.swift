@@ -285,6 +285,26 @@ class MenuBarController: NSObject {
         }
     }
 
+    /// 从 ~/.llm-proxy/.env 加载环境变量
+    func loadEnvFile() -> [String: String] {
+        let envPath = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".llm-proxy/.env")
+        guard let content = try? String(contentsOf: envPath, encoding: .utf8) else { return [:] }
+        var vars: [String: String] = [:]
+        for line in content.split(separator: "\n") {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            guard !trimmed.isEmpty, !trimmed.hasPrefix("#") else { continue }
+            if let eq = trimmed.firstIndex(of: "=") {
+                let key = String(trimmed[..<eq]).trimmingCharacters(in: .whitespaces)
+                let val = String(trimmed[trimmed.index(after: eq)...])
+                    .trimmingCharacters(in: .whitespaces)
+                    .trimmingCharacters(in: CharacterSet(charactersIn: "\"'"))
+                vars[key] = val
+            }
+        }
+        return vars
+    }
+
     func bundledBinaryPath() -> String? {
         guard let resourcePath = Bundle.main.resourcePath else { return nil }
         let path = (resourcePath as NSString).appendingPathComponent("llm-proxy")
@@ -306,6 +326,14 @@ class MenuBarController: NSObject {
             }
         }
         task.arguments = [command]
+
+        // 合并父进程环境变量 + .env 文件中的变量
+        let envFile = loadEnvFile()
+        if !envFile.isEmpty {
+            var env = ProcessInfo.processInfo.environment
+            for (k, v) in envFile { env[k] = v }
+            task.environment = env
+        }
 
         // 捕获 stdout/stderr，写入日志文件以便排查启动失败原因
         let stdoutPipe = Pipe()
