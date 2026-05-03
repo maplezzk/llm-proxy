@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.1](https://github.com/maplezzk/llm-proxy/compare/v0.7.0...v0.7.1) (2026-05-03)
+
+
+### Bug Fixes
+
+* **macos-app:** 通过 login shell 启动子进程，继承 ~/.zshrc 中的环境变量 ([#64](https://github.com/maplezzk/llm-proxy/issues/64)) ([14d06fa](https://github.com/maplezzk/llm-proxy/commit/14d06fae085f9af03d9a3936a46750effb6da9ca))
+
 ## [0.7.0](https://github.com/maplezzk/llm-proxy/compare/v0.6.0...v0.7.0) (2026-05-03)
 
 
