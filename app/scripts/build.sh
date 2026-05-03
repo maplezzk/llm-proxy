@@ -35,6 +35,7 @@ cp "$ROOT_DIR/app/assets/tray-icon.png" "$APP/Contents/Resources/tray-icon.png"
 cp "$ROOT_DIR/app/assets/tray-icon@2x.png" "$APP/Contents/Resources/tray-icon@2x.png"
 cp -R "$ROOT_DIR/app/Sources/en.lproj" "$APP/Contents/Resources/"
 cp -R "$ROOT_DIR/app/Sources/zh.lproj" "$APP/Contents/Resources/"
+cp -R "$ROOT_DIR/locales" "$APP/Contents/Resources/locales"
 # 拷贝 SPM resource bundle，确保 Bundle.module 能加载资源
 cp -R "$BUILD_DIR/release/LLMProxy_LLMProxy.bundle" "$APP/Contents/Resources/"
 

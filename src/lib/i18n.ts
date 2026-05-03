@@ -62,12 +62,17 @@ export function detectLang(envLang?: string): string {
 }
 
 function loadTranslation(lang: string): Record<string, unknown> {
-  const localesDir = resolve(__dirname, '..', '..', 'locales')
-  try {
-    const content = readFileSync(resolve(localesDir, lang, 'translation.json'), 'utf-8')
-    return JSON.parse(content)
-  } catch (err) {
-    console.warn(`[i18n] Failed to load ${lang} translation:`, err)
-    return {}
+  // 尝试多个路径：开发模式（项目路径）→ bun 编译后（cwd 为 Resources 目录）
+  const candidates = [
+    resolve(__dirname, '..', '..', 'locales', lang, 'translation.json'),
+    resolve(process.cwd(), 'locales', lang, 'translation.json'),
+  ]
+  for (const filePath of candidates) {
+    try {
+      const content = readFileSync(filePath, 'utf-8')
+      return JSON.parse(content)
+    } catch { /* try next */ }
   }
+  console.warn(`[i18n] Failed to load ${lang} translation, using empty fallback`)
+  return {}
 }
