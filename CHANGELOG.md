@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.6.0](https://github.com/maplezzk/llm-proxy/compare/v0.5.8...v0.6.0) (2026-05-03)
+
+
+### Features
+
+* 简化快速启动体验，config 不存在时自动创建并引导至 Admin UI ([#58](https://github.com/maplezzk/llm-proxy/issues/58)) ([df0a5b8](https://github.com/maplezzk/llm-proxy/commit/df0a5b80b5f48c44bd06249c51047f38c9f7a230))
+
+
+### Bug Fixes
+
+* CLI 日志默认使用英文，仅当 config 中显式设置 locale: zh 时才使用中文 ([#60](https://github.com/maplezzk/llm-proxy/issues/60)) ([46dd564](https://github.com/maplezzk/llm-proxy/commit/46dd56452b83464a871721c7ab61960ba3756a40))
+
 ## [0.5.8](https://github.com/maplezzk/llm-proxy/compare/v0.5.7...v0.5.8) (2026-05-03)
 
 
