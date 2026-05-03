@@ -35,7 +35,10 @@
       "noMatch": "没有匹配的{{name}}",
       "normal": "正常",
       "error": "异常",
-      "remove": "移除"
+      "remove": "移除",
+    "reloadConfig": "重载配置",
+    "configReloaded": "配置已重载",
+    "reloadFailed": "重载失败"
     },
     "dashboard": {
       "status": "运行状态",
