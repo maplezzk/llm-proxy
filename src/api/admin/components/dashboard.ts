@@ -38,7 +38,8 @@ export function dashboardPage() {
       const cacheRead = ts.cache_read_input_tokens || 0
       const cacheCreate = ts.cache_creation_input_tokens || 0
       const total = input + output
-      const cacheHitRate = input > 0 ? pct(cacheRead, input) : '0%'
+      const cacheTotal = cacheRead + cacheCreate
+      const cacheHitRate = cacheTotal > 0 ? pct(cacheRead, cacheTotal) : '0%'
       return [
         { label: t('admin.dashboard.requests'), value: ts.request_count || 0, clr: 'var(--text)', desc: t('admin.dashboard.today') },
         { label: t('admin.dashboard.inputTokens'), value: fmtNum(input), clr: 'var(--accent)', desc: `${t('admin.dashboard.output')} ${fmtNum(output)} / ${t('admin.dashboard.total')} ${fmtNum(total)}` },
