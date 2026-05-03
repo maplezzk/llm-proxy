@@ -174,6 +174,10 @@ class MenuBarController: NSObject {
         adminItem.target = self
         menu.addItem(adminItem)
 
+        let logsItem = NSMenuItem(title: loc("action.openLogs"), action: #selector(openLogs), keyEquivalent: "")
+        logsItem.target = self
+        menu.addItem(logsItem)
+
         menu.addItem(.separator())
 
         let quitItem = NSMenuItem(title: loc("action.quit"), action: #selector(quitApp), keyEquivalent: "q")
@@ -302,11 +306,80 @@ class MenuBarController: NSObject {
             }
         }
         task.arguments = [command]
+
+        // 捕获 stdout/stderr，写入日志文件以便排查启动失败原因
+        let stdoutPipe = Pipe()
+        let stderrPipe = Pipe()
+        task.standardOutput = stdoutPipe
+        task.standardError = stderrPipe
+
         do {
             try task.run()
-            NSLog("[LLMProxy] ✅ 执行 llm-proxy \(command)")
+            NSLog("[LLMProxy] ✅ 执行 llm-proxy \(command), pid: \(task.processIdentifier)")
+
+            // 异步读取输出并写入日志文件
+            let logDir = FileManager.default.homeDirectoryForCurrentUser
+                .appendingPathComponent(".llm-proxy").path
+            try? FileManager.default.createDirectory(atPath: logDir, withIntermediateDirectories: true)
+            let logPath = (logDir as NSString).appendingPathComponent("app-launch.log")
+
+            let dateFmt = DateFormatter()
+            dateFmt.dateFormat = "yyyy-MM-dd HH:mm:ss.SSS"
+
+            func appendToLog(_ text: String) {
+                let ts = dateFmt.string(from: Date())
+                let line = "[\(ts)] \(text)"
+                if let handle = FileHandle(forWritingAtPath: logPath) {
+                    handle.seekToEndOfFile()
+                    if let data = (line + "\n").data(using: .utf8) {
+                        handle.write(data)
+                    }
+                    handle.closeFile()
+                } else {
+                    try? (line + "\n").write(toFile: logPath, atomically: true, encoding: .utf8)
+                }
+            }
+
+            stdoutPipe.fileHandleForReading.readabilityHandler = { fh in
+                let data = fh.availableData
+                if let output = String(data: data, encoding: .utf8), !output.isEmpty {
+                    let lines = output.split(separator: "\n").map(String.init)
+                    for line in lines {
+                        NSLog("[LLMProxy:stdout] \(line)")
+                        appendToLog("[STDOUT] \(line)")
+                    }
+                }
+            }
+
+            stderrPipe.fileHandleForReading.readabilityHandler = { fh in
+                let data = fh.availableData
+                if let output = String(data: data, encoding: .utf8), !output.isEmpty {
+                    let lines = output.split(separator: "\n").map(String.init)
+                    for line in lines {
+                        NSLog("[LLMProxy:stderr] \(line)")
+                        appendToLog("[STDERR] \(line)")
+                    }
+                }
+            }
+
+            // 进程退出时清理
+            task.terminationHandler = { proc in
+                stdoutPipe.fileHandleForReading.readabilityHandler = nil
+                stderrPipe.fileHandleForReading.readabilityHandler = nil
+                let ts = dateFmt.string(from: Date())
+                let msg = "[SYSTEM] llm-proxy \(command) 已退出 (pid: \(proc.processIdentifier), code: \(proc.terminationStatus))"
+                NSLog("[LLMProxy] \(msg)")
+                appendToLog(msg)
+            }
         } catch {
             NSLog("[LLMProxy] ❌ 启动 llm-proxy 失败: \(error.localizedDescription)")
+            // 写入日志文件
+            let logPath = FileManager.default.homeDirectoryForCurrentUser
+                .appendingPathComponent(".llm-proxy/app-launch.log").path
+            let ts = DateFormatter()
+            ts.dateFormat = "yyyy-MM-dd HH:mm:ss.SSS"
+            let line = "[\(ts.string(from: Date()))] [SYSTEM] ❌ 启动失败: \(error.localizedDescription)\n"
+            try? (line).write(toFile: logPath, atomically: true, encoding: .utf8)
         }
     }
 
@@ -316,6 +389,12 @@ class MenuBarController: NSObject {
 
     @objc func openAdmin() {
         NSWorkspace.shared.open(URL(string: "\(client.baseURL)/admin")!)
+    }
+
+    @objc func openLogs() {
+        let logDir = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".llm-proxy")
+        NSWorkspace.shared.open(logDir)
     }
 
     func showError(_ msg: String) {
