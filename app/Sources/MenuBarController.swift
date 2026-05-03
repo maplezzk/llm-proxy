@@ -293,19 +293,21 @@ class MenuBarController: NSObject {
 
     func runCLI(_ command: String) {
         let task = Process()
+        // 通过 login shell (-l) 启动，加载 ~/.zshrc 中的环境变量
+        let shell = "/bin/zsh"
+        task.executableURL = URL(fileURLWithPath: shell)
         if let bundled = bundledBinaryPath() {
-            task.executableURL = URL(fileURLWithPath: bundled)
+            task.arguments = ["-l", "-c", "\"\(bundled)\" \(command)"]
             task.currentDirectoryURL = URL(fileURLWithPath: Bundle.main.resourcePath!)
         } else {
             let fallback = "/opt/homebrew/bin/llm-proxy"
             if FileManager.default.isExecutableFile(atPath: fallback) {
-                task.executableURL = URL(fileURLWithPath: fallback)
+                task.arguments = ["-l", "-c", "\"\(fallback)\" \(command)"]
             } else {
                 NSLog("[LLMProxy] ❌ 找不到 llm-proxy 二进制 (bundled 和 /opt/homebrew/bin 都不存在)")
                 return
             }
         }
-        task.arguments = [command]
 
         // 捕获 stdout/stderr，写入日志文件以便排查启动失败原因
         let stdoutPipe = Pipe()
