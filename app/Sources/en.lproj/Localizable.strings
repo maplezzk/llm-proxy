@@ -7,6 +7,7 @@
 "action.refresh" = "Refresh";
 "action.logLevel" = "Log Level: %@";
 "action.openAdmin" = "Open Admin UI";
+"action.openLogs" = "Open Logs Folder";
 "action.quit" = "Quit LLMProxy";
 "status.stopping" = "◌ Stopping...";
 "status.restarting" = "◌ Restarting...";
