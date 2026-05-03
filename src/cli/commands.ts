@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync, unlinkSync, existsSync } from 'node:fs'
+import { readFileSync, writeFileSync, unlinkSync, existsSync, mkdirSync } from 'node:fs'
 import { createProxyServer } from '../api/server.js'
 import { ConfigStore } from '../config/store.js'
 import { StatusTracker } from '../status/tracker.js'
@@ -7,6 +7,7 @@ import { CaptureBuffer } from '../proxy/capture.js'
 import { Logger, type LogLevel } from '../log/logger.js'
 import { createI18n, detectLang } from '../lib/i18n.js'
 import type { Server } from 'node:http'
+import type { Config } from '../config/types.js'
 
 const DEFAULT_CONFIG_PATH = `${process.env.HOME ?? '/tmp'}/.llm-proxy/config.yaml`
 const DEFAULT_PID_PATH = '/tmp/llm-proxy.pid'
@@ -43,24 +44,22 @@ export async function cmdStart(opts: StartOptions): Promise<void> {
 
   const configPath = opts.config ?? DEFAULT_CONFIG_PATH
 
-  if (!existsSync(configPath)) {
-    console.error(t('cli.start.configNotFound', { path: configPath }))
-    process.exit(1)
-  }
-
-  const existingPid = getPid()
-  if (existingPid !== null && isProcessRunning(existingPid)) {
-    console.error(t('cli.start.alreadyRunning', { pid: String(existingPid) }))
-    process.exit(1)
-  }
-
   let store: ConfigStore
-  try {
-    store = await ConfigStore.create(configPath)
-    console.error(t('cli.start.configLoaded'))
-  } catch (err) {
-    console.error(t('cli.start.configLoadFailed', { error: err instanceof Error ? err.message : String(err) }))
-    process.exit(1)
+  if (!existsSync(configPath)) {
+    const configDir = configPath.substring(0, configPath.lastIndexOf('/'))
+    mkdirSync(configDir, { recursive: true })
+    const defaultConfig: Config = { providers: [], logLevel: 'info' }
+    store = new ConfigStore(configPath, defaultConfig)
+    console.error('\n  🆕  首次使用？打开管理页面配置你的第一个 AI 供应商：')
+    console.error(`      http://${DEFAULT_HOST}:${DEFAULT_PORT}/admin/\n`)
+  } else {
+    try {
+      store = await ConfigStore.create(configPath)
+      console.error(t('cli.start.configLoaded'))
+    } catch (err) {
+      console.error(t('cli.start.configLoadFailed', { error: err instanceof Error ? err.message : String(err) }))
+      process.exit(1)
+    }
   }
 
   // Re-init i18n if config specifies a locale
