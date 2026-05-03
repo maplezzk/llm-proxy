@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.5.8](https://github.com/maplezzk/llm-proxy/compare/v0.5.7...v0.5.8) (2026-05-03)
+
+
+### Bug Fixes
+
+* npm publish 漏掉 locales 目录，导致 i18n 翻译文件加载失败 ([#55](https://github.com/maplezzk/llm-proxy/issues/55)) ([ab880b4](https://github.com/maplezzk/llm-proxy/commit/ab880b4193de9446944c5ad08b1d3c36d5670225))
+* 修正 dashboard 缓存命中率计算口径防止超过 100% ([#57](https://github.com/maplezzk/llm-proxy/issues/57)) ([889dd10](https://github.com/maplezzk/llm-proxy/commit/889dd10611b6a0b399fdf1c99bf09300daff3863))
+
 ## [0.5.7](https://github.com/maplezzk/llm-proxy/compare/v0.5.6...v0.5.7) (2026-05-02)
 
 
