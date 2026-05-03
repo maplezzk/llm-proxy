@@ -157,6 +157,10 @@ class MenuBarController: NSObject {
         refreshItem.target = self
         menu.addItem(refreshItem)
 
+        let reloadItem = NSMenuItem(title: loc("action.reloadConfig"), action: #selector(reloadConfig), keyEquivalent: "")
+        reloadItem.target = self
+        menu.addItem(reloadItem)
+
         // 日志级别
         let logLevelItem = NSMenuItem(title: loc("action.logLevel", currentLogLevel), action: nil, keyEquivalent: "")
         let logLevelMenu = NSMenu()
@@ -387,6 +391,17 @@ class MenuBarController: NSObject {
 
     @objc func quitApp() {
         NSApplication.shared.terminate(nil)
+    }
+
+    @MainActor @objc func reloadConfig() {
+        Task { @MainActor in
+            do {
+                try await client.reloadConfig()
+                showError(loc("status.configReloaded"))
+            } catch {
+                showError(loc("error.reloadFailed", error.localizedDescription))
+            }
+        }
     }
 
     @objc func openAdmin() {

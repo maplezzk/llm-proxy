@@ -50,6 +50,16 @@ class APIClient {
         return try JSONDecoder().decode(AdaptersResponse.self, from: data)
     }
 
+    func reloadConfig() async throws {
+        let url = URL(string: "\(baseURL)/admin/config/reload")!
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        let (_, resp) = try await URLSession.shared.data(for: req)
+        guard let http = resp as? HTTPURLResponse, http.statusCode == 200 else {
+            throw URLError(.badServerResponse)
+        }
+    }
+
     func updateAdapter(_ adapter: Adapter, mappings: [UpdateModelMapping]) async throws {
         let url = URL(string: "\(baseURL)/admin/adapters/\(adapter.name)")!
         var req = URLRequest(url: url)
