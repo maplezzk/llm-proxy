@@ -18,9 +18,12 @@ A local LLM proxy server — single port serving both admin UI and AI API, with 
 
 ## Screenshots
 
-<img src="docs/images/macos-en.png" alt="macOS Menu Bar" width="480"/>
+<p align="center">
+  <img src="docs/images/macos-en.png" alt="macOS Menu Bar" width="380"/>&nbsp;&nbsp;
+  <img src="docs/images/macos-en2.png" alt="macOS Menu Bar" width="380"/>
+</p>
 
-<p align="center"><em>macOS menu bar app — service control, adapter switching, language settings</em></p>
+<p align="center"><em>macOS menu bar — service control, adapter switching, language settings &nbsp;&nbsp;|&nbsp;&nbsp; adapter list &amp; model mapping</em></p>
 
 <br>
 
