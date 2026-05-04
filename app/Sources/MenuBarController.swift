@@ -76,7 +76,9 @@ class MenuBarController: NSObject {
         let statusMenuItem = NSMenuItem()
         let statusText = serviceRunning ? loc("status.running") : loc("status.notRunning")
         let attrTitle = NSMutableAttributedString(string: statusText)
-        let color: NSColor = serviceRunning ? .systemGreen : .systemGray
+        let color: NSColor = serviceRunning
+            ? NSColor(srgbRed: 0.20, green: 0.68, blue: 0.30, alpha: 1.0)
+            : .secondaryLabelColor
         attrTitle.addAttribute(.foregroundColor, value: color, range: NSRange(location: 0, length: attrTitle.length))
         attrTitle.addAttribute(.font, value: NSFont.systemFont(ofSize: 13, weight: .medium), range: NSRange(location: 0, length: attrTitle.length))
         statusMenuItem.attributedTitle = attrTitle
@@ -88,15 +90,32 @@ class MenuBarController: NSObject {
         if serviceRunning {
             let stopItem = NSMenuItem(title: loc("action.stop"), action: #selector(stopService), keyEquivalent: "")
             stopItem.target = self
+            if #available(macOS 11.0, *) {
+                stopItem.image = NSImage(systemSymbolName: "stop.fill", accessibilityDescription: loc("action.stop"))
+            }
             menu.addItem(stopItem)
             let restartItem = NSMenuItem(title: loc("action.restart"), action: #selector(restartService), keyEquivalent: "")
             restartItem.target = self
+            if #available(macOS 11.0, *) {
+                restartItem.image = NSImage(systemSymbolName: "arrow.clockwise", accessibilityDescription: loc("action.restart"))
+            }
             menu.addItem(restartItem)
         } else {
             let startItem = NSMenuItem(title: loc("action.start"), action: #selector(startService), keyEquivalent: "")
             startItem.target = self
+            if #available(macOS 11.0, *) {
+                startItem.image = NSImage(systemSymbolName: "play.fill", accessibilityDescription: loc("action.start"))
+            }
             menu.addItem(startItem)
         }
+        // 重载配置放在服务控制区
+        let reloadItem = NSMenuItem(title: loc("action.reloadConfig"), action: #selector(reloadConfig), keyEquivalent: "r")
+        reloadItem.target = self
+        if #available(macOS 11.0, *) {
+            reloadItem.image = NSImage(systemSymbolName: "gearshape", accessibilityDescription: loc("action.reloadConfig"))
+        }
+        menu.addItem(reloadItem)
+
         menu.addItem(.separator())
 
         if adapters.isEmpty {
@@ -105,10 +124,10 @@ class MenuBarController: NSObject {
             menu.addItem(item)
         } else {
             for adapter in adapters {
-                // 适配器名作为不可点击的标题
-                let headerItem = NSMenuItem(title: adapter.name, action: nil, keyEquivalent: "")
+                // 适配器名 + 协议类型作为 header
+                let headerItem = NSMenuItem(title: "\(adapter.name)（\(adapter.type)）", action: nil, keyEquivalent: "")
                 headerItem.isEnabled = false
-                let titleAttr = NSMutableAttributedString(string: adapter.name)
+                let titleAttr = NSMutableAttributedString(string: "\(adapter.name)（\(adapter.type)）")
                 titleAttr.addAttribute(.font, value: NSFont.systemFont(ofSize: 12, weight: .semibold), range: NSRange(location: 0, length: titleAttr.length))
                 titleAttr.addAttribute(.foregroundColor, value: NSColor.labelColor, range: NSRange(location: 0, length: titleAttr.length))
                 headerItem.attributedTitle = titleAttr
@@ -116,7 +135,17 @@ class MenuBarController: NSObject {
 
                 // 每个模型映射直接平铺，缩进显示
                 for mapping in adapter.models {
-                    let mappingItem = NSMenuItem(title: "  \(mapping.sourceModelId)", action: nil, keyEquivalent: "")
+                    let separator = " · "
+                    let displayText = "  \(mapping.sourceModelId)\(separator)\(mapping.provider)/\(mapping.targetModelId)"
+                    let attrTitle = NSMutableAttributedString(string: displayText)
+                    let srcEnd = "  \(mapping.sourceModelId)\(separator)".count
+                    attrTitle.addAttribute(.font, value: NSFont.systemFont(ofSize: 13), range: NSRange(location: 0, length: srcEnd))
+                    let tgtRange = NSRange(location: srcEnd, length: displayText.count - srcEnd)
+                    attrTitle.addAttribute(.font, value: NSFont.systemFont(ofSize: 12), range: tgtRange)
+                    attrTitle.addAttribute(.foregroundColor, value: NSColor.secondaryLabelColor, range: tgtRange)
+                    
+                    let mappingItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+                    mappingItem.attributedTitle = attrTitle
                     let mappingSubMenu = NSMenu()
 
                     for provider in providers {
@@ -153,16 +182,25 @@ class MenuBarController: NSObject {
 
         menu.addItem(.separator())
 
-        let refreshItem = NSMenuItem(title: loc("action.refresh"), action: #selector(refreshMenu), keyEquivalent: "r")
-        refreshItem.target = self
-        menu.addItem(refreshItem)
+        // 工具区：Admin UI → 日志目录 → 日志级别
+        let adminItem = NSMenuItem(title: loc("action.openAdmin"), action: #selector(openAdmin), keyEquivalent: "")
+        adminItem.target = self
+        if #available(macOS 11.0, *) {
+            adminItem.image = NSImage(systemSymbolName: "globe", accessibilityDescription: loc("action.openAdmin"))
+        }
+        menu.addItem(adminItem)
 
-        let reloadItem = NSMenuItem(title: loc("action.reloadConfig"), action: #selector(reloadConfig), keyEquivalent: "")
-        reloadItem.target = self
-        menu.addItem(reloadItem)
+        let logsItem = NSMenuItem(title: loc("action.openLogs"), action: #selector(openLogs), keyEquivalent: "")
+        logsItem.target = self
+        if #available(macOS 11.0, *) {
+            logsItem.image = NSImage(systemSymbolName: "folder", accessibilityDescription: loc("action.openLogs"))
+        }
+        menu.addItem(logsItem)
 
-        // 日志级别
         let logLevelItem = NSMenuItem(title: loc("action.logLevel", currentLogLevel), action: nil, keyEquivalent: "")
+        if #available(macOS 11.0, *) {
+            logLevelItem.image = NSImage(systemSymbolName: "ellipsis.circle", accessibilityDescription: loc("action.logLevel", currentLogLevel))
+        }
         let logLevelMenu = NSMenu()
         for level in ["debug", "info", "warn", "error"] {
             let item = NSMenuItem(title: level, action: #selector(changeLogLevel(_:)), keyEquivalent: "")
@@ -174,18 +212,13 @@ class MenuBarController: NSObject {
         logLevelItem.submenu = logLevelMenu
         menu.addItem(logLevelItem)
 
-        let adminItem = NSMenuItem(title: loc("action.openAdmin"), action: #selector(openAdmin), keyEquivalent: "")
-        adminItem.target = self
-        menu.addItem(adminItem)
-
-        let logsItem = NSMenuItem(title: loc("action.openLogs"), action: #selector(openLogs), keyEquivalent: "")
-        logsItem.target = self
-        menu.addItem(logsItem)
-
         menu.addItem(.separator())
 
         let quitItem = NSMenuItem(title: loc("action.quit"), action: #selector(quitApp), keyEquivalent: "q")
         quitItem.target = self
+        if #available(macOS 11.0, *) {
+            quitItem.image = NSImage(systemSymbolName: "xmark", accessibilityDescription: loc("action.quit"))
+        }
         menu.addItem(quitItem)
 
         statusItem.menu = menu
@@ -295,6 +328,19 @@ class MenuBarController: NSObject {
         return FileManager.default.isExecutableFile(atPath: path) ? path : nil
     }
 
+    /// 调试模式（swift run）下用 node 运行项目中的 bin/llm-proxy.js
+    func debugNodeEntryPath() -> String? {
+        let bundlePath = Bundle.main.bundlePath
+        guard let buildRange = bundlePath.range(of: "/.build/") else { return nil }
+        // bundlePath: .../llm-proxy/app/.build/arm64-apple-macosx/debug
+        // appDir:     .../llm-proxy/app
+        let appDir = bundlePath[..<buildRange.lowerBound]
+        let projectRoot = (appDir as NSString).deletingLastPathComponent  // .../llm-proxy
+        let jsEntry = (projectRoot as NSString).appendingPathComponent("bin/llm-proxy.js")
+        guard FileManager.default.isExecutableFile(atPath: jsEntry) else { return nil }
+        return jsEntry
+    }
+
     func runCLI(_ command: String) {
         let task = Process()
         // 通过 login shell (-l) 启动，加载 ~/.zshrc 中的环境变量
@@ -303,14 +349,28 @@ class MenuBarController: NSObject {
         if let bundled = bundledBinaryPath() {
             task.arguments = ["-l", "-c", "\"\(bundled)\" \(command)"]
             task.currentDirectoryURL = URL(fileURLWithPath: Bundle.main.resourcePath!)
+        } else if let jsEntry = debugNodeEntryPath() {
+            // 2. 调试模式（swift run）：用 node 运行 bin/llm-proxy.js
+            let projectRoot = ((jsEntry as NSString).deletingLastPathComponent as NSString).deletingLastPathComponent
+            task.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+            task.arguments = ["node", jsEntry, command]
+            task.currentDirectoryURL = URL(fileURLWithPath: projectRoot)
+            NSLog("[LLMProxy] ℹ️ 调试模式: node \(jsEntry) \(command)")
         } else {
+            // 3. homebrew 安装
             let fallback = "/opt/homebrew/bin/llm-proxy"
             if FileManager.default.isExecutableFile(atPath: fallback) {
                 task.arguments = ["-l", "-c", "\"\(fallback)\" \(command)"]
             } else {
-                NSLog("[LLMProxy] ❌ 找不到 llm-proxy 二进制 (bundled 和 /opt/homebrew/bin 都不存在)")
+                NSLog("[LLMProxy] ❌ 找不到 llm-proxy 二进制")
+                DispatchQueue.main.async { [weak self] in
+                    self?.showError("找不到 llm-proxy 二进制。调试模式请先 npm run build 编译项目，或直接终端运行 llm-proxy start")
+                }
                 return
             }
+        }
+        if task.arguments == nil {
+            task.arguments = [command]
         }
 
         // 捕获 stdout/stderr，写入日志文件以便排查启动失败原因
@@ -379,6 +439,9 @@ class MenuBarController: NSObject {
             }
         } catch {
             NSLog("[LLMProxy] ❌ 启动 llm-proxy 失败: \(error.localizedDescription)")
+            DispatchQueue.main.async { [weak self] in
+                self?.showError("启动 llm-proxy 失败: \(error.localizedDescription)")
+            }
             // 写入日志文件
             let logPath = FileManager.default.homeDirectoryForCurrentUser
                 .appendingPathComponent(".llm-proxy/app-launch.log").path
@@ -395,9 +458,10 @@ class MenuBarController: NSObject {
 
     @MainActor @objc func reloadConfig() {
         Task { @MainActor in
+            setTransientStatus(loc("status.reloadingConfig"))
             do {
                 try await client.reloadConfig()
-                showError(loc("status.configReloaded"))
+                await refresh()
             } catch {
                 showError(loc("error.reloadFailed", error.localizedDescription))
             }
