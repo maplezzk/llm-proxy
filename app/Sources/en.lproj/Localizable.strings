@@ -13,6 +13,7 @@
 "status.configReloaded" = "✅ Config reloaded successfully";
 "error.reloadFailed" = "Reload config failed: %@";
 "action.quit" = "Quit LLMProxy";
+"action.language" = "Language: %@";
 "status.stopping" = "◌ Stopping...";
 "status.restarting" = "◌ Restarting...";
 "status.starting" = "◌ Starting...";
