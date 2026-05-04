@@ -343,9 +343,11 @@ class MenuBarController: NSObject {
 
     func runCLI(_ command: String) {
         let task = Process()
+        // 通过 login shell (-l) 启动，加载 ~/.zshrc 中的环境变量
+        let shell = "/bin/zsh"
+        task.executableURL = URL(fileURLWithPath: shell)
         if let bundled = bundledBinaryPath() {
-            // 1. .app 打包模式：执行 Resources 中的 llvm-proxy 二进制
-            task.executableURL = URL(fileURLWithPath: bundled)
+            task.arguments = ["-l", "-c", "\"\(bundled)\" \(command)"]
             task.currentDirectoryURL = URL(fileURLWithPath: Bundle.main.resourcePath!)
         } else if let jsEntry = debugNodeEntryPath() {
             // 2. 调试模式（swift run）：用 node 运行 bin/llm-proxy.js
@@ -358,7 +360,7 @@ class MenuBarController: NSObject {
             // 3. homebrew 安装
             let fallback = "/opt/homebrew/bin/llm-proxy"
             if FileManager.default.isExecutableFile(atPath: fallback) {
-                task.executableURL = URL(fileURLWithPath: fallback)
+                task.arguments = ["-l", "-c", "\"\(fallback)\" \(command)"]
             } else {
                 NSLog("[LLMProxy] ❌ 找不到 llm-proxy 二进制")
                 DispatchQueue.main.async { [weak self] in

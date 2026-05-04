@@ -292,6 +292,9 @@ tbody tr:hover td { background: #f8f9fb; }
     <span class="dot" :class="{ running: $store.app.status === 'running' }"></span>
     <span x-text="$store.app.status === 'running' ? $t('admin.sidebar.running') : $store.app.status === 'offline' ? $t('admin.sidebar.offline') : $t('admin.sidebar.loading')"></span>
     <span style="flex:1"></span>
+    <button @click="$store.app.reloadConfig()" style="font-size:13px;cursor:pointer;background:none;border:none;color:var(--sidebar-text);padding:2px 4px;border-radius:4px" title="$t('admin.common.reloadConfig')">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+    </button>
     <button @click="$store.app.switchLang($store.app.language === 'zh' ? 'en' : 'zh')" style="font-size:11px;cursor:pointer;background:none;border:none;color:var(--sidebar-text);padding:2px 4px;border-radius:4px">
       🌐 <span x-text="$store.app.language === 'zh' ? 'EN' : '中文'"></span>
     </button>
