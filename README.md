@@ -25,9 +25,14 @@ xattr -cr /Applications/LLMProxy.app
 ```
 Then open again. Includes everything — CLI, proxy, and admin UI.
 
-**CLI only:**
+**CLI only (npm):**
 ```bash
 npm install -g @maplezzk/llm-proxy
+```
+
+**CLI only (Homebrew):**
+```bash
+brew tap maplezzk/tap && brew install --cask llm-proxy
 ```
 
 ## Quick Start
