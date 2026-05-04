@@ -16,6 +16,16 @@
 - 🔥 **热加载**：配置原子替换，进行中请求不受影响
 - 📈 **Token 统计**：按 Provider 统计 token 使用量
 
+## 截图
+
+| macOS 菜单栏 | macOS 菜单栏（中文） | Admin 仪表盘 |
+|:---:|:---:|:---:|
+| ![macOS 菜单栏](docs/images/macos.png) | ![macOS 菜单栏中文](docs/images/macoc2.png) | ![Admin 仪表盘](docs/images/admin-dashboard.png) |
+
+| Admin Providers | Admin Adapters |
+|:---:|:---:|
+| ![Admin Providers](docs/images/admin-providers.png) | ![Admin Adapters](docs/images/admin-adapters.png) |
+
 ## 安装
 
 **macOS（推荐）：**

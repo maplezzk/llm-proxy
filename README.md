@@ -16,6 +16,16 @@ A local LLM proxy server — single port serving both admin UI and AI API, with 
 - 🔥 **Hot Reload**: Atomic config swap without dropping in-flight requests
 - 📈 **Token Tracking**: Per-provider token usage statistics
 
+## Screenshots
+
+| macOS Menu Bar | macOS Menu Bar (CN) | Admin Dashboard |
+|:---:|:---:|:---:|
+| ![macOS Menu Bar](docs/images/macos.png) | ![macOS Menu Bar CN](docs/images/macoc2.png) | ![Admin Dashboard](docs/images/admin-dashboard.png) |
+
+| Admin Providers | Admin Adapters |
+|:---:|:---:|
+| ![Admin Providers](docs/images/admin-providers.png) | ![Admin Adapters](docs/images/admin-adapters.png) |
+
 ## Install
 
 **macOS (recommended):**
