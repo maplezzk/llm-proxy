@@ -18,9 +18,9 @@
 
 ## 截图
 
-| macOS 菜单栏 | macOS 菜单栏（中文） | Admin 仪表盘 |
+| macOS 菜单栏 | macOS 菜单栏（English） | Admin 仪表盘 |
 |:---:|:---:|:---:|
-| ![macOS 菜单栏](docs/images/macos.png) | ![macOS 菜单栏中文](docs/images/macoc2.png) | ![Admin 仪表盘](docs/images/admin-dashboard.png) |
+| ![macOS 菜单栏](docs/images/macos.png) | ![macOS 菜单栏 EN](docs/images/macoc2.png) | ![Admin 仪表盘](docs/images/admin-dashboard.png) |
 
 | Admin Providers | Admin Adapters |
 |:---:|:---:|
