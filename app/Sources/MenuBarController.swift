@@ -90,18 +90,30 @@ class MenuBarController: NSObject {
         if serviceRunning {
             let stopItem = NSMenuItem(title: loc("action.stop"), action: #selector(stopService), keyEquivalent: "")
             stopItem.target = self
+            if #available(macOS 11.0, *) {
+                stopItem.image = NSImage(systemSymbolName: "stop.fill", accessibilityDescription: loc("action.stop"))
+            }
             menu.addItem(stopItem)
             let restartItem = NSMenuItem(title: loc("action.restart"), action: #selector(restartService), keyEquivalent: "")
             restartItem.target = self
+            if #available(macOS 11.0, *) {
+                restartItem.image = NSImage(systemSymbolName: "arrow.clockwise", accessibilityDescription: loc("action.restart"))
+            }
             menu.addItem(restartItem)
         } else {
             let startItem = NSMenuItem(title: loc("action.start"), action: #selector(startService), keyEquivalent: "")
             startItem.target = self
+            if #available(macOS 11.0, *) {
+                startItem.image = NSImage(systemSymbolName: "play.fill", accessibilityDescription: loc("action.start"))
+            }
             menu.addItem(startItem)
         }
         // 重载配置放在服务控制区
         let reloadItem = NSMenuItem(title: loc("action.reloadConfig"), action: #selector(reloadConfig), keyEquivalent: "r")
         reloadItem.target = self
+        if #available(macOS 11.0, *) {
+            reloadItem.image = NSImage(systemSymbolName: "gearshape", accessibilityDescription: loc("action.reloadConfig"))
+        }
         menu.addItem(reloadItem)
 
         menu.addItem(.separator())
@@ -112,10 +124,10 @@ class MenuBarController: NSObject {
             menu.addItem(item)
         } else {
             for adapter in adapters {
-                // 适配器名作为不可点击的标题
-                let headerItem = NSMenuItem(title: adapter.name, action: nil, keyEquivalent: "")
+                // 适配器名 + 协议类型作为 header
+                let headerItem = NSMenuItem(title: "\(adapter.name)（\(adapter.type)）", action: nil, keyEquivalent: "")
                 headerItem.isEnabled = false
-                let titleAttr = NSMutableAttributedString(string: adapter.name)
+                let titleAttr = NSMutableAttributedString(string: "\(adapter.name)（\(adapter.type)）")
                 titleAttr.addAttribute(.font, value: NSFont.systemFont(ofSize: 12, weight: .semibold), range: NSRange(location: 0, length: titleAttr.length))
                 titleAttr.addAttribute(.foregroundColor, value: NSColor.labelColor, range: NSRange(location: 0, length: titleAttr.length))
                 headerItem.attributedTitle = titleAttr
@@ -123,7 +135,17 @@ class MenuBarController: NSObject {
 
                 // 每个模型映射直接平铺，缩进显示
                 for mapping in adapter.models {
-                    let mappingItem = NSMenuItem(title: "  \(mapping.sourceModelId)", action: nil, keyEquivalent: "")
+                    let separator = " · "
+                    let displayText = "  \(mapping.sourceModelId)\(separator)\(mapping.provider)/\(mapping.targetModelId)"
+                    let attrTitle = NSMutableAttributedString(string: displayText)
+                    let srcEnd = "  \(mapping.sourceModelId)\(separator)".count
+                    attrTitle.addAttribute(.font, value: NSFont.systemFont(ofSize: 13), range: NSRange(location: 0, length: srcEnd))
+                    let tgtRange = NSRange(location: srcEnd, length: displayText.count - srcEnd)
+                    attrTitle.addAttribute(.font, value: NSFont.systemFont(ofSize: 12), range: tgtRange)
+                    attrTitle.addAttribute(.foregroundColor, value: NSColor.secondaryLabelColor, range: tgtRange)
+                    
+                    let mappingItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+                    mappingItem.attributedTitle = attrTitle
                     let mappingSubMenu = NSMenu()
 
                     for provider in providers {
@@ -163,13 +185,22 @@ class MenuBarController: NSObject {
         // 工具区：Admin UI → 日志目录 → 日志级别
         let adminItem = NSMenuItem(title: loc("action.openAdmin"), action: #selector(openAdmin), keyEquivalent: "")
         adminItem.target = self
+        if #available(macOS 11.0, *) {
+            adminItem.image = NSImage(systemSymbolName: "globe", accessibilityDescription: loc("action.openAdmin"))
+        }
         menu.addItem(adminItem)
 
         let logsItem = NSMenuItem(title: loc("action.openLogs"), action: #selector(openLogs), keyEquivalent: "")
         logsItem.target = self
+        if #available(macOS 11.0, *) {
+            logsItem.image = NSImage(systemSymbolName: "folder", accessibilityDescription: loc("action.openLogs"))
+        }
         menu.addItem(logsItem)
 
         let logLevelItem = NSMenuItem(title: loc("action.logLevel", currentLogLevel), action: nil, keyEquivalent: "")
+        if #available(macOS 11.0, *) {
+            logLevelItem.image = NSImage(systemSymbolName: "ellipsis.circle", accessibilityDescription: loc("action.logLevel", currentLogLevel))
+        }
         let logLevelMenu = NSMenu()
         for level in ["debug", "info", "warn", "error"] {
             let item = NSMenuItem(title: level, action: #selector(changeLogLevel(_:)), keyEquivalent: "")
@@ -185,6 +216,9 @@ class MenuBarController: NSObject {
 
         let quitItem = NSMenuItem(title: loc("action.quit"), action: #selector(quitApp), keyEquivalent: "q")
         quitItem.target = self
+        if #available(macOS 11.0, *) {
+            quitItem.image = NSImage(systemSymbolName: "xmark", accessibilityDescription: loc("action.quit"))
+        }
         menu.addItem(quitItem)
 
         statusItem.menu = menu
