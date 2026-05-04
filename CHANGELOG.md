@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.0](https://github.com/maplezzk/llm-proxy/compare/v0.9.0...v0.10.0) (2026-05-04)
+
+
+### Features
+
+* 增加 /admin/locale API，macOS app 和 Admin UI 语言同步 ([#74](https://github.com/maplezzk/llm-proxy/issues/74)) ([3eb5b79](https://github.com/maplezzk/llm-proxy/commit/3eb5b792828c508d461432f09caf7ac8a343b80c))
+
 ## [0.9.0](https://github.com/maplezzk/llm-proxy/compare/v0.8.0...v0.9.0) (2026-05-04)
 
 
