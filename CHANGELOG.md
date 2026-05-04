@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.9.0](https://github.com/maplezzk/llm-proxy/compare/v0.8.0...v0.9.0) (2026-05-04)
+
+
+### Features
+
+* **macos-app:** 菜单合并、状态文字对比度优化、调试模式启动支持 ([#71](https://github.com/maplezzk/llm-proxy/issues/71)) ([93b04d6](https://github.com/maplezzk/llm-proxy/commit/93b04d61a87348b9b739e6da046e2136172bd829))
+* **macos-app:** 菜单重设计 — 合并按钮、统一图标、适配器信息展示 ([#72](https://github.com/maplezzk/llm-proxy/issues/72)) ([1bc3cea](https://github.com/maplezzk/llm-proxy/commit/1bc3ceac6f70dd7dc3526437456710d5ad04cb1d))
+
+
+### Bug Fixes
+
+* 流式转换器从 message_start 事件提取 usage 防止 cache_create 丢失 ([#69](https://github.com/maplezzk/llm-proxy/issues/69)) ([d2e29c0](https://github.com/maplezzk/llm-proxy/commit/d2e29c0a833ad07b481d0c34008ba7ef09120eb5))
+
 ## [0.8.0](https://github.com/maplezzk/llm-proxy/compare/v0.7.1...v0.8.0) (2026-05-03)
 
 
