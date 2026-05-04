@@ -4,7 +4,7 @@ import { ConfigStore } from '../../src/config/store.js'
 import { StatusTracker } from '../../src/status/tracker.js'
 import { Logger } from '../../src/log/logger.js'
 import type { Config } from '../../src/config/types.js'
-import { handleGetConfig, handleReload, handleHealth, handleStatus } from '../../src/api/handlers/index.js'
+import { handleGetConfig, handleReload, handleHealth, handleStatus, handleGetLocale, handleSetLocale } from '../../src/api/handlers/index.js'
 import type { OutgoingHttpHeaders } from 'node:http'
 
 function createConfig(): Config {
@@ -78,5 +78,60 @@ describe('api/handlers', () => {
     assert.ok(Array.isArray(data.data.providers))
     assert.strictEqual(data.data.providers.length, 1)
     assert.strictEqual(data.data.providers[0].name, 'p1')
+  })
+
+  it('GET /admin/locale 返回默认 locale en', () => {
+    const store = new ConfigStore('/fake', createConfig())
+    const ctx = { store, tracker: new StatusTracker(), logger: new Logger() }
+    const res = mockRes()
+    handleGetLocale(ctx, {} as never, res as never)
+    const data = JSON.parse(res.getBody())
+    assert.strictEqual(data.success, true)
+    assert.strictEqual(data.data.locale, 'en')
+  })
+
+  it('GET /admin/locale 返回配置中的 locale', () => {
+    const config = createConfig()
+    config.locale = 'zh'
+    const store = new ConfigStore('/fake', config)
+    const ctx = { store, tracker: new StatusTracker(), logger: new Logger() }
+    const res = mockRes()
+    handleGetLocale(ctx, {} as never, res as never)
+    const data = JSON.parse(res.getBody())
+    assert.strictEqual(data.success, true)
+    assert.strictEqual(data.data.locale, 'zh')
+  })
+
+  it('PUT /admin/locale 设置 locale 为 zh', async () => {
+    const tmpDir = (await import('node:fs')).mkdtempSync((await import('node:os')).tmpdir() + '/llm-proxy-test-')
+    const configPath = tmpDir + '/config.yaml'
+    const store = new ConfigStore(configPath, createConfig())
+    const ctx = { store, tracker: new StatusTracker(), logger: new Logger() }
+    const req = new(await import('stream')).Readable()
+    req.push(JSON.stringify({ locale: 'zh' }))
+    req.push(null)
+    const res = mockRes()
+    await handleSetLocale(ctx, req as never, res as never)
+    const data = JSON.parse(res.getBody())
+    assert.strictEqual(data.success, true)
+    assert.strictEqual(data.data.locale, 'zh')
+    // 验证配置已更新
+    const res2 = mockRes()
+    handleGetLocale(ctx, {} as never, res2 as never)
+    const data2 = JSON.parse(res2.getBody())
+    assert.strictEqual(data2.data.locale, 'zh')
+  })
+
+  it('PUT /admin/locale 无效参数返回 400', async () => {
+    const tmpDir = (await import('node:fs')).mkdtempSync((await import('node:os')).tmpdir() + '/llm-proxy-test-')
+    const configPath = tmpDir + '/config.yaml'
+    const store = new ConfigStore(configPath, createConfig())
+    const ctx = { store, tracker: new StatusTracker(), logger: new Logger() }
+    const req = new(await import('stream')).Readable()
+    req.push(JSON.stringify({ locale: 'fr' }))
+    req.push(null)
+    const res = mockRes()
+    await handleSetLocale(ctx, req, res as never)
+    assert.strictEqual(res.getStatus(), 400)
   })
 })

@@ -212,6 +212,24 @@ class MenuBarController: NSObject {
         logLevelItem.submenu = logLevelMenu
         menu.addItem(logLevelItem)
 
+        // 语言切换（子菜单）
+        let currentLang = currentLang()
+        let langLabel = currentLang == "zh" ? "中文" : "English"
+        let langItem = NSMenuItem(title: loc("action.language", langLabel), action: nil, keyEquivalent: "")
+        if #available(macOS 11.0, *) {
+            langItem.image = NSImage(systemSymbolName: "globe", accessibilityDescription: loc("action.language", langLabel))
+        }
+        let langMenu = NSMenu()
+        for (langCode, langName) in [("zh", "中文"), ("en", "English")] {
+            let item = NSMenuItem(title: langName, action: #selector(toggleLanguage), keyEquivalent: "")
+            item.target = self
+            item.representedObject = langCode
+            if langCode == currentLang { item.state = .on }
+            langMenu.addItem(item)
+        }
+        langItem.submenu = langMenu
+        menu.addItem(langItem)
+
         menu.addItem(.separator())
 
         let quitItem = NSMenuItem(title: loc("action.quit"), action: #selector(quitApp), keyEquivalent: "q")
@@ -470,6 +488,16 @@ class MenuBarController: NSObject {
 
     @objc func openAdmin() {
         NSWorkspace.shared.open(URL(string: "\(client.baseURL)/admin")!)
+    }
+
+    @MainActor @objc func toggleLanguage(_ sender: NSMenuItem) {
+        guard let lang = sender.representedObject as? String else { return }
+        switchLang(lang)
+        // 同步到服务端
+        Task { @MainActor in
+            try? await client.setLocale(lang)
+        }
+        rebuildMenu()
     }
 
     @objc func openLogs() {

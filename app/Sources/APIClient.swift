@@ -72,4 +72,26 @@ class APIClient {
             throw URLError(.badServerResponse)
         }
     }
+
+    func fetchLocale() async throws -> String {
+        let url = URL(string: "\(baseURL)/admin/locale")!
+        let (data, _) = try await URLSession.shared.data(from: url)
+        let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        if let d = json?["data"] as? [String: Any], let locale = d["locale"] as? String {
+            return locale
+        }
+        return "en"
+    }
+
+    func setLocale(_ locale: String) async throws {
+        let url = URL(string: "\(baseURL)/admin/locale")!
+        var req = URLRequest(url: url)
+        req.httpMethod = "PUT"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try JSONSerialization.data(withJSONObject: ["locale": locale])
+        let (_, resp) = try await URLSession.shared.data(for: req)
+        guard let http = resp as? HTTPURLResponse, http.statusCode == 200 else {
+            throw URLError(.badServerResponse)
+        }
+    }
 }

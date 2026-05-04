@@ -79,6 +79,32 @@ export async function handleSetLogLevel(ctx: ServerContext, req: IncomingMessage
   json(res, 200, { success: true, data: { level } })
 }
 
+export function handleGetLocale(ctx: ServerContext, _req: IncomingMessage, res: ServerResponse): void {
+  const { config } = ctx.store.getConfig()
+  json(res, 200, { success: true, data: { locale: config.locale || 'en' } })
+}
+
+export async function handleSetLocale(ctx: ServerContext, req: IncomingMessage, res: ServerResponse): Promise<void> {
+  const body = JSON.parse(await (await import('../../lib/http-utils.js')).readBody(req))
+  const locale = body.locale
+  if (locale !== 'zh' && locale !== 'en') {
+    json(res, 400, { success: false, error: 'Invalid locale, must be "zh" or "en"' })
+    return
+  }
+  const { config } = ctx.store.getConfig()
+  const newConfig = {
+    providers: config.providers,
+    adapters: config.adapters,
+    proxyKey: config.proxyKey,
+    logLevel: config.logLevel,
+    maxBodySize: config.maxBodySize,
+    locale,
+  }
+  await ctx.store.writeConfig(newConfig)
+  ctx.logger.log('system', `Locale changed to ${locale} (persisted)`, { locale })
+  json(res, 200, { success: true, data: { locale } })
+}
+
 export function handleGetProxyKey(_ctx: ServerContext, _req: IncomingMessage, res: ServerResponse): void {
   const { config } = _ctx.store.getConfig()
   json(res, 200, { success: true, data: { set: !!config.proxyKey, key: config.proxyKey ? '***' : null } })

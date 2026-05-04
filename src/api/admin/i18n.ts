@@ -40,10 +40,35 @@ export function initAdminI18n(): void {
 }
 
 /**
- * Switch language and persist choice.
+ * Switch language and persist choice (localStorage + server).
  */
-export function switchLang(lang: string): void {
+export async function switchLang(lang: string): Promise<void> {
   localStorage.setItem('llm-proxy-lang', lang)
   i18next.changeLanguage(lang)
+  // 同步到服务端
+  try {
+    await fetch('/admin/locale', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ locale: lang }),
+    })
+  } catch { /* ignore */ }
   window.location.reload()
+}
+
+/**
+ * Sync locale from server (async, called after init).
+ */
+export async function syncLocaleFromServer(): Promise<void> {
+  try {
+    const resp = await fetch('/admin/locale')
+    const json = await resp.json()
+    const serverLang = json?.data?.locale
+    if (serverLang === 'zh' || serverLang === 'en') {
+      if (serverLang !== (i18next.language?.startsWith('zh') ? 'zh' : 'en')) {
+        localStorage.setItem('llm-proxy-lang', serverLang)
+        i18next.changeLanguage(serverLang)
+      }
+    }
+  } catch { /* ignore */ }
 }
