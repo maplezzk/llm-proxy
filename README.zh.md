@@ -18,15 +18,12 @@
 
 ## 截图
 
-<img src="docs/images/macos-cn.png" alt="macOS 菜单栏" width="480"/>
+<p align="center">
+  <img src="docs/images/macos-cn.png" alt="macOS 菜单栏" width="380"/>&nbsp;&nbsp;
+  <img src="docs/images/macos-cn2.png" alt="macOS 菜单栏" width="380"/>
+</p>
 
-<p align="center"><em>macOS 菜单栏 — 服务控制、适配器切换、语言设置</em></p>
-
-<br>
-
-<img src="docs/images/macos-cn2.png" alt="macOS 菜单栏" width="480"/>
-
-<p align="center"><em>macOS 菜单栏 — 适配器列表和模型映射</em></p>
+<p align="center"><em>macOS 菜单栏 — 服务控制、适配器切换、语言设置 &nbsp;&nbsp;|&nbsp;&nbsp; 适配器列表和模型映射</em></p>
 
 <br>
 
