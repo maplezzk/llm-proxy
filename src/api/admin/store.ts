@@ -92,6 +92,18 @@ export function initStore() {
       }
     },
 
+    async reloadConfig() {
+      const res = await this.fetch('/admin/config/reload', { method: 'POST' })
+      if (res.success) {
+        this.toast(i18next.t('admin.common.configReloaded'), 'success')
+        this.loadDashboard()
+      } else if (res.errors) {
+        this.toast(res.errors.map((e: any) => e.message).join('; '), 'error')
+      } else {
+        this.toast(res.error || i18next.t('admin.common.reloadFailed'), 'error')
+      }
+    },
+
     async loadDashboard() {
       const [health, config, tokenStats] = await Promise.all([
         this.fetch('/admin/health').catch(() => null),

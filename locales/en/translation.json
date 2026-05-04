@@ -35,7 +35,10 @@
       "noMatch": "No matching {{name}}",
       "normal": "Normal",
       "error": "Error",
-      "remove": "Remove"
+      "remove": "Remove",
+    "reloadConfig": "Reload Config",
+    "configReloaded": "Config reloaded",
+    "reloadFailed": "Reload failed"
     },
     "dashboard": {
       "status": "Status",
