@@ -18,13 +18,27 @@ A local LLM proxy server — single port serving both admin UI and AI API, with 
 
 ## Screenshots
 
-![macOS Menu Bar](docs/images/macos-en.png)
+<img src="docs/images/macos-en.png" alt="macOS Menu Bar" width="480"/>
 
-![Admin Dashboard](docs/images/admin-dashboard-en.png)
+<p align="center"><em>macOS menu bar app — service control, adapter switching, language settings</em></p>
 
-![Admin Providers](docs/images/admin-providers-en.png)
+<br>
 
-![Admin Adapters](docs/images/admin-adapters-en.png)
+<img src="docs/images/admin-dashboard-en.png" alt="Admin Dashboard" width="720"/>
+
+<p align="center"><em>Admin dashboard — provider status, token usage, proxy key management</em></p>
+
+<br>
+
+<img src="docs/images/admin-providers-en.png" alt="Admin Providers" width="720"/>
+
+<p align="center"><em>Provider management — add/edit/delete AI providers, pull model lists</em></p>
+
+<br>
+
+<img src="docs/images/admin-adapters-en.png" alt="Admin Adapters" width="720"/>
+
+<p align="center"><em>Adapter configuration — virtual endpoints with model remapping</em></p>
 
 ## Install
 

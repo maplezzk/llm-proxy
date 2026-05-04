@@ -18,15 +18,33 @@
 
 ## 截图
 
-![macOS 菜单栏](docs/images/macos-cn.png)
+<img src="docs/images/macos-cn.png" alt="macOS 菜单栏" width="480"/>
 
-![macOS 菜单栏](docs/images/macos-cn2.png)
+<p align="center"><em>macOS 菜单栏 — 服务控制、适配器切换、语言设置</em></p>
 
-![Admin 仪表盘](docs/images/admin-dashboard-cn.png)
+<br>
 
-![Admin Providers](docs/images/admin-providers-cn.png)
+<img src="docs/images/macos-cn2.png" alt="macOS 菜单栏" width="480"/>
 
-![Admin Adapters](docs/images/admin-adapters-cn.png)
+<p align="center"><em>macOS 菜单栏 — 适配器列表和模型映射</em></p>
+
+<br>
+
+<img src="docs/images/admin-dashboard-cn.png" alt="Admin 仪表盘" width="720"/>
+
+<p align="center"><em>管理仪表盘 — Provider 状态、Token 用量、代理密钥管理</em></p>
+
+<br>
+
+<img src="docs/images/admin-providers-cn.png" alt="Admin Providers" width="720"/>
+
+<p align="center"><em>Provider 管理 — 添加/编辑/删除 AI 服务商，拉取模型列表</em></p>
+
+<br>
+
+<img src="docs/images/admin-adapters-cn.png" alt="Admin Adapters" width="720"/>
+
+<p align="center"><em>适配器配置 — 虚拟端点 + 模型重映射</em></p>
 
 ## 安装
 
