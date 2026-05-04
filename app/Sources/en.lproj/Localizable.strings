@@ -9,7 +9,7 @@
 "action.logLevel" = "Log Level: %@";
 "action.openAdmin" = "Open Admin UI";
 "action.openLogs" = "Open Logs Folder";
-"action.reloadConfig" = "Reload Config";
+"action.reloadConfig" = "⚙  Reload Config";
 "status.configReloaded" = "✅ Config reloaded successfully";
 "error.reloadFailed" = "Reload config failed: %@";
 "action.quit" = "Quit LLMProxy";

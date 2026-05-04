@@ -99,6 +99,11 @@ class MenuBarController: NSObject {
             startItem.target = self
             menu.addItem(startItem)
         }
+        // 重载配置放在服务控制区
+        let reloadItem = NSMenuItem(title: loc("action.reloadConfig"), action: #selector(reloadConfig), keyEquivalent: "r")
+        reloadItem.target = self
+        menu.addItem(reloadItem)
+
         menu.addItem(.separator())
 
         if adapters.isEmpty {
@@ -155,11 +160,15 @@ class MenuBarController: NSObject {
 
         menu.addItem(.separator())
 
-        let reloadItem = NSMenuItem(title: loc("action.reloadConfig"), action: #selector(reloadConfig), keyEquivalent: "r")
-        reloadItem.target = self
-        menu.addItem(reloadItem)
+        // 工具区：Admin UI → 日志目录 → 日志级别
+        let adminItem = NSMenuItem(title: loc("action.openAdmin"), action: #selector(openAdmin), keyEquivalent: "")
+        adminItem.target = self
+        menu.addItem(adminItem)
 
-        // 日志级别
+        let logsItem = NSMenuItem(title: loc("action.openLogs"), action: #selector(openLogs), keyEquivalent: "")
+        logsItem.target = self
+        menu.addItem(logsItem)
+
         let logLevelItem = NSMenuItem(title: loc("action.logLevel", currentLogLevel), action: nil, keyEquivalent: "")
         let logLevelMenu = NSMenu()
         for level in ["debug", "info", "warn", "error"] {
@@ -171,14 +180,6 @@ class MenuBarController: NSObject {
         }
         logLevelItem.submenu = logLevelMenu
         menu.addItem(logLevelItem)
-
-        let adminItem = NSMenuItem(title: loc("action.openAdmin"), action: #selector(openAdmin), keyEquivalent: "")
-        adminItem.target = self
-        menu.addItem(adminItem)
-
-        let logsItem = NSMenuItem(title: loc("action.openLogs"), action: #selector(openLogs), keyEquivalent: "")
-        logsItem.target = self
-        menu.addItem(logsItem)
 
         menu.addItem(.separator())
 
