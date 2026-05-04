@@ -18,13 +18,13 @@ A local LLM proxy server — single port serving both admin UI and AI API, with 
 
 ## Screenshots
 
-| macOS Menu Bar | Admin Dashboard |
-|:---:|:---:|
-| ![macOS Menu Bar](docs/images/macos-en.png) | ![Admin Dashboard](docs/images/admin-dashboard-en.png) |
+![macOS Menu Bar](docs/images/macos-en.png)
 
-| Admin Providers | Admin Adapters |
-|:---:|:---:|
-| ![Admin Providers](docs/images/admin-providers-en.png) | ![Admin Adapters](docs/images/admin-adapters-en.png) |
+![Admin Dashboard](docs/images/admin-dashboard-en.png)
+
+![Admin Providers](docs/images/admin-providers-en.png)
+
+![Admin Adapters](docs/images/admin-adapters-en.png)
 
 ## Install
 

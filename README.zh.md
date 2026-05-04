@@ -18,13 +18,15 @@
 
 ## 截图
 
-| macOS 菜单栏 | macOS 菜单栏 | Admin 仪表盘 |
-|:---:|:---:|:---:|
-| ![macOS 菜单栏](docs/images/macos-cn.png) | ![macOS 菜单栏 2](docs/images/macos-cn2.png) | ![Admin 仪表盘](docs/images/admin-dashboard-cn.png) |
+![macOS 菜单栏](docs/images/macos-cn.png)
 
-| Admin Providers | Admin Adapters |
-|:---:|:---:|
-| ![Admin Providers](docs/images/admin-providers-cn.png) | ![Admin Adapters](docs/images/admin-adapters-cn.png) |
+![macOS 菜单栏](docs/images/macos-cn2.png)
+
+![Admin 仪表盘](docs/images/admin-dashboard-cn.png)
+
+![Admin Providers](docs/images/admin-providers-cn.png)
+
+![Admin Adapters](docs/images/admin-adapters-cn.png)
 
 ## 安装
 
