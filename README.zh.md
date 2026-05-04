@@ -16,6 +16,33 @@
 - 🔥 **热加载**：配置原子替换，进行中请求不受影响
 - 📈 **Token 统计**：按 Provider 统计 token 使用量
 
+## 截图
+
+<p align="center">
+  <img src="docs/images/macos-cn.png" alt="macOS 菜单栏" width="380"/>&nbsp;&nbsp;
+  <img src="docs/images/macos-cn2.png" alt="macOS 菜单栏" width="380"/>
+</p>
+
+<p align="center"><em>macOS 菜单栏 — 服务控制、适配器切换、语言设置 &nbsp;&nbsp;|&nbsp;&nbsp; 适配器列表和模型映射</em></p>
+
+<br>
+
+<img src="docs/images/admin-dashboard-cn.png" alt="Admin 仪表盘" width="720"/>
+
+<p align="center"><em>管理仪表盘 — Provider 状态、Token 用量、代理密钥管理</em></p>
+
+<br>
+
+<img src="docs/images/admin-providers-cn.png" alt="Admin Providers" width="720"/>
+
+<p align="center"><em>Provider 管理 — 添加/编辑/删除 AI 服务商，拉取模型列表</em></p>
+
+<br>
+
+<img src="docs/images/admin-adapters-cn.png" alt="Admin Adapters" width="720"/>
+
+<p align="center"><em>适配器配置 — 虚拟端点 + 模型重映射</em></p>
+
 ## 安装
 
 **macOS（推荐）：**
@@ -25,14 +52,14 @@ xattr -cr /Applications/LLMProxy.app
 ```
 再次打开即可。内含完整代理服务和管理界面。
 
-**仅 CLI（npm）：**
-```bash
-npm install -g @maplezzk/llm-proxy
-```
-
-**仅 CLI（Homebrew）：**
+**macOS（Homebrew）：**
 ```bash
 brew tap maplezzk/tap && brew install --cask llm-proxy
+```
+
+**仅 CLI：**
+```bash
+npm install -g @maplezzk/llm-proxy
 ```
 
 ## 快速开始

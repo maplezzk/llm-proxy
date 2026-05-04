@@ -16,6 +16,33 @@ A local LLM proxy server — single port serving both admin UI and AI API, with 
 - 🔥 **Hot Reload**: Atomic config swap without dropping in-flight requests
 - 📈 **Token Tracking**: Per-provider token usage statistics
 
+## Screenshots
+
+<p align="center">
+  <img src="docs/images/macos-en.png" alt="macOS Menu Bar" width="380"/>&nbsp;&nbsp;
+  <img src="docs/images/macos-en2.png" alt="macOS Menu Bar" width="380"/>
+</p>
+
+<p align="center"><em>macOS menu bar — service control, adapter switching, language settings &nbsp;&nbsp;|&nbsp;&nbsp; adapter list &amp; model mapping</em></p>
+
+<br>
+
+<img src="docs/images/admin-dashboard-en.png" alt="Admin Dashboard" width="720"/>
+
+<p align="center"><em>Admin dashboard — provider status, token usage, proxy key management</em></p>
+
+<br>
+
+<img src="docs/images/admin-providers-en.png" alt="Admin Providers" width="720"/>
+
+<p align="center"><em>Provider management — add/edit/delete AI providers, pull model lists</em></p>
+
+<br>
+
+<img src="docs/images/admin-adapters-en.png" alt="Admin Adapters" width="720"/>
+
+<p align="center"><em>Adapter configuration — virtual endpoints with model remapping</em></p>
+
 ## Install
 
 **macOS (recommended):**
@@ -25,14 +52,14 @@ xattr -cr /Applications/LLMProxy.app
 ```
 Then open again. Includes everything — CLI, proxy, and admin UI.
 
-**CLI only (npm):**
-```bash
-npm install -g @maplezzk/llm-proxy
-```
-
-**CLI only (Homebrew):**
+**macOS (Homebrew):**
 ```bash
 brew tap maplezzk/tap && brew install --cask llm-proxy
+```
+
+**CLI only:**
+```bash
+npm install -g @maplezzk/llm-proxy
 ```
 
 ## Quick Start
