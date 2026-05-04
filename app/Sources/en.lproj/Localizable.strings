@@ -1,3 +1,4 @@
+"status.reloadingConfig" = "◌ Reloading config...";
 "status.running" = "● llm-proxy Running";
 "status.notRunning" = "○ llm-proxy Not Running";
 "action.stop" = "⏹  Stop Service";

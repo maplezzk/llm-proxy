@@ -76,7 +76,9 @@ class MenuBarController: NSObject {
         let statusMenuItem = NSMenuItem()
         let statusText = serviceRunning ? loc("status.running") : loc("status.notRunning")
         let attrTitle = NSMutableAttributedString(string: statusText)
-        let color: NSColor = serviceRunning ? .systemGreen : .systemGray
+        let color: NSColor = serviceRunning
+            ? NSColor(srgbRed: 0.20, green: 0.68, blue: 0.30, alpha: 1.0)
+            : .secondaryLabelColor
         attrTitle.addAttribute(.foregroundColor, value: color, range: NSRange(location: 0, length: attrTitle.length))
         attrTitle.addAttribute(.font, value: NSFont.systemFont(ofSize: 13, weight: .medium), range: NSRange(location: 0, length: attrTitle.length))
         statusMenuItem.attributedTitle = attrTitle
@@ -153,11 +155,7 @@ class MenuBarController: NSObject {
 
         menu.addItem(.separator())
 
-        let refreshItem = NSMenuItem(title: loc("action.refresh"), action: #selector(refreshMenu), keyEquivalent: "r")
-        refreshItem.target = self
-        menu.addItem(refreshItem)
-
-        let reloadItem = NSMenuItem(title: loc("action.reloadConfig"), action: #selector(reloadConfig), keyEquivalent: "")
+        let reloadItem = NSMenuItem(title: loc("action.reloadConfig"), action: #selector(reloadConfig), keyEquivalent: "r")
         reloadItem.target = self
         menu.addItem(reloadItem)
 
@@ -295,21 +293,48 @@ class MenuBarController: NSObject {
         return FileManager.default.isExecutableFile(atPath: path) ? path : nil
     }
 
+    /// 调试模式（swift run）下用 node 运行项目中的 bin/llm-proxy.js
+    func debugNodeEntryPath() -> String? {
+        let bundlePath = Bundle.main.bundlePath
+        guard let buildRange = bundlePath.range(of: "/.build/") else { return nil }
+        // bundlePath: .../llm-proxy/app/.build/arm64-apple-macosx/debug
+        // appDir:     .../llm-proxy/app
+        let appDir = bundlePath[..<buildRange.lowerBound]
+        let projectRoot = (appDir as NSString).deletingLastPathComponent  // .../llm-proxy
+        let jsEntry = (projectRoot as NSString).appendingPathComponent("bin/llm-proxy.js")
+        guard FileManager.default.isExecutableFile(atPath: jsEntry) else { return nil }
+        return jsEntry
+    }
+
     func runCLI(_ command: String) {
         let task = Process()
         if let bundled = bundledBinaryPath() {
+            // 1. .app 打包模式：执行 Resources 中的 llvm-proxy 二进制
             task.executableURL = URL(fileURLWithPath: bundled)
             task.currentDirectoryURL = URL(fileURLWithPath: Bundle.main.resourcePath!)
+        } else if let jsEntry = debugNodeEntryPath() {
+            // 2. 调试模式（swift run）：用 node 运行 bin/llm-proxy.js
+            let projectRoot = ((jsEntry as NSString).deletingLastPathComponent as NSString).deletingLastPathComponent
+            task.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+            task.arguments = ["node", jsEntry, command]
+            task.currentDirectoryURL = URL(fileURLWithPath: projectRoot)
+            NSLog("[LLMProxy] ℹ️ 调试模式: node \(jsEntry) \(command)")
         } else {
+            // 3. homebrew 安装
             let fallback = "/opt/homebrew/bin/llm-proxy"
             if FileManager.default.isExecutableFile(atPath: fallback) {
                 task.executableURL = URL(fileURLWithPath: fallback)
             } else {
-                NSLog("[LLMProxy] ❌ 找不到 llm-proxy 二进制 (bundled 和 /opt/homebrew/bin 都不存在)")
+                NSLog("[LLMProxy] ❌ 找不到 llm-proxy 二进制")
+                DispatchQueue.main.async { [weak self] in
+                    self?.showError("找不到 llm-proxy 二进制。调试模式请先 npm run build 编译项目，或直接终端运行 llm-proxy start")
+                }
                 return
             }
         }
-        task.arguments = [command]
+        if task.arguments == nil {
+            task.arguments = [command]
+        }
 
         // 捕获 stdout/stderr，写入日志文件以便排查启动失败原因
         let stdoutPipe = Pipe()
@@ -377,6 +402,9 @@ class MenuBarController: NSObject {
             }
         } catch {
             NSLog("[LLMProxy] ❌ 启动 llm-proxy 失败: \(error.localizedDescription)")
+            DispatchQueue.main.async { [weak self] in
+                self?.showError("启动 llm-proxy 失败: \(error.localizedDescription)")
+            }
             // 写入日志文件
             let logPath = FileManager.default.homeDirectoryForCurrentUser
                 .appendingPathComponent(".llm-proxy/app-launch.log").path
@@ -393,9 +421,10 @@ class MenuBarController: NSObject {
 
     @MainActor @objc func reloadConfig() {
         Task { @MainActor in
+            setTransientStatus(loc("status.reloadingConfig"))
             do {
                 try await client.reloadConfig()
-                showError(loc("status.configReloaded"))
+                await refresh()
             } catch {
                 showError(loc("error.reloadFailed", error.localizedDescription))
             }

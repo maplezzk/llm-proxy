@@ -1,3 +1,4 @@
+"status.reloadingConfig" = "◌ 正在重载配置...";
 "status.running" = "● llm-proxy 运行中";
 "status.notRunning" = "○ llm-proxy 未运行";
 "action.stop" = "⏹  停止服务";
