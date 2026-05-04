@@ -88,6 +88,9 @@ export async function convertAnthropicStreamToOpenAI(
       }
 
       if (eventType === 'message_start' || innerType === 'message_start') {
+        const message = parsed?.message as Record<string, unknown> | undefined
+        const msgUsage = message?.usage as Record<string, unknown> | undefined
+        if (msgUsage) anthropicUsage = msgUsage
         write({ choices: [{ delta: { role: 'assistant' }, index: 0 }] })
         continue
       }
@@ -134,7 +137,7 @@ export async function convertAnthropicStreamToOpenAI(
       if (eventType === 'message_delta' || innerType === 'message_delta') {
         const msgDelta = parsed?.delta as Record<string, unknown> | undefined
         const msgUsage = parsed?.usage as Record<string, unknown> | undefined
-        if (msgUsage) anthropicUsage = msgUsage
+        if (msgUsage) Object.assign(anthropicUsage, msgUsage)
         const stopReason = msgDelta?.stop_reason as string | undefined
         if (stopReason) {
           const finishMap: Record<string, string> = { end_turn: 'stop', max_tokens: 'length', tool_use: 'tool_calls' }
@@ -656,6 +659,9 @@ export async function convertAnthropicStreamToOpenAIResponses(
     if (eventType === 'ping' || innerType === 'ping') return false
 
     if (eventType === 'message_start' || innerType === 'message_start') {
+      const message = parsed?.message as Record<string, unknown> | undefined
+      const msgUsage = message?.usage as Record<string, unknown> | undefined
+      if (msgUsage) anthropicUsage = msgUsage
       currentRespId = respId()
       currentMsgId = msgId()
       writeRaw(`event: response.created\ndata: {"type":"response.created","response":{"id":"${currentRespId}","object":"response","status":"in_progress","output":[]}}\n\n`)
@@ -712,7 +718,7 @@ export async function convertAnthropicStreamToOpenAIResponses(
 
     if (eventType === 'message_delta' || innerType === 'message_delta') {
       const msgUsage = parsed?.usage as Record<string, unknown> | undefined
-      if (msgUsage) anthropicUsage = msgUsage
+      if (msgUsage) Object.assign(anthropicUsage, msgUsage)
       return false
     }
 
