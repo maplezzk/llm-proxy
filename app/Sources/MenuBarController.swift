@@ -479,6 +479,10 @@ class MenuBarController: NSObject {
             setTransientStatus(loc("status.reloadingConfig"))
             do {
                 try await client.reloadConfig()
+                // 先同步 locale，再统一刷新（避免两次 rebuildMenu）
+                if let serverLocale = try? await client.fetchLocale() {
+                    UserDefaults.standard.set(serverLocale, forKey: "llm-proxy-lang")
+                }
                 await refresh()
             } catch {
                 showError(loc("error.reloadFailed", error.localizedDescription))

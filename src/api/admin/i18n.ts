@@ -44,8 +44,7 @@ export function initAdminI18n(): void {
  */
 export async function switchLang(lang: string): Promise<void> {
   localStorage.setItem('llm-proxy-lang', lang)
-  i18next.changeLanguage(lang)
-  // 同步到服务端
+  // 先同步到服务端（await 确保请求完成后再 reload）
   try {
     await fetch('/admin/locale', {
       method: 'PUT',
@@ -53,6 +52,7 @@ export async function switchLang(lang: string): Promise<void> {
       body: JSON.stringify({ locale: lang }),
     })
   } catch { /* ignore */ }
+  i18next.changeLanguage(lang)
   window.location.reload()
 }
 
