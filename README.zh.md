@@ -25,14 +25,14 @@ xattr -cr /Applications/LLMProxy.app
 ```
 再次打开即可。内含完整代理服务和管理界面。
 
-**仅 CLI（npm）：**
-```bash
-npm install -g @maplezzk/llm-proxy
-```
-
-**仅 CLI（Homebrew）：**
+**macOS（Homebrew）：**
 ```bash
 brew tap maplezzk/tap && brew install --cask llm-proxy
+```
+
+**仅 CLI：**
+```bash
+npm install -g @maplezzk/llm-proxy
 ```
 
 ## 快速开始
