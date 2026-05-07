@@ -88,10 +88,10 @@ describe('proxy/stream-converter', () => {
       assert.ok(output.includes('"cached_tokens":125312'), 'cache_read_input_tokens 应映射到 cached_tokens')
       // 验证 cache_creation_input_tokens 保留
       assert.ok(output.includes('"cache_creation_input_tokens":0'), 'cache_creation_input_tokens 应保留')
-      // 验证基础字段
-      assert.ok(output.includes('"prompt_tokens":227'), 'prompt_tokens 应等于 input_tokens')
+      // 验证基础字段（prompt_tokens = 计费 input + 缓存命中 input）
+      assert.ok(output.includes('"prompt_tokens":125539'), 'prompt_tokens 应等于 input_tokens + cache_read_input_tokens')
       assert.ok(output.includes('"completion_tokens":1595'), 'completion_tokens 应等于 output_tokens')
-      assert.ok(output.includes('"total_tokens":1822'), 'total_tokens 应为 input + output')
+      assert.ok(output.includes('"total_tokens":127134'), 'total_tokens 应为 prompt_tokens + completion_tokens')
       assert.ok(output.includes('[DONE]'), '应包含 [DONE]')
     })
 

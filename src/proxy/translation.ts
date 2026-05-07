@@ -883,11 +883,17 @@ export function convertAnthropicResponseToOpenAIResponses(anthropicBody: Record<
     status: stopReason === 'end_turn' ? 'completed' : 'incomplete',
     model: anthropicBody.model as string ?? '',
     output,
-    usage: {
-      input_tokens: (usage?.input_tokens as number) ?? 0,
-      output_tokens: (usage?.output_tokens as number) ?? 0,
-      total_tokens: ((usage?.input_tokens as number) ?? 0) + ((usage?.output_tokens as number) ?? 0),
-    },
+    usage: (() => {
+      const ai = (usage?.input_tokens as number) ?? 0
+      const cr = (usage?.cache_read_input_tokens as number) ?? 0
+      const co = (usage?.output_tokens as number) ?? 0
+      const inputTokens = ai + cr  // Anthropic input_tokens = 计费部分，不含缓存命中
+      return {
+        input_tokens: inputTokens,
+        output_tokens: co,
+        total_tokens: inputTokens + co,
+      }
+    })(),
   }
 }
 
@@ -992,11 +998,22 @@ export function convertAnthropicResponseToOpenAI(anthropicBody: Record<string, u
       message,
       finish_reason: stopMap[stopReason] ?? stopReason,
     }],
-    usage: {
-      prompt_tokens: (usage?.input_tokens as number) ?? 0,
-      completion_tokens: (usage?.output_tokens as number) ?? 0,
-      total_tokens: ((usage?.input_tokens as number) ?? 0) + ((usage?.output_tokens as number) ?? 0),
-    },
+    usage: (() => {
+      const ai = (usage?.input_tokens as number) ?? 0
+      const cr = (usage?.cache_read_input_tokens as number) ?? 0
+      const co = (usage?.output_tokens as number) ?? 0
+      const promptTokens = ai + cr  // Anthropic input_tokens = 计费部分，不含缓存命中
+      const u: Record<string, unknown> = {
+        prompt_tokens: promptTokens,
+        completion_tokens: co,
+        total_tokens: promptTokens + co,
+      }
+      const details: Record<string, unknown> = {}
+      if (cr > 0) details.cached_tokens = cr
+      if ((usage?.cache_creation_input_tokens as number) != null) details.cache_creation_input_tokens = usage?.cache_creation_input_tokens
+      if (Object.keys(details).length > 0) u.prompt_tokens_details = details
+      return u
+    })(),
   }
 }
 

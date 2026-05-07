@@ -33,13 +33,15 @@ export function dashboardPage() {
       const store = (window as any).Alpine.store('app')
       const ts = store.tokenStats?.today
       if (!ts) return []
-      const input = ts.input_tokens || 0
+      const input = ts.input_tokens || 0  // 总输入 token（含缓存和非缓存）
       const output = ts.output_tokens || 0
-      const cacheRead = ts.cache_read_input_tokens || 0
-      const cacheCreate = ts.cache_creation_input_tokens || 0
+      const cacheRead = ts.cache_read_input_tokens || 0        // 缓存命中
+      const cacheCreate = ts.cache_creation_input_tokens || 0  // 缓存创建
       const total = input + output
-      const cacheTotal = cacheRead + cacheCreate
-      const cacheHitRate = cacheTotal > 0 ? pct(cacheRead, cacheTotal) : '0%'
+      // 官方公式：命中率 = cache_read / (cache_read + cache_creation + 非缓存 token)
+      // 其中 非缓存 token = total_input - cache_read - cache_creation（breakpoint 后的部分）
+      // 代入后简化为：命中率 = cache_read / total_input
+      const cacheHitRate = input > 0 ? pct(cacheRead, input) : '0%'
       return [
         { label: t('admin.dashboard.requests'), value: ts.request_count || 0, clr: 'var(--text)', desc: t('admin.dashboard.today') },
         { label: t('admin.dashboard.inputTokens'), value: fmtNum(input), clr: 'var(--accent)', desc: `${t('admin.dashboard.output')} ${fmtNum(output)} / ${t('admin.dashboard.total')} ${fmtNum(total)}` },
