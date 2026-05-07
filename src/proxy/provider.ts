@@ -100,11 +100,15 @@ export async function forwardRequest(
       if (parsed && req.tokenTracker && req.providerName) {
         const usage = parsed.usage as Record<string, unknown> | undefined
         if (usage) {
-          const inputTokens = (usage.input_tokens ?? usage.prompt_tokens ?? 0) as number
+          let inputTokens = (usage.input_tokens ?? usage.prompt_tokens ?? 0) as number
           const outputTokens = (usage.output_tokens ?? usage.completion_tokens ?? 0) as number
           const details = usage.prompt_tokens_details as Record<string, unknown> | undefined
           const cacheRead = (usage.cache_read_input_tokens ?? details?.cached_tokens) as number | undefined
           const cacheCreate = (usage.cache_creation_input_tokens ?? usage.prompt_cache_miss_tokens) as number | undefined
+          // 归一化：Anthropic 的 input_tokens 是计费部分（不含缓存），统一存为总输入
+          if (req.upstreamType === 'anthropic') {
+            inputTokens += (cacheRead ?? 0) + (cacheCreate ?? 0)
+          }
           req.tokenTracker.record(req.providerName, inputTokens, outputTokens, cacheRead, cacheCreate)
         }
       }
@@ -185,7 +189,12 @@ export async function forwardRequest(
       }
       // Record token usage from streaming response
       if (usage && req.tokenTracker && req.providerName) {
-        req.tokenTracker.record(req.providerName, usage.input_tokens, usage.output_tokens, usage.cache_read_input_tokens, usage.cache_creation_input_tokens)
+        let inputTokens = usage.input_tokens
+        // 归一化：Anthropic 的 input_tokens 是计费部分（不含缓存），统一存为总输入
+        if (req.upstreamType === 'anthropic') {
+          inputTokens += (usage.cache_read_input_tokens ?? 0) + (usage.cache_creation_input_tokens ?? 0)
+        }
+        req.tokenTracker.record(req.providerName, inputTokens, usage.output_tokens, usage.cache_read_input_tokens, usage.cache_creation_input_tokens)
       }
     } else {
       const contentType = response.headers.get('content-type') ?? 'text/event-stream'
