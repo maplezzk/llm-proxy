@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.2](https://github.com/maplezzk/llm-proxy/compare/v0.10.1...v0.10.2) (2026-05-07)
+
+
+### Bug Fixes
+
+* 归一化 input_tokens 为总输入，缓存命中率用 cache_read / total_input ([#79](https://github.com/maplezzk/llm-proxy/issues/79)) ([113c19e](https://github.com/maplezzk/llm-proxy/commit/113c19ebb8f859392ab22774bcb5500cc5a25774))
+
 ## [0.10.1](https://github.com/maplezzk/llm-proxy/compare/v0.10.0...v0.10.1) (2026-05-07)
 
 
