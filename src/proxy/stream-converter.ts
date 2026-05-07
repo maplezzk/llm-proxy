@@ -144,17 +144,23 @@ export async function convertAnthropicStreamToOpenAI(
           const finish = finishMap[stopReason] ?? stopReason
           const chunk: Record<string, unknown> = { choices: [{ delta: {}, finish_reason: finish, index: 0 }] }
           if (Object.keys(anthropicUsage).length > 0) {
+            // Anthropic input_tokens = 计费 token（不含缓存命中），
+            // OpenAI prompt_tokens = 总输入 token（含缓存命中）
+            const ai = (anthropicUsage.input_tokens as number) ?? 0
+            const cr = (anthropicUsage.cache_read_input_tokens as number) ?? 0
+            const co = (anthropicUsage.output_tokens as number) ?? 0
+            const promptTokens = ai + cr
             const usage: Record<string, unknown> = {
-              prompt_tokens: anthropicUsage.input_tokens ?? 0,
-              completion_tokens: anthropicUsage.output_tokens ?? 0,
-              total_tokens: ((anthropicUsage.input_tokens as number) ?? 0) + ((anthropicUsage.output_tokens as number) ?? 0),
+              prompt_tokens: promptTokens,
+              completion_tokens: co,
+              total_tokens: promptTokens + co,
             }
             const promptDetails = (anthropicUsage.prompt_tokens_details ?? anthropicUsage.prompt_cache_details) as Record<string, unknown> | undefined
             const promptDetailsOut: Record<string, unknown> = {}
             if (promptDetails?.cached_tokens != null) {
               promptDetailsOut.cached_tokens = promptDetails.cached_tokens
-            } else if (anthropicUsage.cache_read_input_tokens != null) {
-              promptDetailsOut.cached_tokens = anthropicUsage.cache_read_input_tokens
+            } else if (cr > 0) {
+              promptDetailsOut.cached_tokens = cr
             }
             if (anthropicUsage.cache_creation_input_tokens != null) {
               promptDetailsOut.cache_creation_input_tokens = anthropicUsage.cache_creation_input_tokens
@@ -725,7 +731,11 @@ export async function convertAnthropicStreamToOpenAIResponses(
     if (eventType === 'message_stop' || innerType === 'message_stop') {
       const respData: Record<string, unknown> = { id: currentRespId, object: 'response', status: 'completed', output: [] }
       if (Object.keys(anthropicUsage).length > 0) {
-        respData.usage = { input_tokens: anthropicUsage.input_tokens ?? 0, output_tokens: anthropicUsage.output_tokens ?? 0, total_tokens: ((anthropicUsage.input_tokens as number) ?? 0) + ((anthropicUsage.output_tokens as number) ?? 0) }
+        const ai = (anthropicUsage.input_tokens as number) ?? 0
+        const cr = (anthropicUsage.cache_read_input_tokens as number) ?? 0
+        const co = (anthropicUsage.output_tokens as number) ?? 0
+        const inputTokens = ai + cr
+        respData.usage = { input_tokens: inputTokens, output_tokens: co, total_tokens: inputTokens + co }
       }
       writeRaw('event: response.completed\ndata: ' + JSON.stringify({ type: 'response.completed', response: respData }) + '\n\n')
       res.end()
@@ -777,7 +787,11 @@ export async function convertAnthropicStreamToOpenAIResponses(
     if (currentRespId) {
       const respData: Record<string, unknown> = { id: currentRespId, object: 'response', status: 'completed', output: [] }
       if (Object.keys(anthropicUsage).length > 0) {
-        respData.usage = { input_tokens: anthropicUsage.input_tokens ?? 0, output_tokens: anthropicUsage.output_tokens ?? 0, total_tokens: ((anthropicUsage.input_tokens as number) ?? 0) + ((anthropicUsage.output_tokens as number) ?? 0) }
+        const ai = (anthropicUsage.input_tokens as number) ?? 0
+        const cr = (anthropicUsage.cache_read_input_tokens as number) ?? 0
+        const co = (anthropicUsage.output_tokens as number) ?? 0
+        const inputTokens = ai + cr
+        respData.usage = { input_tokens: inputTokens, output_tokens: co, total_tokens: inputTokens + co }
       }
       writeRaw('event: response.completed\ndata: ' + JSON.stringify({ type: 'response.completed', response: respData }) + '\n\n')
     }
