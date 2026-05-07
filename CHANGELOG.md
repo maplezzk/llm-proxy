@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.1](https://github.com/maplezzk/llm-proxy/compare/v0.10.0...v0.10.1) (2026-05-07)
+
+
+### Bug Fixes
+
+* Anthropic→OpenAI 转换时 prompt_tokens 应包含缓存命中 token ([#77](https://github.com/maplezzk/llm-proxy/issues/77)) ([ab92055](https://github.com/maplezzk/llm-proxy/commit/ab920551f252ddfd70cdb4371d5f8d180fc429f7))
+
 ## [0.10.0](https://github.com/maplezzk/llm-proxy/compare/v0.9.0...v0.10.0) (2026-05-04)
 
 
