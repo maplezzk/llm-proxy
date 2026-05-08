@@ -61,9 +61,20 @@ codesign --force --deep --sign - "$APP" 2>/dev/null || true
 
 echo "=== 4. Create DMG ==="
 VERSION=$(node -p "require('$ROOT_DIR/package.json').version")
+APP_NAME="LLMProxy"
 DMG="$BUILD_DIR/LLMProxy-v${VERSION}.dmg"
+DMG_SRC=$(mktemp -d /tmp/llmproxy-dmg.XXXXXX)
+
+# Build DMG source directory (app + Applications symlink for drag-to-install)
+cp -R "$APP" "$DMG_SRC/$APP_NAME.app"
+ln -s /Applications "$DMG_SRC/Applications"
+
+# Create DMG
 rm -f "$DMG"
-hdiutil create -fs HFS+ -srcfolder "$APP" -volname "LLMProxy" "$DMG" 2>/dev/null
+hdiutil create -fs HFS+ -srcfolder "$DMG_SRC" -volname "$APP_NAME" -format UDZO -o "$DMG" 2>/dev/null
+
+# Cleanup
+rm -rf "$DMG_SRC"
 
 echo ""
 echo "✅ Done"
