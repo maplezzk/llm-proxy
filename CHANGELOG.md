@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.0](https://github.com/maplezzk/llm-proxy/compare/v0.10.2...v0.11.0) (2026-05-08)
+
+
+### Features
+
+* DMG 增加 Applications 快捷方式，支持一键拖拽安装 ([#81](https://github.com/maplezzk/llm-proxy/issues/81)) ([20abafe](https://github.com/maplezzk/llm-proxy/commit/20abafefc89fa4b5909ca32ec057b52c582d516e))
+
 ## [0.10.2](https://github.com/maplezzk/llm-proxy/compare/v0.10.1...v0.10.2) (2026-05-07)
 
 
