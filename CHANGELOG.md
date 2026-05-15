@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.1](https://github.com/maplezzk/llm-proxy/compare/v0.11.0...v0.11.1) (2026-05-15)
+
+
+### Bug Fixes
+
+* 适配器URL去重、校验提示优化、模型测试可观测性 ([#83](https://github.com/maplezzk/llm-proxy/issues/83)) ([54dceb5](https://github.com/maplezzk/llm-proxy/commit/54dceb5c9f96d36987bfc3d3c3a55a2dca0b5afc))
+
 ## [0.11.0](https://github.com/maplezzk/llm-proxy/compare/v0.10.2...v0.11.0) (2026-05-08)
 
 
