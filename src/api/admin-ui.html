@@ -701,10 +701,21 @@ tbody tr:hover td { background: #f8f9fb; }
       </div>
       <div style="max-height:360px;overflow-y:auto;display:flex;flex-direction:column;gap:6px">
         <template x-for="(r, i) in adapterTestModal.results" :key="i">
-          <div :style="'display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:var(--radius);font-size:12.5px;background:' + (r.ok ? 'var(--success-bg)' : 'var(--danger-bg)') + ';border-left:3px solid ' + (r.ok ? 'var(--success)' : 'var(--danger)')">
-            <span style="font-weight:600;min-width:140px;max-width:200px;overflow:hidden;text-overflow:ellipsis" x-text="r.model"></span>
-            <span style="font-size:11px;color:var(--text-muted);min-width:60px" x-text="r.time"></span>
-            <span style="flex:1" x-text="r.ok ? '✓ ' + r.latency + 'ms' : '✗ ' + (r.error || '不可达').slice(0, 80)"></span>
+          <div>
+            <div :style="'display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:var(--radius);font-size:12.5px;background:' + (r.ok ? 'var(--success-bg)' : 'var(--danger-bg)') + ';border-left:3px solid ' + (r.ok ? 'var(--success)' : 'var(--danger)')">
+              <span style="font-weight:600;min-width:140px;max-width:200px;overflow:hidden;text-overflow:ellipsis" x-text="r.model"></span>
+              <span style="font-size:11px;color:var(--text-muted);min-width:60px" x-text="r.time"></span>
+              <span style="flex:1" x-text="r.ok ? '✓ ' + r.latency + 'ms' : '✗ ' + (r.error || '不可达').slice(0, 80)"></span>
+            </div>
+            <div x-show="r.requestUrl" style="border-left:3px solid var(--border);border-radius:0 0 var(--radius) var(--radius);margin-top:-2px">
+              <div @click="r._showDetails = !r._showDetails" style="cursor:pointer;font-size:11px;padding:4px 12px;color:var(--accent);user-select:none" x-text="r._showDetails ? '收起详情 ▲' : '展开详情 ▼'"></div>
+              <div x-show="r._showDetails" style="padding:8px 12px 12px;font-size:11px;background:var(--surface);border-radius:0 0 var(--radius) var(--radius)">
+                <div style="margin-bottom:6px"><strong>URL:</strong> <span class="mono" style="word-break:break-all" x-text="r.requestUrl"></span></div>
+                <div style="margin-bottom:6px"><strong>Headers:</strong> <pre style="margin:2px 0;padding:6px;background:var(--surface-bg);border-radius:4px;overflow-x:auto;line-height:1.4" x-text="JSON.stringify(r.requestHeaders, null, 2)"></pre></div>
+                <div style="margin-bottom:6px"><strong>Body:</strong> <pre style="margin:2px 0;padding:6px;background:var(--surface-bg);border-radius:4px;overflow-x:auto;line-height:1.4" x-text="JSON.stringify(r.requestBody, null, 2)"></pre></div>
+                <div x-show="r.error"><strong>错误:</strong> <span style="color:var(--danger);word-break:break-word" x-text="r.error"></span></div>
+              </div>
+            </div>
           </div>
         </template>
         <div class="empty" style="padding:24px" x-show="adapterTestModal.results.length === 0" x-text="$t('admin.adapters.noResults')"></div>
@@ -819,10 +830,21 @@ tbody tr:hover td { background: #f8f9fb; }
       </div>
       <div style="max-height:360px;overflow-y:auto;display:flex;flex-direction:column;gap:6px">
         <template x-for="(r, i) in results" :key="i">
-          <div :style="'display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:var(--radius);font-size:12.5px;background:' + (r.ok ? 'var(--success-bg)' : 'var(--danger-bg)') + ';border-left:3px solid ' + (r.ok ? 'var(--success)' : 'var(--danger)')">
-            <span style="font-weight:600;min-width:140px;max-width:200px;overflow:hidden;text-overflow:ellipsis" x-text="r.model"></span>
-            <span style="font-size:11px;color:var(--text-muted);min-width:60px" x-text="r.time"></span>
-            <span style="flex:1" x-text="r.ok ? '✓ ' + r.latency + 'ms' : '✗ ' + (r.error || '不可达').slice(0, 80)"></span>
+          <div>
+            <div :style="'display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:var(--radius);font-size:12.5px;background:' + (r.ok ? 'var(--success-bg)' : 'var(--danger-bg)') + ';border-left:3px solid ' + (r.ok ? 'var(--success)' : 'var(--danger)')">
+              <span style="font-weight:600;min-width:140px;max-width:200px;overflow:hidden;text-overflow:ellipsis" x-text="r.model"></span>
+              <span style="font-size:11px;color:var(--text-muted);min-width:60px" x-text="r.time"></span>
+              <span style="flex:1" x-text="r.ok ? '✓ ' + r.latency + 'ms' : '✗ ' + (r.error || '不可达').slice(0, 80)"></span>
+            </div>
+            <div x-show="r.requestUrl" style="border-left:3px solid var(--border);border-radius:0 0 var(--radius) var(--radius);margin-top:-2px">
+              <div @click="r._showDetails = !r._showDetails" style="cursor:pointer;font-size:11px;padding:4px 12px;color:var(--accent);user-select:none" x-text="r._showDetails ? '收起详情 ▲' : '展开详情 ▼'"></div>
+              <div x-show="r._showDetails" style="padding:8px 12px 12px;font-size:11px;background:var(--surface);border-radius:0 0 var(--radius) var(--radius)">
+                <div style="margin-bottom:6px"><strong>URL:</strong> <span class="mono" style="word-break:break-all" x-text="r.requestUrl"></span></div>
+                <div style="margin-bottom:6px"><strong>Headers:</strong> <pre style="margin:2px 0;padding:6px;background:var(--surface-bg);border-radius:4px;overflow-x:auto;line-height:1.4" x-text="JSON.stringify(r.requestHeaders, null, 2)"></pre></div>
+                <div style="margin-bottom:6px"><strong>Body:</strong> <pre style="margin:2px 0;padding:6px;background:var(--surface-bg);border-radius:4px;overflow-x:auto;line-height:1.4" x-text="JSON.stringify(r.requestBody, null, 2)"></pre></div>
+                <div x-show="r.error"><strong>错误:</strong> <span style="color:var(--danger);word-break:break-word" x-text="r.error"></span></div>
+              </div>
+            </div>
           </div>
         </template>
         <div class="empty" style="padding:24px" x-show="results.length === 0" x-text="$t('admin.test.noResults')"></div>
