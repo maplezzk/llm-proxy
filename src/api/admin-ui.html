@@ -479,7 +479,7 @@ tbody tr:hover td { background: #f8f9fb; }
 
     <!-- Provider Modal -->
     <div class="modal-overlay" x-show="showModal" x-cloak style="display:none"><div class="modal" style="max-height:80vh;display:flex;flex-direction:column">
-      <h3 x-text="editingName ? '编辑模型供应商' : '添加模型供应商'"></h3>
+      <h3 x-text="editingName ? $t('admin.providers.editTitle') : $t('admin.providers.addTitle')"></h3>
       <div style="flex:1;overflow-y:auto;padding-right:4px">
       <label x-text="$t('admin.providers.formName')"></label><input x-model="form.name" x-bind:placeholder="$t('admin.providers.formNamePlaceholder')">
       <label x-text="$t('admin.providers.formType')"></label><select x-model="form.type">
@@ -492,10 +492,10 @@ tbody tr:hover td { background: #f8f9fb; }
         <input x-model="form.apiKey" :type="showKey ? 'text' : 'password'" placeholder="sk-..." style="flex:1">
         <button class="btn btn-sm btn-ghost" type="button"
                 @click="showKey = !showKey"
-                x-text="showKey ? '隐藏' : '查看'"
+                x-text="showKey ? $t('admin.common.hide') : $t('admin.common.view')"
                 style="flex-shrink:0;font-size:12px"></button>
       </div>
-      <div class="hint" x-show="editingName" x-text="'留空则保留原值'" style="display:none"></div>
+      <div class="hint" x-show="editingName" x-text="$t('admin.providers.keepOriginal')" style="display:none"></div>
       <label x-text="$t('admin.providers.formApiBase')"></label>
       <input x-model="form.apiBase" placeholder="https://api.openai.com">
       <label><span x-text="$t('admin.providers.formModels')"></span>
@@ -625,7 +625,7 @@ tbody tr:hover td { background: #f8f9fb; }
 
     <!-- Adapter Modal -->
     <div class="modal-overlay" x-show="showModal" x-cloak style="display:none"><div class="modal" style="min-width:640px;max-width:740px">
-      <h3 x-text="editingName ? '编辑适配器' : '添加适配器'"></h3>
+      <h3 x-text="editingName ? $t('admin.adapters.editTitle') : $t('admin.adapters.addTitle')"></h3>
       <label x-text="$t('admin.adapters.formName')"></label><input x-model="form.name" x-bind:placeholder="$t('admin.adapters.formNamePlaceholder')">
       <label x-text="$t('admin.adapters.formType')"></label><select x-model="form.type">
         <option value="openai">OpenAI (Chat)</option>
@@ -690,14 +690,14 @@ tbody tr:hover td { background: #f8f9fb; }
 
     <!-- Adapter Test Modal -->
     <div class="modal-overlay" x-show="adapterTestModal.visible" x-cloak style="display:none"><div class="modal" style="min-width:500px;max-width:640px">
-      <h3 x-text="'测试适配器 — ' + adapterTestModal.adapterName"></h3>
+      <h3 x-text="$t('admin.adapters.testTitle', { name: adapterTestModal.adapterName })"></h3>
       <div style="display:flex;gap:8px;margin-bottom:14px;align-items:center">
         <select x-model="adapterTestModal.selectedModelId" style="flex:1;padding:6px 8px;font-size:12px;border:1px solid var(--border);border-radius:var(--radius)">
           <template x-for="m in adapterTestModal.models" :key="m.id">
             <option :value="m.id" x-text="m.id + (m.status !== 'ok' ? ' (' + m.status + ')' : '')"></option>
           </template>
         </select>
-        <button class="btn btn-primary btn-sm" @click="runAdapterTest()" style="min-width:52px" :disabled="adapterTestModal.running" x-text="adapterTestModal.running ? '测试中' : '运行'"></button>
+        <button class="btn btn-primary btn-sm" @click="runAdapterTest()" style="min-width:52px" :disabled="adapterTestModal.running" x-text="adapterTestModal.running ? $t('admin.common.testing') : $t('admin.adapters.runTest')"></button>
       </div>
       <div style="max-height:360px;overflow-y:auto;display:flex;flex-direction:column;gap:6px">
         <template x-for="(r, i) in adapterTestModal.results" :key="i">
@@ -705,10 +705,10 @@ tbody tr:hover td { background: #f8f9fb; }
             <div :style="'display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:var(--radius);font-size:12.5px;background:' + (r.ok ? 'var(--success-bg)' : 'var(--danger-bg)') + ';border-left:3px solid ' + (r.ok ? 'var(--success)' : 'var(--danger)')">
               <span style="font-weight:600;min-width:140px;max-width:200px;overflow:hidden;text-overflow:ellipsis" x-text="r.model"></span>
               <span style="font-size:11px;color:var(--text-muted);min-width:60px" x-text="r.time"></span>
-              <span style="flex:1" x-text="r.ok ? '✓ ' + r.latency + 'ms' : '✗ ' + (r.error || '不可达').slice(0, 80)"></span>
+              <span style="flex:1" x-text="r.ok ? '✓ ' + r.latency + 'ms' : '✗ ' + (r.error || $t('admin.test.unreachable')).slice(0, 80)"></span>
             </div>
             <div x-show="r.requestUrl" style="border-left:3px solid var(--border);border-radius:0 0 var(--radius) var(--radius);margin-top:-2px">
-              <div @click="r._showDetails = !r._showDetails" style="cursor:pointer;font-size:11px;padding:4px 12px;color:var(--accent);user-select:none" x-text="r._showDetails ? '收起详情 ▲' : '展开详情 ▼'"></div>
+              <div @click="r._showDetails = !r._showDetails" style="cursor:pointer;font-size:11px;padding:4px 12px;color:var(--accent);user-select:none" x-text="r._showDetails ? $t('admin.common.collapse') + ' ▲' : $t('admin.common.expand') + ' ▼'"></div>
               <div x-show="r._showDetails" style="padding:8px 12px 12px;font-size:11px;background:var(--surface);border-radius:0 0 var(--radius) var(--radius)">
                 <div style="margin-bottom:6px"><strong>入口 URL:</strong> <span class="mono" style="word-break:break-all" x-text="r.adapterUrl || r.requestUrl"></span></div>
                 <div style="margin-bottom:6px"><strong>上游 URL:</strong> <span class="mono" style="word-break:break-all" x-text="r.requestUrl"></span> <template x-if="r.responseStatus"><span style="font-size:11px;margin-left:6px" :style="'color:' + (r.responseStatus < 400 ? 'var(--success)' : 'var(--danger)')" x-text="'HTTP ' + r.responseStatus"></span></template></div>
@@ -741,7 +741,7 @@ tbody tr:hover td { background: #f8f9fb; }
             <button class="filter-btn" @click="stopCapture()" x-show="running" x-text="$t('admin.capture.pause')"></button>
             <button class="filter-btn" @click="endCapture()" x-show="entries.length > 0" style="border-color:var(--danger);color:var(--danger)" x-text="$t('admin.capture.stop')"></button>
             <span style="color:var(--border);margin:0 4px">|</span>
-            <span style="font-size:11px;color:var(--text-muted)" x-text="entries.length + ' 条'"></span>
+            <span style="font-size:11px;color:var(--text-muted)" x-text="$t('admin.capture.entryCount', { count: entries.length })"></span>
           </div>
         </div>
 
@@ -750,7 +750,7 @@ tbody tr:hover td { background: #f8f9fb; }
           <span style="font-size:11px;color:var(--text-muted)" x-text="$t('admin.capture.source')"></span>
           <button class="filter-btn" :class="{active: !sourceFilter}" @click="sourceFilter = ''" x-text="$t('admin.capture.filterAll')"></button>
           <template x-for="s in sources" :key="s">
-            <button class="filter-btn" :class="{active: sourceFilter === s}" @click="sourceFilter = s" x-text="s === 'proxy' ? '代理' : s"></button>
+            <button class="filter-btn" :class="{active: sourceFilter === s}" @click="sourceFilter = s" x-text="s === 'proxy' ? $t('admin.capture.sourceProxy') : s"></button>
           </template>
         </div>
 
@@ -776,7 +776,7 @@ tbody tr:hover td { background: #f8f9fb; }
                     :style="'cursor:pointer;background:' + (selectedId === e.id ? 'var(--accent-bg)' : 'transparent')">
                   <td style="text-align:center;color:var(--text-muted)" x-text="e.id"></td>
                   <td x-text="fmtTime(e.timestamp)"></td>
-                  <td style="white-space:nowrap" x-text="e.source === 'proxy' ? '代理' : e.source"></td>
+                  <td style="white-space:nowrap" x-text="e.source === 'proxy' ? $t('admin.capture.sourceProxy') : e.source"></td>
                   <td style="white-space:nowrap;color:var(--text-muted)" x-text="e.adapterName || '—'"></td>
                   <td style="white-space:nowrap" x-text="e.protocol"></td>
                   <td style="overflow:hidden;text-overflow:ellipsis" x-text="e.model"></td>
@@ -816,7 +816,7 @@ tbody tr:hover td { background: #f8f9fb; }
 
     <!-- Test Panel -->
     <div class="modal-overlay" x-data="testPanel" x-show="visible" x-cloak style="display:none"><div class="modal" style="min-width:500px;max-width:640px">
-      <h3 x-text="'测试 — ' + providerName"></h3>
+      <h3 x-text="$t('admin.test.title', { name: providerName })"></h3>
       <div style="display:flex;gap:8px;margin-bottom:14px;align-items:center">
         <strong style="font-size:13px;min-width:120px;white-space:nowrap" x-text="providerName"></strong>
         <select x-model="selectedModel" style="flex:1;padding:6px 8px;font-size:12px;border:1px solid var(--border);border-radius:var(--radius)">
@@ -825,7 +825,7 @@ tbody tr:hover td { background: #f8f9fb; }
           </template>
         </select>
         <span style="font-size:11px;color:var(--text-muted);padding:0 4px;white-space:nowrap" x-text="'(' + providerType + ')'"></span>
-        <button class="btn btn-primary btn-sm" @click="run()" style="min-width:52px" :disabled="running" x-text="running ? '测试中' : '运行'"></button>
+        <button class="btn btn-primary btn-sm" @click="run()" style="min-width:52px" :disabled="running" x-text="running ? $t('admin.test.testing') : $t('admin.test.run')"></button>
       </div>
       <div style="max-height:360px;overflow-y:auto;display:flex;flex-direction:column;gap:6px">
         <template x-for="(r, i) in results" :key="i">
@@ -833,10 +833,10 @@ tbody tr:hover td { background: #f8f9fb; }
             <div :style="'display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:var(--radius);font-size:12.5px;background:' + (r.ok ? 'var(--success-bg)' : 'var(--danger-bg)') + ';border-left:3px solid ' + (r.ok ? 'var(--success)' : 'var(--danger)')">
               <span style="font-weight:600;min-width:140px;max-width:200px;overflow:hidden;text-overflow:ellipsis" x-text="r.model"></span>
               <span style="font-size:11px;color:var(--text-muted);min-width:60px" x-text="r.time"></span>
-              <span style="flex:1" x-text="r.ok ? '✓ ' + r.latency + 'ms' : '✗ ' + (r.error || '不可达').slice(0, 80)"></span>
+              <span style="flex:1" x-text="r.ok ? '✓ ' + r.latency + 'ms' : '✗ ' + (r.error || $t('admin.test.unreachable')).slice(0, 80)"></span>
             </div>
             <div x-show="r.requestUrl" style="border-left:3px solid var(--border);border-radius:0 0 var(--radius) var(--radius);margin-top:-2px">
-              <div @click="r._showDetails = !r._showDetails" style="cursor:pointer;font-size:11px;padding:4px 12px;color:var(--accent);user-select:none" x-text="r._showDetails ? '收起详情 ▲' : '展开详情 ▼'"></div>
+              <div @click="r._showDetails = !r._showDetails" style="cursor:pointer;font-size:11px;padding:4px 12px;color:var(--accent);user-select:none" x-text="r._showDetails ? $t('admin.common.collapse') + ' ▲' : $t('admin.common.expand') + ' ▼'"></div>
               <div x-show="r._showDetails" style="padding:8px 12px 12px;font-size:11px;background:var(--surface);border-radius:0 0 var(--radius) var(--radius)">
                 <div style="margin-bottom:6px"><strong>URL:</strong> <span class="mono" style="word-break:break-all" x-text="r.requestUrl"></span> <template x-if="r.responseStatus"><span style="font-size:11px;margin-left:6px" :style="'color:' + (r.responseStatus < 400 ? 'var(--success)' : 'var(--danger)')" x-text="'HTTP ' + r.responseStatus"></span></template></div>
                 <div style="margin-bottom:6px"><strong>Headers:</strong> <pre style="margin:2px 0;padding:6px;background:var(--surface-bg);border-radius:4px;overflow-x:auto;line-height:1.4" x-text="JSON.stringify(r.requestHeaders, null, 2)"></pre></div>
