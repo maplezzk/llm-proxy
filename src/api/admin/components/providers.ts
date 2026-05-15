@@ -89,8 +89,12 @@ export function providersPage() {
           }
           return base
         })
-      if (!name || validModels.length === 0) {
+      if (!name) {
         toast(t('admin.providers.validationName'), 'error')
+        return
+      }
+      if (validModels.length === 0) {
+        toast(t('admin.providers.validationModels'), 'error')
         return
       }
       if (!this.editingName && !apiKey) {
@@ -110,7 +114,10 @@ export function providersPage() {
         })
       }
       if (!res.success) {
-        toast(res.error || t('admin.providers.saveFailed'), 'error')
+        const detail = res.errors?.length
+          ? (res.error || t('admin.providers.saveFailed')) + '\n' + res.errors.map((e: any) => '• ' + (e.field || '') + ': ' + e.message).join('\n')
+          : (res.error || t('admin.providers.saveFailed'))
+        toast(detail, 'error')
         return
       }
       toast(this.editingName ? t('admin.providers.updated') : t('admin.providers.created'), 'success')

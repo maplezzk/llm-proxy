@@ -36,6 +36,8 @@
       "normal": "Normal",
       "error": "Error",
       "remove": "Remove",
+      "hide": "Hide",
+      "view": "View",
     "reloadConfig": "Reload Config",
     "configReloaded": "Config reloaded",
     "reloadFailed": "Reload failed"
@@ -134,9 +136,11 @@
       "updated": "Provider updated",
       "created": "Provider created",
       "deleted": "Provider deleted",
-      "validationName": "Please enter a name and model list",
+      "validationName": "Please enter a name",
+      "validationModels": "Please add at least one model",
       "validationApiKey": "Please enter an API Key",
-      "validationProviderName": "Please enter a provider name first"
+      "validationProviderName": "Please enter a provider name first",
+      "keepOriginal": "Leave empty to keep original value"
     },
     "adapters": {
       "title": "Adapter Mappings",

@@ -1,4 +1,5 @@
 import type { ServerResponse } from 'node:http'
+import { maskUrl, maskHeaders } from '../lib/http-utils.js'
 import { convertAnthropicStreamToOpenAI, convertOpenAIStreamToAnthropic, convertOpenAIResponsesStreamToAnthropic, convertAnthropicStreamToOpenAIResponses, convertOpenAIStreamToOpenAIResponses, convertOpenAIResponsesStreamToOpenAI, type StreamUsage } from './stream-converter.js'
 import { convertOpenAIResponseToAnthropic, convertAnthropicResponseToOpenAI, convertOpenAIResponsesToAnthropic, convertAnthropicResponseToOpenAIResponses, convertOpenAIResponseToOpenAIResponses, convertOpenAIResponsesResponseToOpenAI } from './translation.js'
 import type { Logger } from '../log/logger.js'
@@ -24,22 +25,6 @@ interface ProviderRequest {
 function writeJson(res: ServerResponse, status: number, data: unknown): void {
   res.writeHead(status, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' })
   res.end(JSON.stringify(data))
-}
-
-function maskUrl(url: string): string {
-  return url.replace(/\/\/[^@]+@/, '//***@')
-}
-
-function maskHeaders(headers: Record<string, string>): Record<string, string> {
-  const h: Record<string, string> = {}
-  for (const [k, v] of Object.entries(headers)) {
-    h[k] = k.toLowerCase() === 'authorization'
-      ? v.replace(/Bearer\s+\S+/i, 'Bearer sk-***')
-      : k.toLowerCase() === 'x-api-key'
-        ? 'sk-***'
-        : v
-  }
-  return h
 }
 
 function truncateObj(obj: Record<string, unknown>, maxLen = 500): Record<string, unknown> {

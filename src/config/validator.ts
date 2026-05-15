@@ -34,7 +34,7 @@ function validateProviders(config: Config): ValidationError[] {
     }
 
     if (!VALID_PROVIDER_NAMES.test(provider.name)) {
-      errors.push({ field: `providers.${provider.name}.name`, message: `模型供应商名称 "${provider.name}" 包含非法字符` })
+      errors.push({ field: `providers.${provider.name}.name`, message: `模型供应商名称 "${provider.name}" 包含非法字符，仅支持字母、数字、下划线、中划线` })
     }
 
     if (providerNames.has(provider.name)) {
@@ -68,7 +68,7 @@ function validateProviders(config: Config): ValidationError[] {
       modelIds.add(model.id)
 
       if (!VALID_MODEL_NAMES.test(model.id)) {
-        errors.push({ field: `providers.${provider.name}.models.${model.id}.id`, message: `模型 ID "${model.id}" 包含非法字符` })
+        errors.push({ field: `providers.${provider.name}.models.${model.id}.id`, message: `模型 ID "${model.id}" 包含非法字符，仅支持字母、数字、下划线、点、中划线、斜杠、冒号` })
       }
 
       // 校验 thinking 配置
@@ -112,7 +112,7 @@ function validateAdapters(config: Config): ValidationError[] {
     }
 
     if (!VALID_ADAPTER_NAMES.test(adapter.name)) {
-      errors.push({ field: `adapters.${adapter.name}.name`, message: `适配器名称 "${adapter.name}" 包含非法字符（必须以字母开头）` })
+      errors.push({ field: `adapters.${adapter.name}.name`, message: `适配器名称 "${adapter.name}" 包含非法字符，必须以字母开头，仅支持字母、数字、下划线、中划线` })
     }
 
     if (RESERVED_ADAPTER_NAMES.has(adapter.name)) {

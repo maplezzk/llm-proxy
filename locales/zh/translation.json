@@ -36,6 +36,8 @@
       "normal": "正常",
       "error": "异常",
       "remove": "移除",
+      "hide": "隐藏",
+      "view": "查看",
     "reloadConfig": "重载配置",
     "configReloaded": "配置已重载",
     "reloadFailed": "重载失败"
@@ -134,9 +136,11 @@
       "updated": "模型供应商已更新",
       "created": "模型供应商已创建",
       "deleted": "模型供应商已删除",
-      "validationName": "请填写名称和模型列表",
+      "validationName": "请填写名称",
+      "validationModels": "请填写至少一个模型",
       "validationApiKey": "请填写 API Key",
-      "validationProviderName": "请先填写供应商名称"
+      "validationProviderName": "请先填写供应商名称",
+      "keepOriginal": "留空则保留原值"
     },
     "adapters": {
       "title": "工具适配器映射",

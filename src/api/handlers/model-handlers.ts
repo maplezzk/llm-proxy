@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { ServerContext } from '../server.js'
-import { readBody, getDefaultApiBase } from '../../lib/http-utils.js'
+import { readBody, getDefaultApiBase, sanitizeApiBase, maskHeaders } from '../../lib/http-utils.js'
 import { resolveAdapterRoute, AdapterError } from '../../adapter/router.js'
 import { json } from './index.js'
 import { t } from '../../lib/i18n.js'
@@ -25,15 +25,16 @@ export async function handleTestModel(ctx: ServerContext, req: IncomingMessage, 
   const _apiKey = body.api_key ?? body.apiKey
   const rawApiKey = typeof _apiKey === 'string' ? _apiKey : undefined
   let apiKey = rawApiKey
-  if (apiKey === '***' || !apiKey) {
-    const providerName = body.providerName as string | undefined
+  let apiBase = typeof (body.api_base ?? body.apiBase) === 'string' ? (body.api_base ?? body.apiBase) as string : undefined
+  const providerName = body.providerName as string | undefined
+  if ((apiKey === '***' || !apiKey) || !apiBase) {
     if (providerName) {
       const { config } = ctx.store.getConfig()
       const provider = config.providers.find((p) => p.name === providerName)
-      if (provider?.apiKey) apiKey = provider.apiKey
+      if ((apiKey === '***' || !apiKey) && provider?.apiKey) apiKey = provider.apiKey
+      if (!apiBase && provider?.apiBase) apiBase = provider.apiBase
     }
   }
-  const apiBase = typeof (body.api_base ?? body.apiBase) === 'string' ? (body.api_base ?? body.apiBase) as string : undefined
   const model = typeof body.model === 'string' ? body.model : undefined
 
   if (!type || !apiKey || !model) {
@@ -50,7 +51,7 @@ export async function handleTestModel(ctx: ServerContext, req: IncomingMessage, 
 
   const useResponses = (type === 'openai-responses') || (type === 'openai' && body.endpoint === 'responses')
 
-  const baseUrl = apiBase || getDefaultApiBase(type)
+  const baseUrl = sanitizeApiBase(apiBase || getDefaultApiBase(type))
   let url: string
   if (type === 'anthropic') {
     url = `${baseUrl}/v1/messages`
@@ -85,21 +86,30 @@ export async function handleTestModel(ctx: ServerContext, req: IncomingMessage, 
 
     const latency = Date.now() - startTime
     const reachable = response.ok
+    const responseText = await response.text().catch(() => '')
 
     let error: string | undefined
     if (!reachable) {
-      const text = await response.text().catch(() => '')
-      error = sanitizeError(`HTTP ${response.status}: ${text.slice(0, 200)}`)
+      error = sanitizeError(`HTTP ${response.status}: ${responseText.slice(0, 200)}`)
     }
 
-    const providerName = (body.providerName as string) || ''
-    ctx.logger.log('system', 'Model test', { type, model, reachable, latency, provider: providerName }, reachable ? 'info' : 'warn')
-    json(res, 200, { success: true, data: { reachable, latency, model, error } })
+    let responseBody: unknown
+    try { responseBody = JSON.parse(responseText) } catch { responseBody = responseText.slice(0, 2000) }
+
+    const debug = {
+      requestUrl: url,
+      requestHeaders: maskHeaders(headers),
+      requestBody,
+      responseStatus: response.status,
+      responseBody,
+    }
+    ctx.logger.log('system', 'Model test', { type, model, reachable, latency, provider: providerName || '' }, reachable ? 'info' : 'warn')
+    json(res, 200, { success: true, data: { reachable, latency, model, error, ...debug } })
   } catch (err) {
     const latency = Date.now() - startTime
     const message = sanitizeError(err instanceof Error ? err.message : String(err))
     ctx.logger.log('system', 'Model test failed', { type, model, latency, error: message }, 'error')
-    json(res, 200, { success: true, data: { reachable: false, latency, model, error: message } })
+    json(res, 200, { success: true, data: { reachable: false, latency, model, error: message, requestUrl: url, requestHeaders: maskHeaders(headers), requestBody, responseBody: { error: message } } })
   }
 }
 
@@ -135,11 +145,15 @@ export async function handleTestAdapter(ctx: ServerContext, req: IncomingMessage
 
   const type = route.inboundType
   const providerType = route.route.providerType
-  const baseUrl = route.route.apiBase
+  const baseUrl = sanitizeApiBase(route.route.apiBase)
   const targetModel = route.route.modelId
   const url = providerType === 'anthropic'
     ? `${baseUrl}/v1/messages`
     : `${baseUrl}/v1/chat/completions`
+
+  // 适配器入口 URL（客户端实际请求的地址）
+  const adapterEndpoint = type === 'anthropic' ? 'messages' : type === 'openai-responses' ? 'responses' : 'chat/completions'
+  const adapterUrl = `/${adapterName}/v1/${adapterEndpoint}`
 
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
   if (providerType === 'anthropic') {
@@ -164,12 +178,15 @@ export async function handleTestAdapter(ctx: ServerContext, req: IncomingMessage
 
     const latency = Date.now() - startTime
     const reachable = response.ok
+    const responseText = await response.text().catch(() => '')
 
     let error: string | undefined
     if (!reachable) {
-      const text = await response.text().catch(() => '')
-      error = sanitizeError(`HTTP ${response.status}: ${text.slice(0, 200)}`)
+      error = sanitizeError(`HTTP ${response.status}: ${responseText.slice(0, 200)}`)
     }
+
+    let responseBody: unknown
+    try { responseBody = JSON.parse(responseText) } catch { responseBody = responseText.slice(0, 2000) }
 
     ctx.logger.log('system', 'Adapter test', {
       adapter: adapterName,
@@ -179,12 +196,12 @@ export async function handleTestAdapter(ctx: ServerContext, req: IncomingMessage
       reachable,
       latency,
     }, reachable ? 'info' : 'warn')
-    json(res, 200, { success: true, data: { reachable, latency, model: modelId, error } })
+    json(res, 200, { success: true, data: { reachable, latency, model: modelId, error, adapterUrl, requestUrl: url, requestHeaders: maskHeaders(headers), requestBody, responseStatus: response.status, responseBody } })
   } catch (err) {
     const latency = Date.now() - startTime
     const message = sanitizeError(err instanceof Error ? err.message : String(err))
     ctx.logger.log('system', 'Adapter test failed', { adapter: adapterName, model: modelId, targetModel, provider: route.route.providerName, latency, error: message }, 'error')
-    json(res, 200, { success: true, data: { reachable: false, latency, model: modelId, error: message } })
+    json(res, 200, { success: true, data: { reachable: false, latency, model: modelId, error: message, adapterUrl, requestUrl: url, requestHeaders: maskHeaders(headers), requestBody, responseBody: { error: message } } })
   }
 }
 
@@ -230,7 +247,7 @@ export async function handlePullModels(ctx: ServerContext, req: IncomingMessage,
     headers['Authorization'] = `Bearer ${apiKey}`
   }
 
-  const url = `${apiBase}/v1/models`
+  const url = `${sanitizeApiBase(apiBase)}/v1/models`
 
   try {
     const response = await fetch(url, { headers, signal: AbortSignal.timeout(10000) })

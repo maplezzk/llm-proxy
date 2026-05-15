@@ -11,7 +11,6 @@ export function testPanel() {
     providerType: '',
     models: [] as any[],
     selectedModel: '',
-    endpoint: 'chat',
     running: false,
     results: [] as any[],
 
@@ -37,8 +36,8 @@ export function testPanel() {
         method: 'POST',
         body: JSON.stringify({
           providerName: this.providerName,
-          modelId: this.selectedModel,
-          type: this.providerType === 'openai-responses' ? 'openai-responses' : (this.endpoint === 'responses' ? 'openai-responses' : 'openai'),
+          model: this.selectedModel,
+          type: this.providerType,
         }),
       }).catch(() => ({ success: true, data: { reachable: false, latency: 0, error: t('admin.test.requestFailed') } }))
       this.running = false
@@ -49,6 +48,12 @@ export function testPanel() {
         latency: d.latency,
         error: d.error,
         time: new Date().toLocaleTimeString(),
+        requestUrl: d.requestUrl,
+        requestHeaders: d.requestHeaders,
+        requestBody: d.requestBody,
+        responseStatus: d.responseStatus,
+        responseBody: d.responseBody,
+        _showDetails: true,
       })
     },
 
