@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { ServerContext } from '../server.js'
-import { readBody, getDefaultApiBase, sanitizeApiBase } from '../../lib/http-utils.js'
+import { readBody, getDefaultApiBase, sanitizeApiBase, maskHeaders } from '../../lib/http-utils.js'
 import { resolveAdapterRoute, AdapterError } from '../../adapter/router.js'
 import { json } from './index.js'
 import { t } from '../../lib/i18n.js'
@@ -92,14 +92,19 @@ export async function handleTestModel(ctx: ServerContext, req: IncomingMessage, 
       error = sanitizeError(`HTTP ${response.status}: ${text.slice(0, 200)}`)
     }
 
+    const debug = {
+      requestUrl: url,
+      requestHeaders: maskHeaders(headers),
+      requestBody,
+    }
     const providerName = (body.providerName as string) || ''
     ctx.logger.log('system', 'Model test', { type, model, reachable, latency, provider: providerName }, reachable ? 'info' : 'warn')
-    json(res, 200, { success: true, data: { reachable, latency, model, error } })
+    json(res, 200, { success: true, data: { reachable, latency, model, error, ...debug } })
   } catch (err) {
     const latency = Date.now() - startTime
     const message = sanitizeError(err instanceof Error ? err.message : String(err))
     ctx.logger.log('system', 'Model test failed', { type, model, latency, error: message }, 'error')
-    json(res, 200, { success: true, data: { reachable: false, latency, model, error: message } })
+    json(res, 200, { success: true, data: { reachable: false, latency, model, error: message, requestUrl: url, requestHeaders: maskHeaders(headers), requestBody } })
   }
 }
 
@@ -179,12 +184,12 @@ export async function handleTestAdapter(ctx: ServerContext, req: IncomingMessage
       reachable,
       latency,
     }, reachable ? 'info' : 'warn')
-    json(res, 200, { success: true, data: { reachable, latency, model: modelId, error } })
+    json(res, 200, { success: true, data: { reachable, latency, model: modelId, error, requestUrl: url, requestHeaders: maskHeaders(headers), requestBody } })
   } catch (err) {
     const latency = Date.now() - startTime
     const message = sanitizeError(err instanceof Error ? err.message : String(err))
     ctx.logger.log('system', 'Adapter test failed', { adapter: adapterName, model: modelId, targetModel, provider: route.route.providerName, latency, error: message }, 'error')
-    json(res, 200, { success: true, data: { reachable: false, latency, model: modelId, error: message } })
+    json(res, 200, { success: true, data: { reachable: false, latency, model: modelId, error: message, requestUrl: url, requestHeaders: maskHeaders(headers), requestBody } })
   }
 }
 
