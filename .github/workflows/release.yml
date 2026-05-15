@@ -105,7 +105,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           VERSION="${{ steps.version.outputs.version }}"
-          gh release upload "v${VERSION}" "app/.build/LLMProxy-v${VERSION}.dmg"
+          gh release upload "v${VERSION}" "app/.build/LLMProxy-v${VERSION}.dmg" --clobber
 
       - name: Update Homebrew tap
         run: |
