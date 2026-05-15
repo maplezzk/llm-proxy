@@ -162,10 +162,13 @@ export function adaptersPage() {
         latency: d.latency,
         error: d.error,
         time: new Date().toLocaleTimeString(),
+        adapterUrl: d.adapterUrl,
         requestUrl: d.requestUrl,
         requestHeaders: d.requestHeaders,
         requestBody: d.requestBody,
-        _showDetails: false,
+        responseStatus: d.responseStatus,
+        responseBody: d.responseBody,
+        _showDetails: true,
       })
     },
   }

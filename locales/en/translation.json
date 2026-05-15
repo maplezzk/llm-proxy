@@ -134,7 +134,8 @@
       "updated": "Provider updated",
       "created": "Provider created",
       "deleted": "Provider deleted",
-      "validationName": "Please enter a name and model list",
+      "validationName": "Please enter a name",
+      "validationModels": "Please add at least one model",
       "validationApiKey": "Please enter an API Key",
       "validationProviderName": "Please enter a provider name first"
     },

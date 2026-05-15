@@ -455,7 +455,7 @@ tbody tr:hover td { background: #f8f9fb; }
                 <td class="mono">
                   <span x-text="p.models?.length ?? 0"></span>
                   <template x-if="p.models?.some((m: any) => m.thinking?.budget_tokens || m.reasoning_effort || m.thinking?.reasoning_effort)">
-                    <span style="margin-left:4px;font-size:10px;color:var(--accent);cursor:help"
+                    <span style="margin-left:6px;font-size:10px;color:var(--accent);cursor:help"
                           :title="p.models.filter((m:any) => m.thinking?.budget_tokens || m.reasoning_effort || m.thinking?.reasoning_effort).map((m:any) => m.id + ' → ' + (m.thinking?.budget_tokens ? 'thinking:'+m.thinking.budget_tokens : 're:'+m.reasoning_effort || m.thinking?.reasoning_effort)).join('\n')">🧠</span>
                   </template>
                 </td>
@@ -710,9 +710,11 @@ tbody tr:hover td { background: #f8f9fb; }
             <div x-show="r.requestUrl" style="border-left:3px solid var(--border);border-radius:0 0 var(--radius) var(--radius);margin-top:-2px">
               <div @click="r._showDetails = !r._showDetails" style="cursor:pointer;font-size:11px;padding:4px 12px;color:var(--accent);user-select:none" x-text="r._showDetails ? '收起详情 ▲' : '展开详情 ▼'"></div>
               <div x-show="r._showDetails" style="padding:8px 12px 12px;font-size:11px;background:var(--surface);border-radius:0 0 var(--radius) var(--radius)">
-                <div style="margin-bottom:6px"><strong>URL:</strong> <span class="mono" style="word-break:break-all" x-text="r.requestUrl"></span></div>
+                <div style="margin-bottom:6px"><strong>入口 URL:</strong> <span class="mono" style="word-break:break-all" x-text="r.adapterUrl || r.requestUrl"></span></div>
+                <div style="margin-bottom:6px"><strong>上游 URL:</strong> <span class="mono" style="word-break:break-all" x-text="r.requestUrl"></span> <template x-if="r.responseStatus"><span style="font-size:11px;margin-left:6px" :style="'color:' + (r.responseStatus < 400 ? 'var(--success)' : 'var(--danger)')" x-text="'HTTP ' + r.responseStatus"></span></template></div>
                 <div style="margin-bottom:6px"><strong>Headers:</strong> <pre style="margin:2px 0;padding:6px;background:var(--surface-bg);border-radius:4px;overflow-x:auto;line-height:1.4" x-text="JSON.stringify(r.requestHeaders, null, 2)"></pre></div>
-                <div style="margin-bottom:6px"><strong>Body:</strong> <pre style="margin:2px 0;padding:6px;background:var(--surface-bg);border-radius:4px;overflow-x:auto;line-height:1.4" x-text="JSON.stringify(r.requestBody, null, 2)"></pre></div>
+                <div style="margin-bottom:6px"><strong>Request Body:</strong> <pre style="margin:2px 0;padding:6px;background:var(--surface-bg);border-radius:4px;overflow-x:auto;line-height:1.4" x-text="JSON.stringify(r.requestBody, null, 2)"></pre></div>
+                <div style="margin-bottom:6px" x-show="r.responseBody"><strong>Response Body:</strong> <pre style="margin:2px 0;padding:6px;background:var(--surface-bg);border-radius:4px;overflow-x:auto;line-height:1.4" x-text="JSON.stringify(r.responseBody, null, 2)"></pre></div>
                 <div x-show="r.error"><strong>错误:</strong> <span style="color:var(--danger);word-break:break-word" x-text="r.error"></span></div>
               </div>
             </div>
@@ -816,16 +818,13 @@ tbody tr:hover td { background: #f8f9fb; }
     <div class="modal-overlay" x-data="testPanel" x-show="visible" x-cloak style="display:none"><div class="modal" style="min-width:500px;max-width:640px">
       <h3 x-text="'测试 — ' + providerName"></h3>
       <div style="display:flex;gap:8px;margin-bottom:14px;align-items:center">
-        <strong style="font-size:13px;min-width:80px" x-text="providerName"></strong>
+        <strong style="font-size:13px;min-width:120px;white-space:nowrap" x-text="providerName"></strong>
         <select x-model="selectedModel" style="flex:1;padding:6px 8px;font-size:12px;border:1px solid var(--border);border-radius:var(--radius)">
           <template x-for="m in models" :key="m.id">
             <option :value="m.id" x-text="m.id"></option>
           </template>
         </select>
-        <select x-model="endpoint" x-show="providerType === 'openai'" style="padding:6px 8px;font-size:11px;border:1px solid var(--border);border-radius:var(--radius)">
-          <option value="chat">Chat</option>
-          <option value="responses">Responses</option>
-        </select>
+        <span style="font-size:11px;color:var(--text-muted);padding:0 4px;white-space:nowrap" x-text="'(' + providerType + ')'"></span>
         <button class="btn btn-primary btn-sm" @click="run()" style="min-width:52px" :disabled="running" x-text="running ? '测试中' : '运行'"></button>
       </div>
       <div style="max-height:360px;overflow-y:auto;display:flex;flex-direction:column;gap:6px">
@@ -839,9 +838,10 @@ tbody tr:hover td { background: #f8f9fb; }
             <div x-show="r.requestUrl" style="border-left:3px solid var(--border);border-radius:0 0 var(--radius) var(--radius);margin-top:-2px">
               <div @click="r._showDetails = !r._showDetails" style="cursor:pointer;font-size:11px;padding:4px 12px;color:var(--accent);user-select:none" x-text="r._showDetails ? '收起详情 ▲' : '展开详情 ▼'"></div>
               <div x-show="r._showDetails" style="padding:8px 12px 12px;font-size:11px;background:var(--surface);border-radius:0 0 var(--radius) var(--radius)">
-                <div style="margin-bottom:6px"><strong>URL:</strong> <span class="mono" style="word-break:break-all" x-text="r.requestUrl"></span></div>
+                <div style="margin-bottom:6px"><strong>URL:</strong> <span class="mono" style="word-break:break-all" x-text="r.requestUrl"></span> <template x-if="r.responseStatus"><span style="font-size:11px;margin-left:6px" :style="'color:' + (r.responseStatus < 400 ? 'var(--success)' : 'var(--danger)')" x-text="'HTTP ' + r.responseStatus"></span></template></div>
                 <div style="margin-bottom:6px"><strong>Headers:</strong> <pre style="margin:2px 0;padding:6px;background:var(--surface-bg);border-radius:4px;overflow-x:auto;line-height:1.4" x-text="JSON.stringify(r.requestHeaders, null, 2)"></pre></div>
-                <div style="margin-bottom:6px"><strong>Body:</strong> <pre style="margin:2px 0;padding:6px;background:var(--surface-bg);border-radius:4px;overflow-x:auto;line-height:1.4" x-text="JSON.stringify(r.requestBody, null, 2)"></pre></div>
+                <div style="margin-bottom:6px"><strong>Request Body:</strong> <pre style="margin:2px 0;padding:6px;background:var(--surface-bg);border-radius:4px;overflow-x:auto;line-height:1.4" x-text="JSON.stringify(r.requestBody, null, 2)"></pre></div>
+                <div style="margin-bottom:6px" x-show="r.responseBody"><strong>Response Body:</strong> <pre style="margin:2px 0;padding:6px;background:var(--surface-bg);border-radius:4px;overflow-x:auto;line-height:1.4" x-text="JSON.stringify(r.responseBody, null, 2)"></pre></div>
                 <div x-show="r.error"><strong>错误:</strong> <span style="color:var(--danger);word-break:break-word" x-text="r.error"></span></div>
               </div>
             </div>

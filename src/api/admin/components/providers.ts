@@ -89,8 +89,12 @@ export function providersPage() {
           }
           return base
         })
-      if (!name || validModels.length === 0) {
+      if (!name) {
         toast(t('admin.providers.validationName'), 'error')
+        return
+      }
+      if (validModels.length === 0) {
+        toast(t('admin.providers.validationModels'), 'error')
         return
       }
       if (!this.editingName && !apiKey) {
