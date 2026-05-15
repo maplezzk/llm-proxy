@@ -11,17 +11,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             NSLog("[LLMProxy] ❌ statusItem.button 为 nil")
             return
         }
-        guard let img = loadTrayIcon() else {
-            NSLog("[LLMProxy] ❌ 无法加载 tray-icon")
-            // 设置颜色占位，至少能看到菜单栏有条目
-            btn.image = NSImage(systemSymbolName: "circle.fill", accessibilityDescription: "LLM Proxy")
-            btn.image?.isTemplate = true
-            menuBarController = MenuBarController(statusItem: statusItem)
-            menuBarController.buildMenu()
-            return
-        }
+        let img = loadTrayIcon()
         img.isTemplate = true
         btn.image = img
+        
         menuBarController = MenuBarController(statusItem: statusItem)
         menuBarController.buildMenu()
     }
