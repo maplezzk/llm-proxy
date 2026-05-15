@@ -110,7 +110,10 @@ export function providersPage() {
         })
       }
       if (!res.success) {
-        toast(res.error || t('admin.providers.saveFailed'), 'error')
+        const detail = res.errors?.length
+          ? (res.error || t('admin.providers.saveFailed')) + '\n' + res.errors.map((e: any) => '• ' + (e.field || '') + ': ' + e.message).join('\n')
+          : (res.error || t('admin.providers.saveFailed'))
+        toast(detail, 'error')
         return
       }
       toast(this.editingName ? t('admin.providers.updated') : t('admin.providers.created'), 'success')
