@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.2](https://github.com/maplezzk/llm-proxy/compare/v0.11.1...v0.11.2) (2026-05-15)
+
+
+### Bug Fixes
+
+* 缓存菜单栏图标避免轮询时重复新建导致图标消失 ([#85](https://github.com/maplezzk/llm-proxy/issues/85)) ([7704101](https://github.com/maplezzk/llm-proxy/commit/77041014cd963b61d1f9913356962caf3af46824))
+
 ## [0.11.1](https://github.com/maplezzk/llm-proxy/compare/v0.11.0...v0.11.1) (2026-05-15)
 
 
