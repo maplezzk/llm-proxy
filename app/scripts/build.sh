@@ -19,7 +19,8 @@ cp dist/api/admin-app.js "$BUILD_DIR/admin-app.js"
 echo "=== 2. Build Swift app ==="
 cd "$ROOT_DIR/app"
 # 清除 Swift 增量构建缓存，防止 CI 漏编改动的文件
-rm -rf .build/arm64-apple-macosx/release/LLMProxy.build
+# 清除 Swift 增量缓存（保留 bun 编译产物），防止 CI 漏编
+rm -rf .build/arm64-apple-macosx .build/release/LLMProxy*
 swift build -c release
 
 echo "=== 3. Package .app ==="
