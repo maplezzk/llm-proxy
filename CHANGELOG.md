@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.3](https://github.com/maplezzk/llm-proxy/compare/v0.11.2...v0.11.3) (2026-05-15)
+
+
+### Bug Fixes
+
+* CI 构建清空 Swift 缓存 + DMG 上传覆盖 ([#87](https://github.com/maplezzk/llm-proxy/issues/87)) ([413fdd3](https://github.com/maplezzk/llm-proxy/commit/413fdd3f708dc717c198e89dab1fd96090974df1))
+
 ## [0.11.2](https://github.com/maplezzk/llm-proxy/compare/v0.11.1...v0.11.2) (2026-05-15)
 
 
