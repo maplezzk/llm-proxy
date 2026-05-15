@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { ServerContext } from '../server.js'
-import { readBody, getDefaultApiBase } from '../../lib/http-utils.js'
+import { readBody, getDefaultApiBase, sanitizeApiBase } from '../../lib/http-utils.js'
 import { resolveAdapterRoute, AdapterError } from '../../adapter/router.js'
 import { json } from './index.js'
 import { t } from '../../lib/i18n.js'
@@ -50,7 +50,7 @@ export async function handleTestModel(ctx: ServerContext, req: IncomingMessage, 
 
   const useResponses = (type === 'openai-responses') || (type === 'openai' && body.endpoint === 'responses')
 
-  const baseUrl = apiBase || getDefaultApiBase(type)
+  const baseUrl = sanitizeApiBase(apiBase || getDefaultApiBase(type))
   let url: string
   if (type === 'anthropic') {
     url = `${baseUrl}/v1/messages`
@@ -135,7 +135,7 @@ export async function handleTestAdapter(ctx: ServerContext, req: IncomingMessage
 
   const type = route.inboundType
   const providerType = route.route.providerType
-  const baseUrl = route.route.apiBase
+  const baseUrl = sanitizeApiBase(route.route.apiBase)
   const targetModel = route.route.modelId
   const url = providerType === 'anthropic'
     ? `${baseUrl}/v1/messages`
@@ -230,7 +230,7 @@ export async function handlePullModels(ctx: ServerContext, req: IncomingMessage,
     headers['Authorization'] = `Bearer ${apiKey}`
   }
 
-  const url = `${apiBase}/v1/models`
+  const url = `${sanitizeApiBase(apiBase)}/v1/models`
 
   try {
     const response = await fetch(url, { headers, signal: AbortSignal.timeout(10000) })

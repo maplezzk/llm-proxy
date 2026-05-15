@@ -1,6 +1,7 @@
 import type { RouterResult } from './types.js'
 import type { Logger } from '../log/logger.js'
 import { createHash } from 'node:crypto'
+import { sanitizeApiBase } from '../lib/http-utils.js'
 
 // --- Helpers ---
 
@@ -600,7 +601,8 @@ export async function transformInboundRequest(
       ? 'responses'
       : 'chat/completions'
 
-  const url = `${route.apiBase}/v1/${upstreamEndpoint}`
+  const apiBase = sanitizeApiBase(route.apiBase)
+  const url = `${apiBase}/v1/${upstreamEndpoint}`
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
 
   if (route.providerType === 'anthropic') {
