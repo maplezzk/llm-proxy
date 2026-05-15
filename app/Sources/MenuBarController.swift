@@ -44,7 +44,8 @@ class MenuBarController: NSObject {
 
     @MainActor
     func updateStatusIcon() {
-        if let btn = statusItem.button, let img = loadTrayIcon() {
+        if let btn = statusItem.button {
+            let img = loadTrayIcon()
             img.isTemplate = true
             btn.image = img
         }
