@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.11.4](https://github.com/maplezzk/llm-proxy/compare/v0.11.3...v0.11.4) (2026-05-15)
+
+
+### Bug Fixes
+
+* CI 清除 Swift 全量构建缓存 ([32afbcf](https://github.com/maplezzk/llm-proxy/commit/32afbcfd4447969deda1dfd64744d963a262b510))
+* CI 清除 Swift 全量构建缓存而非仅 .build 子目录 ([e4744f1](https://github.com/maplezzk/llm-proxy/commit/e4744f1853a08b98dab846e09938d34b47c7867b))
+
 ## [0.11.3](https://github.com/maplezzk/llm-proxy/compare/v0.11.2...v0.11.3) (2026-05-15)
 
 
