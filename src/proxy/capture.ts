@@ -39,7 +39,7 @@ export class CaptureBuffer {
   private subscribers: Set<ServerResponse> = new Set()
   /** pairId → CaptureEntry 的快速索引 */
   private entryMap: Map<number, CaptureEntry> = new Map()
-  private _enabled = true
+  private _enabled = false
 
   constructor(maxSize = 200) {
     this.maxSize = maxSize
