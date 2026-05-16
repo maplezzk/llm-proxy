@@ -18,8 +18,15 @@ export function capturePage() {
     phases: PHASES,
 
     init() {
-      // 页面刷新/加载后自动连接，无需手动点击「开始」
-      this.startCapture()
+      // 查询后端状态：已启用则自动连接，已禁用则保持停止
+      fetch('/admin/debug/captures/status')
+        .then(r => r.json())
+        .then(d => {
+          if (d.success && d.data.enabled) {
+            this.connectSSE()
+          }
+        })
+        .catch(() => {})
     },
 
     /** 调用后端抓包控制 API */
@@ -55,15 +62,13 @@ export function capturePage() {
       return this.entries.filter((e: any) => e.source === this.sourceFilter)
     },
 
-    startCapture() {
-      // 关闭旧连接（防止重复）
+    /** 建立 SSE 连接 + 加载历史数据（不修改后端 enabled 状态） */
+    connectSSE() {
+      // 关闭旧连接
       if (this.es) {
         this.es.close()
         this.es = null
       }
-
-      // 启用后端抓包 + 清空旧缓存
-      this.apiControl(true, true)
 
       this.running = true
       this.entries = []
@@ -79,7 +84,7 @@ export function capturePage() {
         })
         .catch(() => {})
 
-      // 建立 SSE 连接持续接收新数据
+      // 建立 SSE 连接
       this.es = new EventSource('/admin/debug/captures/stream')
       this.es.onmessage = (ev) => {
         try {
@@ -97,6 +102,12 @@ export function capturePage() {
           }
         } catch {}
       }
+    },
+
+    startCapture() {
+      // 启用后端抓包 + 清空旧缓存 + 连 SSE
+      this.apiControl(true, true)
+      this.connectSSE()
     },
 
     stopCapture() {

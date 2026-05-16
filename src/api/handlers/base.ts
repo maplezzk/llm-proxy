@@ -124,6 +124,10 @@ export function handleGetTokenStats(ctx: ServerContext, _req: IncomingMessage, r
   json(res, 200, { success: true, data: ctx.tokenTracker.getStats() })
 }
 
+export function handleDebugCapturesStatus(ctx: ServerContext, _req: IncomingMessage, res: ServerResponse): void {
+  json(res, 200, { success: true, data: { enabled: ctx.capture?.isEnabled() ?? false } })
+}
+
 export function handleDebugCaptures(ctx: ServerContext, _req: IncomingMessage, res: ServerResponse): void {
   json(res, 200, { success: true, data: ctx.capture?.getAll() ?? [] })
 }

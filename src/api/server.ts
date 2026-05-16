@@ -8,7 +8,7 @@ import type { Logger } from '../log/logger.js'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
-import { handleGetConfig, handleReload, handleHealth, handleStatus, handleGetLogs, handleGetLogLevel, handleSetLogLevel, handleGetLocale, handleSetLocale, handleGetAdapters, handleCreateProvider, handleUpdateProvider, handleDeleteProvider, handleCreateAdapter, handleUpdateAdapter, handleDeleteAdapter, handleTestModel, handleTestAdapter, handleListModels, handlePullModels, handleGetProxyKey, handleSetProxyKey, handleGetTokenStats, handleDebugCaptures, handleDebugCapturesControl, handleDebugCapturesStream } from './handlers/index.js'
+import { handleGetConfig, handleReload, handleHealth, handleStatus, handleGetLogs, handleGetLogLevel, handleSetLogLevel, handleGetLocale, handleSetLocale, handleGetAdapters, handleCreateProvider, handleUpdateProvider, handleDeleteProvider, handleCreateAdapter, handleUpdateAdapter, handleDeleteAdapter, handleTestModel, handleTestAdapter, handleListModels, handlePullModels, handleGetProxyKey, handleSetProxyKey, handleGetTokenStats, handleDebugCapturesStatus, handleDebugCaptures, handleDebugCapturesControl, handleDebugCapturesStream } from './handlers/index.js'
 import { handleAnthropicMessages, handleOpenAIChat, handleOpenAIResponses } from '../proxy/handlers.js'
 import { handleAdapterRequest, handleAdapterModels } from '../adapter/handlers.js'
 
@@ -95,6 +95,7 @@ const ROUTES: Route[] = [
   { method: 'PUT', pattern: /^\/admin\/proxy-key$/, handler: handleSetProxyKey },
   { method: 'GET', pattern: /^\/admin\/token-stats$/, handler: handleGetTokenStats },
   { method: 'GET', pattern: /^\/admin\/debug\/captures$/, handler: handleDebugCaptures },
+  { method: 'GET', pattern: /^\/admin\/debug\/captures\/status$/, handler: handleDebugCapturesStatus },
   { method: 'GET', pattern: /^\/admin\/debug\/captures\/stream$/, handler: handleDebugCapturesStream },
   { method: 'POST', pattern: /^\/admin\/debug\/captures\/control$/, handler: handleDebugCapturesControl },
   { method: 'GET', pattern: /^\/admin\/adapters(\?.*)?$/, handler: handleGetAdapters },
