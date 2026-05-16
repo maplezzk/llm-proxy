@@ -39,9 +39,27 @@ export class CaptureBuffer {
   private subscribers: Set<ServerResponse> = new Set()
   /** pairId → CaptureEntry 的快速索引 */
   private entryMap: Map<number, CaptureEntry> = new Map()
+  private _enabled = true
 
   constructor(maxSize = 200) {
     this.maxSize = maxSize
+  }
+
+  isEnabled(): boolean {
+    return this._enabled
+  }
+
+  enable(): void {
+    this._enabled = true
+  }
+
+  disable(): void {
+    this._enabled = false
+  }
+
+  clear(): void {
+    this.buffer = []
+    this.entryMap.clear()
   }
 
   /** 创建一条新请求的抓包记录，返回 pairId */
