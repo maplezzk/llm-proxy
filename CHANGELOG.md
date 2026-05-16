@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.12.0](https://github.com/maplezzk/llm-proxy/compare/v0.11.4...v0.12.0) (2026-05-16)
+
+
+### Features
+
+* 后端抓包支持启用/禁用开关 ([d4f2fe5](https://github.com/maplezzk/llm-proxy/commit/d4f2fe5e9459fc7dfd5afd6e88c97cd653b25bec))
+* 后端抓包支持启用/禁用开关（前端停止按钮同步控制后端） ([ee53e03](https://github.com/maplezzk/llm-proxy/commit/ee53e030a1dc95235b37ad995196428432936574))
+
+
+### Bug Fixes
+
+* init() 先查询后端状态，已停止时不再自动启用 ([5c962cb](https://github.com/maplezzk/llm-proxy/commit/5c962cb6944ccaec4602039933ad66a98501a9da))
+* 入站请求路径自动折叠双 /v1/v1 为 /v1 ([05aaa90](https://github.com/maplezzk/llm-proxy/commit/05aaa902e278963436e115cb31a7a5347e38aff0))
+* 入站请求路径自动折叠双 /v1/v1 为 /v1 ([d37026b](https://github.com/maplezzk/llm-proxy/commit/d37026b34cda8dbc2a67e736570f43fee4acd7d0))
+
 ## [0.11.4](https://github.com/maplezzk/llm-proxy/compare/v0.11.3...v0.11.4) (2026-05-15)
 
 
