@@ -14,9 +14,24 @@ export function capturePage() {
     running: false,
     es: null as EventSource | null,
     sourceFilter: '',
-    sessionStart: 0,
 
     phases: PHASES,
+
+    init() {
+      // 页面刷新/加载后自动连接，无需手动点击「开始」
+      this.startCapture()
+    },
+
+    /** 调用后端抓包控制 API */
+    async apiControl(enabled: boolean, clear = false) {
+      try {
+        await fetch('/admin/debug/captures/control', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ enabled, clear }),
+        })
+      } catch {}
+    },
 
     fmtTime(ts: number): string {
       const d = new Date(ts)
@@ -41,49 +56,63 @@ export function capturePage() {
     },
 
     startCapture() {
+      // 关闭旧连接（防止重复）
+      if (this.es) {
+        this.es.close()
+        this.es = null
+      }
+
+      // 启用后端抓包 + 清空旧缓存
+      this.apiControl(true, true)
+
       this.running = true
       this.entries = []
       this.selectedId = null
-      this.sessionStart = Date.now()
 
+      // 获取所有历史数据
       fetch('/admin/debug/captures')
         .then(r => r.json())
         .then(d => {
           if (d.success) {
-            this.entries = d.data.filter((e: any) => e.timestamp >= this.sessionStart)
+            this.entries = d.data
           }
         })
         .catch(() => {})
 
+      // 建立 SSE 连接持续接收新数据
       this.es = new EventSource('/admin/debug/captures/stream')
       this.es.onmessage = (ev) => {
         try {
           const entry = JSON.parse(ev.data)
-          if (entry.timestamp >= this.sessionStart) {
-            const idx = this.entries.findIndex((e: any) => e.pairId === entry.pairId)
-            if (idx >= 0) {
-              this.entries[idx] = entry
-              this.entries = this.entries.slice()
-              if (this.selectedId === entry.id) {
-                setTimeout(() => this.renderEditors(), 50)
-              }
-            } else {
-              this.entries.push(entry)
-              if (this.entries.length > 200) this.entries = this.entries.slice(-200)
+          const idx = this.entries.findIndex((e: any) => e.pairId === entry.pairId)
+          if (idx >= 0) {
+            this.entries[idx] = entry
+            this.entries = this.entries.slice()
+            if (this.selectedId === entry.id) {
+              setTimeout(() => this.renderEditors(), 50)
             }
+          } else {
+            this.entries.push(entry)
+            if (this.entries.length > 200) this.entries = this.entries.slice(-200)
           }
         } catch {}
       }
     },
 
     stopCapture() {
+      // 停用后端抓包
+      this.apiControl(false)
       this.running = false
       this.es?.close()
       this.es = null
     },
 
     endCapture() {
-      this.stopCapture()
+      // 停用后端抓包 + 清空后端缓存
+      this.apiControl(false, true)
+      this.running = false
+      this.es?.close()
+      this.es = null
       this.entries = []
       this.selectedId = null
     },

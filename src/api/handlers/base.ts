@@ -128,6 +128,30 @@ export function handleDebugCaptures(ctx: ServerContext, _req: IncomingMessage, r
   json(res, 200, { success: true, data: ctx.capture?.getAll() ?? [] })
 }
 
+export async function handleDebugCapturesControl(ctx: ServerContext, req: IncomingMessage, res: ServerResponse): Promise<void> {
+  if (!ctx.capture) {
+    json(res, 404, { success: false, error: 'Capture not enabled' })
+    return
+  }
+  const body = JSON.parse(await (await import('../../lib/http-utils.js')).readBody(req))
+  const { enabled, clear: shouldClear } = body
+
+  if (enabled === true) {
+    ctx.capture.enable()
+    ctx.logger.log('system', 'Capture enabled')
+  } else if (enabled === false) {
+    ctx.capture.disable()
+    ctx.logger.log('system', 'Capture disabled')
+  }
+
+  if (shouldClear) {
+    ctx.capture.clear()
+    ctx.logger.log('system', 'Capture buffer cleared')
+  }
+
+  json(res, 200, { success: true, data: { enabled: ctx.capture.isEnabled() } })
+}
+
 export function handleDebugCapturesStream(ctx: ServerContext, _req: IncomingMessage, res: ServerResponse): void {
   if (!ctx.capture) {
     json(res, 404, { success: false, error: 'Capture not enabled' })

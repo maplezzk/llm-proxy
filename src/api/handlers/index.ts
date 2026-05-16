@@ -5,7 +5,7 @@ export function json(res: ServerResponse, statusCode: number, data: unknown): vo
   res.end(JSON.stringify(data))
 }
 
-export { handleGetConfig, handleReload, handleHealth, handleStatus, handleGetLogs, handleGetLogLevel, handleSetLogLevel, handleGetLocale, handleSetLocale, handleGetProxyKey, handleSetProxyKey, handleGetTokenStats, handleDebugCaptures, handleDebugCapturesStream } from './base.js'
+export { handleGetConfig, handleReload, handleHealth, handleStatus, handleGetLogs, handleGetLogLevel, handleSetLogLevel, handleGetLocale, handleSetLocale, handleGetProxyKey, handleSetProxyKey, handleGetTokenStats, handleDebugCaptures, handleDebugCapturesControl, handleDebugCapturesStream } from './base.js'
 export { handleCreateProvider, handleUpdateProvider, handleDeleteProvider } from './provider-crud.js'
 export { handleGetAdapters, handleCreateAdapter, handleUpdateAdapter, handleDeleteAdapter } from './adapter-crud.js'
 export { handleTestModel, handleTestAdapter, handleListModels, handlePullModels } from './model-handlers.js'

@@ -122,7 +122,7 @@ export async function forwardPipeline(
     const upstream = await transformInboundRequest(inboundType, route, body, ctx.logger)
 
     let pairId: number | undefined
-    if (ctx.capture) {
+    if (ctx.capture?.isEnabled()) {
       const source = adapterName ?? 'proxy'
       pairId = ctx.capture.startRequest(source, inboundType, modelName, {
         adapterName,
