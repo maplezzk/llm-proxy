@@ -132,6 +132,13 @@ export function createProxyServer(opts: ServerOptions): Server {
       return
     }
 
+    // 归一化入站路径：将 /v1/v1/ 折叠为 /v1/（兼容某些 client 在 base_url 后追加 /v1 导致的双重路径）
+    if (req.url) {
+      const qi = req.url.indexOf('?')
+      const path = qi >= 0 ? req.url.substring(0, qi) : req.url
+      const qs = qi >= 0 ? req.url.substring(qi) : ''
+      req.url = path.replace(/\/v1\/v1(\/|$)/g, '/v1$1') + qs
+    }
     const url = req.url ?? '/'
     const method = req.method ?? 'GET'
 
