@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.12.1](https://github.com/maplezzk/llm-proxy/compare/v0.12.0...v0.12.1) (2026-05-16)
+
+
+### Bug Fixes
+
+* 抓包默认关闭，需手动点击「开始」启用 ([fc4e0e6](https://github.com/maplezzk/llm-proxy/commit/fc4e0e660259d6a2842d21100efb7c944028ff7d))
+* 抓包默认关闭，需手动点击「开始」启用 ([7c2948e](https://github.com/maplezzk/llm-proxy/commit/7c2948eaf17acc22cf777b73cd47ba18fe3ef9ab))
+
 ## [0.12.0](https://github.com/maplezzk/llm-proxy/compare/v0.11.4...v0.12.0) (2026-05-16)
 
 
