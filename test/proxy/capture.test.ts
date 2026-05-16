@@ -79,9 +79,9 @@ describe('proxy/capture', () => {
   })
 
   describe('enabled 开关', () => {
-    it('默认 enabled = true', () => {
+    it('默认 enabled = false', () => {
       const cap = new CaptureBuffer(100)
-      assert.strictEqual(cap.isEnabled(), true)
+      assert.strictEqual(cap.isEnabled(), false)
     })
 
     it('disable 后 isEnabled 返回 false', () => {
