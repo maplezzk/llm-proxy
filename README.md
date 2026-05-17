@@ -180,6 +180,11 @@ npm run build:app    # Build .app + .dmg
 
 **Homebrew shows old version?** Refresh tap:
 ```bash
+brew upgrade --cask llm-proxy
+```
+If that fails, uninstall first and reinstall:
+```bash
+brew uninstall --cask llm-proxy
 brew untap maplezzk/tap && brew tap maplezzk/tap && brew install --cask llm-proxy
 ```
 
