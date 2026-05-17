@@ -42,6 +42,19 @@ class UpdateChecker {
     private let repository = "maplezzk/llm-proxy"
     private let session: URLSession
 
+    /// Mock 服务器地址（通过环境变量 LLM_PROXY_UPDATE_MOCK 设置）
+    private let mockBaseURL: String? = {
+        if let env = ProcessInfo.processInfo.environment["LLM_PROXY_UPDATE_MOCK"], !env.isEmpty {
+            return env
+        }
+        return nil
+    }()
+
+    /// 真实 API 基础 URL（mock 模式下替换为 mock 地址）
+    private var apiBaseURL: String {
+        mockBaseURL ?? "https://api.github.com"
+    }
+
     init(session: URLSession = .shared) {
         self.session = session
     }
@@ -61,7 +74,7 @@ class UpdateChecker {
 
     /// 从 GitHub Releases API 获取最新版本信息
     func fetchLatestRelease() async throws -> UpdateInfo {
-        let url = URL(string: "https://api.github.com/repos/\(repository)/releases/latest")!
+        let url = URL(string: "\(apiBaseURL)/repos/\(repository)/releases/latest")!
         var request = URLRequest(url: url)
         request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
         // 设置 User-Agent 是 GitHub API 的要求
