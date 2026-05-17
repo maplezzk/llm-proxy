@@ -1,15 +1,55 @@
 import AppKit
 
+/// 创建菜单栏图标的 NSImage，包含 1x、2x、3x 多重分辨率表示
+/// macOS 会根据当前屏幕缩放比例自动选择最佳表示，确保菜单栏图标清晰锐利
+private func _createTrayIcon() -> NSImage {
+    let image = NSImage(size: NSSize(width: 18, height: 18))
+
+    // 从 Bundle.main 加载（生产构建），如果失败则尝试 Bundle.module（SPM 调试构建）
+    // ⚠️ 注意：Bundle.module 必须延迟求值，因为其内部 fatalError 可能在 bundle 缺失时崩溃
+    func tryLoad(name: String, size: NSSize) -> NSImageRep? {
+        // 先试 Bundle.main
+        if let url = Bundle.main.url(forResource: name, withExtension: "png"),
+           let rep = NSImageRep(contentsOf: url) {
+            rep.size = size
+            return rep
+        }
+        // 再试 Bundle.module（安全访问，避免触发 fatalError）
+        if let moduleBundle = Bundle(identifier: "LLMProxy_LLMProxy") ?? Bundle(path: Bundle.main.bundleURL.appendingPathComponent("LLMProxy_LLMProxy.bundle").path) {
+            if let url = moduleBundle.url(forResource: name, withExtension: "png"),
+               let rep = NSImageRep(contentsOf: url) {
+                rep.size = size
+                return rep
+            }
+        }
+        return nil
+    }
+
+    // 注册 1x 表示（18×18 像素）
+    let pointSize = NSSize(width: 18, height: 18)
+    if let rep = tryLoad(name: "tray-icon", size: pointSize) {
+        image.addRepresentation(rep)
+    } else {
+        NSLog("[LLMProxy] ⚠️ 无法加载 tray-icon.png")
+    }
+
+    // 注册 @2x 表示（36×36 像素，逻辑尺寸 18pt）
+    if let rep = tryLoad(name: "tray-icon@2x", size: pointSize) {
+        image.addRepresentation(rep)
+    }
+
+    // 注册 @3x 表示（54×54 像素，逻辑尺寸 18pt）
+    if let rep = tryLoad(name: "tray-icon@3x", size: pointSize) {
+        image.addRepresentation(rep)
+    }
+
+    return image
+}
+
 private let _trayIcon: NSImage = {
-    // 加载自定义 PNG（开发和生产一致），只创建一次避免重复设置导致图标消失
-    if let url = Bundle.main.url(forResource: "tray-icon", withExtension: "png") {
-        return NSImage(contentsOf: url) ?? NSImage()
-    }
-    if let url = Bundle.module.url(forResource: "tray-icon", withExtension: "png") {
-        return NSImage(contentsOf: url) ?? NSImage()
-    }
-    NSLog("[LLMProxy] 无法加载 tray-icon.png，使用空图标")
-    return NSImage()
+    let icon = _createTrayIcon()
+    icon.isTemplate = true
+    return icon
 }()
 
 /// 返回缓存的菜单栏图标（只创建一次，避免重复新建导致图标消失）
