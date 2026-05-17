@@ -5,35 +5,42 @@ import AppKit
 private func _createTrayIcon() -> NSImage {
     let image = NSImage(size: NSSize(width: 18, height: 18))
 
-    // 尝试 Bundle.main（生产构建） → Bundle.module（SPM 调试构建）
-    let resources: [Bundle] = [Bundle.main, Bundle.module]
-
-    func loadRep(name: String, size: NSSize) -> NSImageRep? {
-        for bundle in resources {
-            if let url = bundle.url(forResource: name, withExtension: "png"),
-               let rep = NSImageRep(contentsOf: url) {
-                rep.size = size
-                return rep
-            }
+    // 从 Bundle.main 加载（生产构建），失败再尝试安全方式访问 SPM bundle
+    // ⚠️ 不使用 Bundle.module，因为其 fatalError 在 bundle 缺失时直接崩溃
+    func safeLoad(name: String, size: NSSize) -> NSImageRep? {
+        // 先试 Bundle.main（生产构建，PNG 在 Resources 目录下）
+        if let url = Bundle.main.url(forResource: name, withExtension: "png"),
+           let rep = NSImageRep(contentsOf: url) {
+            rep.size = size
+            return rep
+        }
+        // 安全方式访问 SPM resource bundle，不会崩溃
+        let bundlePath = Bundle.main.bundleURL.appendingPathComponent("LLMProxy_LLMProxy.bundle").path
+        if FileManager.default.fileExists(atPath: bundlePath),
+           let bundle = Bundle(path: bundlePath),
+           let url = bundle.url(forResource: name, withExtension: "png"),
+           let rep = NSImageRep(contentsOf: url) {
+            rep.size = size
+            return rep
         }
         return nil
     }
 
     // 注册 1x 表示（18×18 像素）
     let pointSize = NSSize(width: 18, height: 18)
-    if let rep = loadRep(name: "tray-icon", size: pointSize) {
+    if let rep = safeLoad(name: "tray-icon", size: pointSize) {
         image.addRepresentation(rep)
     } else {
         NSLog("[LLMProxy] ⚠️ 无法加载 tray-icon.png")
     }
 
     // 注册 @2x 表示（36×36 像素，逻辑尺寸 18pt）
-    if let rep = loadRep(name: "tray-icon@2x", size: pointSize) {
+    if let rep = safeLoad(name: "tray-icon@2x", size: pointSize) {
         image.addRepresentation(rep)
     }
 
     // 注册 @3x 表示（54×54 像素，逻辑尺寸 18pt）
-    if let rep = loadRep(name: "tray-icon@3x", size: pointSize) {
+    if let rep = safeLoad(name: "tray-icon@3x", size: pointSize) {
         image.addRepresentation(rep)
     }
 
