@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.12.2](https://github.com/maplezzk/llm-proxy/compare/v0.12.1...v0.12.2) (2026-05-17)
+
+
+### Bug Fixes
+
+* 修复macOS菜单栏图标模糊问题 ([b718bad](https://github.com/maplezzk/llm-proxy/commit/b718bad59103e60f3cb689a4737bb94e75dca6ea))
+* 修复macOS菜单栏图标模糊问题，支持Retina多分辨率渲染 ([adba183](https://github.com/maplezzk/llm-proxy/commit/adba1837fd68432d5614a62c64233bac9e422ee2))
+
 ## [0.12.1](https://github.com/maplezzk/llm-proxy/compare/v0.12.0...v0.12.1) (2026-05-16)
 
 
