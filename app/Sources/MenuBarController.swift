@@ -3,12 +3,16 @@ import AppKit
 class MenuBarController: NSObject {
     let statusItem: NSStatusItem
     let client = APIClient()
+    let updateChecker = UpdateChecker()
 
     private var adapters: [Adapter] = []
     private var providers: [Provider] = []
     private var serviceRunning: Bool = false
     private var currentLogLevel: String = "info"
     private var pollTimer: Timer?
+    private var pendingUpdate: UpdateInfo?
+    private var isCheckingUpdate = false
+    private var isDownloadingUpdate = false
 
     init(statusItem: NSStatusItem) {
         self.statusItem = statusItem
@@ -231,6 +235,43 @@ class MenuBarController: NSObject {
         langItem.submenu = langMenu
         menu.addItem(langItem)
 
+        // ── 更新区 ──
+        menu.addItem(.separator())
+
+        let versionItem = NSMenuItem(title: loc("menu.version", currentVersion()), action: nil, keyEquivalent: "")
+        versionItem.isEnabled = false
+        if #available(macOS 11.0, *) {
+            versionItem.image = NSImage(systemSymbolName: "info.circle", accessibilityDescription: loc("menu.version", currentVersion()))
+        }
+        menu.addItem(versionItem)
+
+        if let update = pendingUpdate {
+            let updateAvailableItem = NSMenuItem(title: loc("menu.updatesAvailable", update.version), action: #selector(downloadAndInstallUpdate), keyEquivalent: "")
+            updateAvailableItem.target = self
+            let attrTitle = NSMutableAttributedString(string: loc("menu.updatesAvailable", update.version))
+            attrTitle.addAttribute(.foregroundColor, value: NSColor.systemOrange, range: NSRange(location: 0, length: attrTitle.length))
+            attrTitle.addAttribute(.font, value: NSFont.systemFont(ofSize: 13, weight: .semibold), range: NSRange(location: 0, length: attrTitle.length))
+            updateAvailableItem.attributedTitle = attrTitle
+            if #available(macOS 11.0, *) {
+                updateAvailableItem.image = NSImage(systemSymbolName: "arrow.down.circle.fill", accessibilityDescription: nil)
+            }
+            menu.addItem(updateAvailableItem)
+        }
+
+        let checkItemTitle: String
+        if isCheckingUpdate {
+            checkItemTitle = loc("update.downloading")
+        } else {
+            checkItemTitle = loc("action.checkForUpdates")
+        }
+        let checkItem = NSMenuItem(title: checkItemTitle, action: #selector(checkForUpdates), keyEquivalent: "")
+        checkItem.target = self
+        checkItem.isEnabled = !isCheckingUpdate && !isDownloadingUpdate
+        if #available(macOS 11.0, *) {
+            checkItem.image = NSImage(systemSymbolName: "arrow.up.arrow.down.circle", accessibilityDescription: loc("action.checkForUpdates"))
+        }
+        menu.addItem(checkItem)
+
         menu.addItem(.separator())
 
         let quitItem = NSMenuItem(title: loc("action.quit"), action: #selector(quitApp), keyEquivalent: "q")
@@ -451,7 +492,7 @@ class MenuBarController: NSObject {
             task.terminationHandler = { proc in
                 stdoutPipe.fileHandleForReading.readabilityHandler = nil
                 stderrPipe.fileHandleForReading.readabilityHandler = nil
-                let ts = dateFmt.string(from: Date())
+                let _ = dateFmt.string(from: Date())
                 let msg = "[SYSTEM] llm-proxy \(command) 已退出 (pid: \(proc.processIdentifier), code: \(proc.terminationStatus))"
                 NSLog("[LLMProxy] \(msg)")
                 appendToLog(msg)
@@ -509,6 +550,129 @@ class MenuBarController: NSObject {
         let logDir = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(".llm-proxy")
         NSWorkspace.shared.open(logDir)
+    }
+
+    // MARK: - Update Actions
+
+    /// 应用启动时执行后台更新检查
+    @MainActor
+    func checkForUpdatesOnLaunch() {
+        // 检查上次更新检查时间（24 小时间隔）
+        let lastCheck = UserDefaults.standard.object(forKey: "last-update-check") as? Date ?? .distantPast
+        if Date().timeIntervalSince(lastCheck) < 24 * 60 * 60 {
+            return
+        }
+
+        Task { @MainActor [weak self] in
+            await self?.performUpdateCheck(silent: true)
+        }
+    }
+
+    /// 主动检查更新（用户从菜单触发的）
+    @MainActor @objc func checkForUpdates() {
+        Task { @MainActor [weak self] in
+            await self?.performUpdateCheck(silent: false)
+        }
+    }
+
+    /// 执行更新检查
+    @MainActor
+    private func performUpdateCheck(silent: Bool) async {
+        guard !isCheckingUpdate else { return }
+        isCheckingUpdate = true
+        rebuildMenu()
+
+        defer {
+            isCheckingUpdate = false
+            UserDefaults.standard.set(Date(), forKey: "last-update-check")
+        }
+
+        // 启动时清理旧的下载文件
+        updateChecker.cleanUpOnLaunch()
+
+        do {
+            if let update = try await updateChecker.checkForUpdates() {
+                pendingUpdate = update
+                rebuildMenu()
+
+                // 静默检查时不弹通知，只更新菜单标记
+                if !silent {
+                    let alert = NSAlert()
+                    alert.messageText = loc("update.available")
+                    alert.informativeText = loc("update.downloadConfirm", update.version)
+                    alert.addButton(withTitle: loc("update.downloading"))
+                    alert.addButton(withTitle: "Cancel")
+                    if alert.runModal() == .alertFirstButtonReturn {
+                        await performDownloadAndInstall(update)
+                    }
+                }
+            } else {
+                pendingUpdate = nil
+                rebuildMenu()
+
+                if !silent {
+                    let alert = NSAlert()
+                    alert.messageText = loc("app.title")
+                    alert.informativeText = loc("update.noUpdates", currentVersion())
+                    alert.addButton(withTitle: "OK")
+                    alert.runModal()
+                }
+            }
+        } catch {
+            pendingUpdate = nil
+            rebuildMenu()
+
+            if !silent {
+                let alert = NSAlert()
+                alert.messageText = loc("app.title")
+                alert.informativeText = loc("update.checkFailed", error.localizedDescription)
+                alert.addButton(withTitle: "OK")
+                alert.runModal()
+            }
+        }
+    }
+
+    /// 下载并安装更新（从更新可用菜单项触发）
+    @MainActor @objc func downloadAndInstallUpdate() {
+        guard let update = pendingUpdate else { return }
+
+        Task { @MainActor [weak self] in
+            await self?.performDownloadAndInstall(update)
+        }
+    }
+
+    @MainActor
+    private func performDownloadAndInstall(_ update: UpdateInfo) async {
+        guard !isDownloadingUpdate else { return }
+        isDownloadingUpdate = true
+        rebuildMenu()
+
+        defer {
+            isDownloadingUpdate = false
+        }
+
+        do {
+            let localURL = try await updateChecker.downloadUpdate(update)
+
+            let alert = NSAlert()
+            alert.messageText = loc("update.downloadComplete")
+            alert.informativeText = loc("update.installPrompt", update.version)
+            alert.addButton(withTitle: "OK")
+            alert.runModal()
+
+            // 停止后台服务并打开 DMG
+            runCLI("stop")
+            _ = updateChecker.installUpdate(at: localURL)
+
+            // 退出应用
+            NSApplication.shared.terminate(nil)
+        } catch {
+            let alert = NSAlert()
+            alert.messageText = loc("app.title")
+            alert.informativeText = loc("update.downloadFailed", error.localizedDescription)
+            alert.addButton(withTitle: "OK")
+            alert.runModal()
+        }
     }
 
     func showError(_ msg: String) {

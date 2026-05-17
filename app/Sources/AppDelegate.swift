@@ -17,5 +17,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         
         menuBarController = MenuBarController(statusItem: statusItem)
         menuBarController.buildMenu()
+        
+        // 启动时触发后台更新检查
+        menuBarController.checkForUpdatesOnLaunch()
     }
 }

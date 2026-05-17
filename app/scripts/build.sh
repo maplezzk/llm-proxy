@@ -43,7 +43,10 @@ cp -R "$ROOT_DIR/locales" "$APP/Contents/Resources/locales"
 # 拷贝 SPM resource bundle，确保 Bundle.module 能加载资源
 cp -R "$BUILD_DIR/release/LLMProxy_LLMProxy.bundle" "$APP/Contents/Resources/"
 
-cat > "$APP/Contents/Info.plist" << 'PLIST'
+# 从 package.json 读取版本号
+VERSION=$(node -p "require('$ROOT_DIR/package.json').version")
+
+cat > "$APP/Contents/Info.plist" << PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -52,8 +55,8 @@ cat > "$APP/Contents/Info.plist" << 'PLIST'
     <key>CFBundleIdentifier</key><string>com.maplezzk.llmproxy</string>
     <key>CFBundleName</key><string>LLMProxy</string>
     <key>CFBundleIconFile</key><string>AppIcon</string>
-    <key>CFBundleVersion</key><string>1.0</string>
-    <key>CFBundleShortVersionString</key><string>1.0</string>
+    <key>CFBundleVersion</key><string>${VERSION}</string>
+    <key>CFBundleShortVersionString</key><string>${VERSION}</string>
     <key>LSUIElement</key><true/>
     <key>NSAppTransportSecurity</key>
     <dict><key>NSAllowsLocalNetworking</key><true/></dict>
@@ -64,7 +67,6 @@ PLIST
 codesign --force --deep --sign - "$APP" 2>/dev/null || true
 
 echo "=== 4. Create DMG ==="
-VERSION=$(node -p "require('$ROOT_DIR/package.json').version")
 APP_NAME="LLMProxy"
 DMG="$BUILD_DIR/LLMProxy-v${VERSION}.dmg"
 DMG_SRC=$(mktemp -d /tmp/llmproxy-dmg.XXXXXX)
