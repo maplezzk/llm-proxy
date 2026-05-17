@@ -32,3 +32,7 @@
 "update.downloadComplete" = "下载完成！";
 "update.downloadFailed" = "下载失败: %@";
 "update.checkFailed" = "检查更新失败: %@";
+"action.install" = "立即安装";
+"action.retry" = "重试";
+"menu.installNow" = "⬇ 立即安装";
+"update.installFailed" = "安装失败: %@";

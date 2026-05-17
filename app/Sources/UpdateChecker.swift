@@ -141,37 +141,86 @@ class UpdateChecker {
             .compactMap { Int($0) }
     }
 
-    /// 下载 DMG 更新文件
-    /// - Parameter info: 更新信息
+    // MARK: - Download with Progress
+
+    private var activeDownloadDelegate: DownloadTaskDelegate?
+
+    /// 带进度的 DMG 下载（自动重试）
+    /// - Parameters:
+    ///   - info: 更新信息
+    ///   - progressHandler: 进度回调 0.0~1.0，在主线程调用
     /// - Returns: 下载完成的本地文件 URL
     func downloadUpdate(_ info: UpdateInfo, progressHandler: ((Double) -> Void)? = nil) async throws -> URL {
         let updatesDir = try ensureUpdatesDirectory()
         let fileName = "LLMProxy-v\(info.version).dmg"
         let fileURL = updatesDir.appendingPathComponent(fileName)
 
-        // 如果已下载相同版本，跳过重复下载
+        // 如果已下载相同版本，直接返回
         if FileManager.default.fileExists(atPath: fileURL.path) {
+            await MainActor.run { progressHandler?(1.0) }
             return fileURL
         }
 
         // 清理旧 DMG 文件
         cleanOldDownloads(updatesDir: updatesDir, keep: fileName)
 
-        let downloadRequest = URLRequest(url: info.downloadURL)
-        let (localURL, response) = try await session.download(for: downloadRequest)
+        // 最多重试 2 次
+        var lastError: Error? = nil
+        for attempt in 1...3 {
+            do {
+                let tempURL = try await downloadWithProgress(
+                    url: info.downloadURL,
+                    progressHandler: progressHandler
+                )
 
-        guard let httpResponse = response as? HTTPURLResponse,
-              httpResponse.statusCode == 200 else {
-            throw UpdateError.downloadFailed
+                // 移动到目标位置
+                if FileManager.default.fileExists(atPath: fileURL.path) {
+                    try FileManager.default.removeItem(at: fileURL)
+                }
+                try FileManager.default.moveItem(at: tempURL, to: fileURL)
+
+                await MainActor.run { progressHandler?(1.0) }
+                return fileURL
+            } catch {
+                lastError = error
+                if attempt < 3 {
+                    // 指数退避重试
+                    let delay = UInt64(attempt * 2_000_000_000)
+                    try await Task.sleep(nanoseconds: delay)
+                }
+            }
         }
 
-        // 移动到目标位置
-        if FileManager.default.fileExists(atPath: fileURL.path) {
-            try FileManager.default.removeItem(at: fileURL)
-        }
-        try FileManager.default.moveItem(at: localURL, to: fileURL)
+        throw lastError ?? UpdateError.downloadFailed
+    }
 
-        return fileURL
+    /// 使用 URLSessionDownloadDelegate 实现带进度的下载
+    private func downloadWithProgress(url: URL, progressHandler: ((Double) -> Void)?) async throws -> URL {
+        return try await withCheckedThrowingContinuation { continuation in
+            let delegate = DownloadTaskDelegate(
+                progressHandler: { progress in
+                    Task { @MainActor in
+                        progressHandler?(progress)
+                    }
+                },
+                completionHandler: { result in
+                    continuation.resume(with: result)
+                }
+            )
+            // 保持 delegate 引用，防止被释放
+            self.activeDownloadDelegate = delegate
+
+            let config = URLSessionConfiguration.default
+            config.timeoutIntervalForResource = 300 // 5分钟超时
+            let session = URLSession(configuration: config, delegate: delegate, delegateQueue: nil)
+
+            let task = session.downloadTask(with: url)
+            delegate.cleanup = {
+                session.invalidateAndCancel()
+                self.activeDownloadDelegate = nil
+            }
+            task.resume()
+        }
     }
 
     // MARK: - Private Helpers
@@ -367,6 +416,53 @@ class UpdateChecker {
             if file.lastPathComponent != keep {
                 try? FileManager.default.removeItem(at: file)
             }
+        }
+    }
+}
+
+// MARK: - DownloadTaskDelegate
+
+/// URLSessionDownloadDelegate 实现，支持进度回调和 async/await 桥接
+private class DownloadTaskDelegate: NSObject, URLSessionDownloadDelegate {
+    let progressHandler: (Double) -> Void
+    let completionHandler: (Result<URL, Error>) -> Void
+    var cleanup: (() -> Void)?
+
+    init(progressHandler: @escaping (Double) -> Void,
+         completionHandler: @escaping (Result<URL, Error>) -> Void) {
+        self.progressHandler = progressHandler
+        self.completionHandler = completionHandler
+    }
+
+    func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask,
+                    didWriteData bytesWritten: Int64,
+                    totalBytesWritten: Int64,
+                    totalBytesExpectedToWrite: Int64) {
+        guard totalBytesExpectedToWrite > 0 else { return }
+        let progress = Double(totalBytesWritten) / Double(totalBytesExpectedToWrite)
+        progressHandler(min(progress, 1.0))
+    }
+
+    func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask,
+                    didFinishDownloadingTo location: URL) {
+        // 先复制到可访问的位置，因为 location 是临时目录
+        let tempDir = FileManager.default.temporaryDirectory
+        let tempURL = tempDir.appendingPathComponent(location.lastPathComponent)
+        try? FileManager.default.removeItem(at: tempURL)
+        do {
+            try FileManager.default.moveItem(at: location, to: tempURL)
+            completionHandler(.success(tempURL))
+        } catch {
+            completionHandler(.failure(error))
+        }
+        cleanup?()
+    }
+
+    func urlSession(_ session: URLSession, task: URLSessionTask,
+                    didCompleteWithError error: Error?) {
+        if let error = error {
+            completionHandler(.failure(error))
+            cleanup?()
         }
     }
 }

@@ -32,3 +32,7 @@
 "update.downloadComplete" = "Download complete!";
 "update.downloadFailed" = "Download failed: %@";
 "update.checkFailed" = "Failed to check for updates: %@";
+"action.install" = "Install";
+"action.retry" = "Retry";
+"menu.installNow" = "⬇ Install Now";
+"update.installFailed" = "Installation failed: %@";

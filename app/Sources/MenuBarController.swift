@@ -13,6 +13,8 @@ class MenuBarController: NSObject {
     private var pendingUpdate: UpdateInfo?
     private var isCheckingUpdate = false
     private var isDownloadingUpdate = false
+    private var downloadProgress: Double = 0
+    private var downloadCompletedURL: URL?
 
     init(statusItem: NSStatusItem) {
         self.statusItem = statusItem
@@ -245,7 +247,33 @@ class MenuBarController: NSObject {
         }
         menu.addItem(versionItem)
 
-        if let update = pendingUpdate {
+        if isDownloadingUpdate {
+            // 下载进度行
+            let pct = Int(downloadProgress * 100)
+            let progressText = "\(loc("update.downloading")) \(pct)%"
+            let progressItem = NSMenuItem(title: progressText, action: nil, keyEquivalent: "")
+            progressItem.isEnabled = false
+            if #available(macOS 11.0, *) {
+                progressItem.image = NSImage(systemSymbolName: "arrow.down.circle.dotted", accessibilityDescription: nil)
+            }
+            let attrTitle = NSMutableAttributedString(string: progressText)
+            attrTitle.addAttribute(.foregroundColor, value: NSColor.systemBlue, range: NSRange(location: 0, length: attrTitle.length))
+            progressItem.attributedTitle = attrTitle
+            menu.addItem(progressItem)
+        } else if downloadCompletedURL != nil {
+            // 已下载，可安装
+            let installItem = NSMenuItem(title: loc("menu.installNow"), action: #selector(installDownloadedUpdate), keyEquivalent: "")
+            installItem.target = self
+            if #available(macOS 11.0, *) {
+                installItem.image = NSImage(systemSymbolName: "arrow.down.circle.fill", accessibilityDescription: nil)
+            }
+            let attrTitle = NSMutableAttributedString(string: loc("menu.installNow"))
+            attrTitle.addAttribute(.foregroundColor, value: NSColor.systemGreen, range: NSRange(location: 0, length: attrTitle.length))
+            attrTitle.addAttribute(.font, value: NSFont.systemFont(ofSize: 13, weight: .semibold), range: NSRange(location: 0, length: attrTitle.length))
+            installItem.attributedTitle = attrTitle
+            menu.addItem(installItem)
+        } else if let update = pendingUpdate {
+            // 有可用更新（未下载）
             let updateAvailableItem = NSMenuItem(title: loc("menu.updatesAvailable", update.version), action: #selector(downloadAndInstallUpdate), keyEquivalent: "")
             updateAvailableItem.target = self
             let attrTitle = NSMutableAttributedString(string: loc("menu.updatesAvailable", update.version))
@@ -258,13 +286,7 @@ class MenuBarController: NSObject {
             menu.addItem(updateAvailableItem)
         }
 
-        let checkItemTitle: String
-        if isCheckingUpdate {
-            checkItemTitle = loc("update.downloading")
-        } else {
-            checkItemTitle = loc("action.checkForUpdates")
-        }
-        let checkItem = NSMenuItem(title: checkItemTitle, action: #selector(checkForUpdates), keyEquivalent: "")
+        let checkItem = NSMenuItem(title: loc("action.checkForUpdates"), action: #selector(checkForUpdates), keyEquivalent: "")
         checkItem.target = self
         checkItem.isEnabled = !isCheckingUpdate && !isDownloadingUpdate
         if #available(macOS 11.0, *) {
@@ -641,39 +663,84 @@ class MenuBarController: NSObject {
         }
     }
 
+    /// 安装已下载的更新
+    @MainActor @objc func installDownloadedUpdate() {
+        guard let localURL = downloadCompletedURL else { return }
+
+        Task { @MainActor [weak self] in
+            await self?.performInstall(localURL, version: "")
+        }
+    }
+
     @MainActor
     private func performDownloadAndInstall(_ update: UpdateInfo) async {
         guard !isDownloadingUpdate else { return }
         isDownloadingUpdate = true
+        downloadProgress = 0
+        downloadCompletedURL = nil
         rebuildMenu()
 
-        defer {
-            isDownloadingUpdate = false
-        }
-
         do {
-            let localURL = try await updateChecker.downloadUpdate(update)
+            let localURL = try await updateChecker.downloadUpdate(update) { [weak self] progress in
+                Task { @MainActor [weak self] in
+                    self?.downloadProgress = progress
+                    self?.rebuildMenu()
+                }
+            }
 
+            // 下载完成
+            isDownloadingUpdate = false
+            downloadCompletedURL = localURL
+            rebuildMenu()
+
+            // 自动弹出安装确认
             let alert = NSAlert()
             alert.messageText = loc("update.downloadComplete")
             alert.informativeText = loc("update.installPrompt", update.version)
-            alert.addButton(withTitle: "OK")
-            alert.runModal()
-
-            // 停止后台服务并自动安装更新
-            runCLI("stop")
-            try await updateChecker.installUpdate(at: localURL)
-
-            // 退出应用（helper 脚本会重启新版本）
-            NSApplication.shared.terminate(nil)
+            alert.addButton(withTitle: loc("action.install"))
+            alert.addButton(withTitle: "Later")
+            if alert.runModal() == .alertFirstButtonReturn {
+                await performInstall(localURL, version: update.version)
+            }
         } catch {
+            isDownloadingUpdate = false
+            downloadProgress = 0
+            rebuildMenu()
+
+            // 下载失败，弹窗提示可重试
             let alert = NSAlert()
             alert.messageText = loc("app.title")
             alert.informativeText = loc("update.downloadFailed", error.localizedDescription)
-            alert.addButton(withTitle: "OK")
-            alert.runModal()
+            alert.addButton(withTitle: loc("action.retry"))
+            alert.addButton(withTitle: "Cancel")
+            if alert.runModal() == .alertFirstButtonReturn {
+                // 重试
+                await performDownloadAndInstall(update)
+            }
         }
     }
+
+    @MainActor
+    private func performInstall(_ localURL: URL, version: String) async {
+        // 停止后台服务
+        runCLI("stop")
+
+        do {
+            try await updateChecker.installUpdate(at: localURL)
+        } catch {
+            let alert = NSAlert()
+            alert.messageText = loc("app.title")
+            alert.informativeText = loc("update.installFailed", error.localizedDescription)
+            alert.addButton(withTitle: "OK")
+            alert.runModal()
+            return
+        }
+
+        // 退出应用（helper 脚本会重启新版本）
+        NSApplication.shared.terminate(nil)
+    }
+
+
 
     func showError(_ msg: String) {
         let alert = NSAlert()
