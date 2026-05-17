@@ -165,6 +165,11 @@ npm run build:app    # 构建 macOS .app + .dmg
 
 **Homebrew 安装显示旧版本？** 强制刷新 tap：
 ```bash
+brew upgrade --cask llm-proxy
+```
+如果失败，先卸载再重新安装：
+```bash
+brew uninstall --cask llm-proxy
 brew untap maplezzk/tap && brew tap maplezzk/tap && brew install --cask llm-proxy
 ```
 
