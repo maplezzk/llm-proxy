@@ -660,11 +660,11 @@ class MenuBarController: NSObject {
             alert.addButton(withTitle: "OK")
             alert.runModal()
 
-            // 停止后台服务并打开 DMG
+            // 停止后台服务并自动安装更新
             runCLI("stop")
-            _ = updateChecker.installUpdate(at: localURL)
+            try await updateChecker.installUpdate(at: localURL)
 
-            // 退出应用
+            // 退出应用（helper 脚本会重启新版本）
             NSApplication.shared.terminate(nil)
         } catch {
             let alert = NSAlert()

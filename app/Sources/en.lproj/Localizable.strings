@@ -27,7 +27,7 @@
 "update.noUpdates" = "LLMProxy is up to date (v%@)";
 "update.available" = "A new version is available!";
 "update.downloadConfirm" = "LLMProxy v%@ is ready to download. Proceed?";
-"update.installPrompt" = "LLMProxy v%@ has been downloaded.\n\nThe app will now quit. Please drag the new LLMProxy.app into the Applications folder to complete the update.";
+"update.installPrompt" = "LLMProxy v%@ has been downloaded.\n\nThe app will now quit and automatically install the update.";
 "update.downloading" = "Downloading update…";
 "update.downloadComplete" = "Download complete!";
 "update.downloadFailed" = "Download failed: %@";

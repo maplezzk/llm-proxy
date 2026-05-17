@@ -193,11 +193,143 @@ class UpdateChecker {
         return updatesDir
     }
 
-    /// 安装更新：在 Finder 中打开 DMG 并提示用户拖入 Applications
+    /// 全自动安装更新：挂载 DMG → 替换 App → 卸载 DMG → 重启
     /// - Parameter localURL: 已下载的 DMG 文件 URL
-    /// - Returns: true 如果成功打开 DMG
-    func installUpdate(at localURL: URL) -> Bool {
-        return NSWorkspace.shared.open(localURL)
+    /// - Throws: UpdateError.installationFailed
+    func installUpdate(at localURL: URL) async throws {
+        let mountPath = try mountDMG(at: localURL)
+        let appInDMG = mountPath.appendingPathComponent("LLMProxy.app")
+
+        guard FileManager.default.fileExists(atPath: appInDMG.path) else {
+            unmountDMG(at: mountPath)
+            throw UpdateError.installationFailed(reason: "DMG 中未找到 LLMProxy.app")
+        }
+
+        let destinationURL = URL(fileURLWithPath: "/Applications/LLMProxy.app")
+
+        // 删除旧版本
+        if FileManager.default.fileExists(atPath: destinationURL.path) {
+            try FileManager.default.removeItem(at: destinationURL)
+        }
+
+        // 用 ditto 复制新版本（保留签名和扩展属性）
+        try await runProcess(
+            executable: "/usr/bin/ditto",
+            arguments: [appInDMG.path, destinationURL.path]
+        )
+
+        // 卸载 DMG
+        unmountDMG(at: mountPath)
+
+        // 清理下载的 DMG
+        try? FileManager.default.removeItem(at: localURL)
+
+        // 创建重启 helper 脚本并执行
+        try createAndLaunchRestartHelper(appPath: destinationURL.path)
+    }
+
+    // MARK: - DMG Operations
+
+    /// 挂载 DMG 并返回挂载路径
+    private func mountDMG(at dmgURL: URL) throws -> URL {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/hdiutil")
+        process.arguments = ["attach", "-nobrowse", "-plist", dmgURL.path]
+
+        let outputPipe = Pipe()
+        process.standardOutput = outputPipe
+
+        try process.run()
+        process.waitUntilExit()
+
+        guard process.terminationStatus == 0 else {
+            throw UpdateError.installationFailed(reason: "hdiutil attach 失败")
+        }
+
+        let outputData = outputPipe.fileHandleForReading.readDataToEndOfFile()
+        guard let plist = try? PropertyListSerialization.propertyList(from: outputData, options: [], format: nil),
+              let entries = plist as? [[String: Any]] else {
+            throw UpdateError.installationFailed(reason: "无法解析 hdiutil 输出")
+        }
+
+        // 查找挂载点
+        for entry in entries {
+            if let mountPoint = entry["mount-point"] as? String {
+                return URL(fileURLWithPath: mountPoint)
+            }
+        }
+
+        throw UpdateError.installationFailed(reason: "未找到 DMG 挂载点")
+    }
+
+    /// 卸载 DMG
+    private func unmountDMG(at mountPath: URL) {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/hdiutil")
+        process.arguments = ["detach", mountPath.path, "-quiet"]
+        try? process.run()
+        process.waitUntilExit()
+    }
+
+    // MARK: - Restart Helper
+
+    /// 创建重启 helper 脚本并执行
+    /// 由于应用需要退出后才能被新版本替换，使用一个后台 shell 脚本完成：
+    /// 1. 等待当前进程退出
+    /// 2. 用 open 启动新版本
+    private func createAndLaunchRestartHelper(appPath: String) throws {
+        let helperDir = try ensureUpdatesDirectory()
+        let helperPath = helperDir.appendingPathComponent("restart-llmproxy.sh")
+
+        let script = """
+        #!/bin/bash
+        sleep 1
+        open \(appPath)
+        """
+
+        try script.write(to: helperPath, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: helperPath.path)
+
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/bash")
+        process.arguments = [helperPath.path]
+        try process.run()
+    }
+
+    // MARK: - Process Helper
+
+    @discardableResult
+    private func runProcess(executable: String, arguments: [String]) async throws -> String {
+        return try await withCheckedThrowingContinuation { continuation in
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: executable)
+            process.arguments = arguments
+
+            let outputPipe = Pipe()
+            let errorPipe = Pipe()
+            process.standardOutput = outputPipe
+            process.standardError = errorPipe
+
+            process.terminationHandler = { proc in
+                let outputData = outputPipe.fileHandleForReading.readDataToEndOfFile()
+                let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
+                let output = String(data: outputData, encoding: .utf8) ?? ""
+                let errorOutput = String(data: errorData, encoding: .utf8) ?? ""
+
+                if proc.terminationStatus == 0 {
+                    continuation.resume(returning: output)
+                } else {
+                    let msg = errorOutput.isEmpty ? output : errorOutput
+                    continuation.resume(throwing: UpdateError.installationFailed(reason: msg.trimmingCharacters(in: .whitespacesAndNewlines)))
+                }
+            }
+
+            do {
+                try process.run()
+            } catch {
+                continuation.resume(throwing: error)
+            }
+        }
     }
 
     /// 应用启动时清理旧的下载文件
@@ -246,6 +378,7 @@ enum UpdateError: LocalizedError {
     case httpError(statusCode: Int)
     case dmgAssetNotFound(version: String)
     case downloadFailed
+    case installationFailed(reason: String)
 
     var errorDescription: String? {
         switch self {
@@ -257,6 +390,8 @@ enum UpdateError: LocalizedError {
             return "DMG asset not found for version \(version)"
         case .downloadFailed:
             return "Failed to download update"
+        case .installationFailed(let reason):
+            return reason
         }
     }
 }
