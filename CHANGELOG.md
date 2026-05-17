@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.12.3](https://github.com/maplezzk/llm-proxy/compare/v0.12.2...v0.12.3) (2026-05-17)
+
+
+### Bug Fixes
+
+* 修复Bundle.module崩溃，改用安全资源加载 ([210f062](https://github.com/maplezzk/llm-proxy/commit/210f0626c5d3a927e27d3609d9966b2625ecea46))
+* 修复Bundle.module崩溃，改用安全资源加载 ([f95e717](https://github.com/maplezzk/llm-proxy/commit/f95e717ce12501cfeefc2861aa50a2933b7676df))
+
 ## [0.12.2](https://github.com/maplezzk/llm-proxy/compare/v0.12.1...v0.12.2) (2026-05-17)
 
 
