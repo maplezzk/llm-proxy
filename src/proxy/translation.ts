@@ -105,7 +105,11 @@ function convertToolChoiceToAnthropic(toolChoice: unknown): unknown {
   if (toolChoice === undefined || toolChoice === null) return undefined
   if (typeof toolChoice === 'string') {
     // OpenAI "required" → Anthropic "any"
-    if (toolChoice === 'required') return 'any'
+    if (toolChoice === 'required') return { type: 'any' }
+    // OpenAI "auto" → Anthropic { type: "auto" }
+    if (toolChoice === 'auto') return { type: 'auto' }
+    // OpenAI "none" → Anthropic { type: "none" }
+    if (toolChoice === 'none') return { type: 'none' }
     return toolChoice
   }
   // OpenAI: { type: "function", function: { name } } → Anthropic: { type: "tool", name }
@@ -125,10 +129,16 @@ function convertToolChoiceToOpenAI(toolChoice: unknown): unknown {
     return toolChoice
   }
   // Anthropic: { type: "tool", name } → OpenAI: { type: "function", function: { name } }
+  // Anthropic: { type: "auto" } → OpenAI: "auto"
+  // Anthropic: { type: "none" } → OpenAI: "none"
+  // Anthropic: { type: "any" } → OpenAI: "required"
   const tc = toolChoice as Record<string, unknown>
   if (tc.type === 'tool') {
     return { type: 'function', function: { name: tc.name } }
   }
+  if (tc.type === 'any') return 'required'
+  if (tc.type === 'auto') return 'auto'
+  if (tc.type === 'none') return 'none'
   return toolChoice
 }
 

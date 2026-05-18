@@ -148,7 +148,7 @@ describe('proxy/translation', () => {
       const tools = result.body.tools as Array<Record<string, unknown>>
       assert.ok(tools)
       assert.strictEqual(tools[0].name, 'get_weather')
-      assert.strictEqual(result.body.tool_choice, 'any')
+      assert.strictEqual(result.body.tool_choice.type, 'any')
     })
   })
 
