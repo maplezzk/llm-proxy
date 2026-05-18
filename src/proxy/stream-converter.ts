@@ -568,6 +568,23 @@ export async function convertOpenAIResponsesStreamToAnthropic(
           writeEvent('content_block_stop', { type: 'content_block_stop', index: 0 })
           thinkingBlockStarted = false
         }
+        // 兜底：如果 reasoning 未通过 delta 事件传输，尝试从顶层 reasoning.summary 提取
+        if (!thinkingText) {
+          const topReasoning = resp?.reasoning as Record<string, unknown> | undefined
+          if (topReasoning?.summary) {
+            const summaryItems = topReasoning.summary as Array<Record<string, unknown>>
+            const summaryText = summaryItems.map((s) => s.text ?? '').join('')
+            if (summaryText) {
+              thinkingChunks.push(summaryText)
+              thinkingText = summaryText
+              // 在 text block 关闭之后补发 thinking block
+              writeEvent('content_block_delta', { type: 'content_block_delta', index: 0, delta: { type: 'thinking_delta', thinking: summaryText } })
+              const sig = makeSignature(summaryText)
+              if (sig) writeEvent('content_block_delta', { type: 'content_block_delta', index: 0, delta: { type: 'signature_delta', signature: sig } })
+              writeEvent('content_block_stop', { type: 'content_block_stop', index: 0 })
+            }
+          }
+        }
         writeEvent('content_block_stop', { type: 'content_block_stop', index: currentBlockIndex })
         writeEvent('message_delta', { type: 'message_delta', delta: { stop_reason: stopReason, stop_sequence: null }, usage })
         writeEvent('message_stop', { type: 'message_stop' })
@@ -1168,8 +1185,23 @@ export async function convertOpenAIResponsesStreamToOpenAI(
         if (hasFunctionCalls) finishReason = 'tool_calls'
         const respUsage = resp?.usage as Record<string, unknown> | undefined
 
+        // 兜底：如果 reasoning_text.delta 未触发，尝试从顶层 reasoning.summary 提取
+        if (!thinkingText) {
+          const topReasoning = resp?.reasoning as Record<string, unknown> | undefined
+          if (topReasoning?.summary) {
+            const summaryItems = topReasoning.summary as Array<Record<string, unknown>>
+            const summaryText = summaryItems.map((s) => s.text ?? '').join('')
+            if (summaryText) {
+              thinkingText = summaryText
+            }
+          }
+        }
+
+        const finalDelta: Record<string, unknown> = {}
+        if (thinkingText) finalDelta.reasoning_content = thinkingText
+
         const finalChunk: Record<string, unknown> = {
-          choices: [{ delta: {}, finish_reason: finishReason, index: 0 }],
+          choices: [{ delta: finalDelta, finish_reason: finishReason, index: 0 }],
         }
         if (respUsage) {
           lastUsage = {
