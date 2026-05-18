@@ -639,6 +639,7 @@ export async function convertAnthropicStreamToOpenAIResponses(
   let currentBlockType = ''
   let fnCallId = ''
   let fnCallName = ''
+  let fnCallArgsAcc = ''
   let currentRespId = ''
   let currentMsgId = ''
   let completed = false
@@ -648,6 +649,8 @@ export async function convertAnthropicStreamToOpenAIResponses(
   let rawLines: string[] = []
   let outLines: string[] = []
   let anthropicUsage: Record<string, unknown> = {}
+  // 用于 output_item.done 和 response.completed 中的 output 数组
+  let respToolCallOutputs: Record<string, unknown>[] = []
 
   const makeUsage = (u: Record<string, unknown>): StreamUsage | null => {
     if (Object.keys(u).length > 0) {
@@ -711,6 +714,7 @@ export async function convertAnthropicStreamToOpenAIResponses(
         currentBlockType = 'tool_use'
         fnCallId = (cblock.id as string) ?? ''
         fnCallName = (cblock.name as string) ?? ''
+        fnCallArgsAcc = ''
         writeRaw(`event: response.output_item.added\ndata: {"type":"response.output_item.added","output_index":${currentBlockIndex},"item":{"type":"function_call","id":"fc_${fnCallId}","call_id":"${fnCallId}","name":"${fnCallName}","arguments":""}}\n\n`)
       }
       return false
@@ -727,6 +731,7 @@ export async function convertAnthropicStreamToOpenAIResponses(
         writeRaw(`event: response.output_text.delta\ndata: {"type":"response.output_text.delta","output_index":0,"content_index":0,"delta":${JSON.stringify(text)}}\n\n`)
       } else if (deltaType === 'input_json_delta') {
         const partialJson = (delta.partial_json as string) ?? ''
+        fnCallArgsAcc += partialJson
         writeRaw(`event: response.function_call_arguments.delta\ndata: {"type":"response.function_call_arguments.delta","output_index":${currentBlockIndex},"delta":${JSON.stringify(partialJson)}}\n\n`)
       } else if (deltaType === 'thinking_delta') {
         const chunk = (delta.thinking as string) ?? ''
@@ -746,7 +751,16 @@ export async function convertAnthropicStreamToOpenAIResponses(
       } else if (currentBlockType === 'text') {
         writeRaw(`event: response.output_text.done\ndata: {"type":"response.output_text.done","output_index":0,"content_index":0,"text":${JSON.stringify(acc.content)}}\n\n`)
       } else if (currentBlockType === 'tool_use') {
-        writeRaw(`event: response.function_call_arguments.done\ndata: {"type":"response.function_call_arguments.done","output_index":${currentBlockIndex},"arguments":""}\n\n`)
+        writeRaw(`event: response.function_call_arguments.done\ndata: {"type":"response.function_call_arguments.done","output_index":${currentBlockIndex},"arguments":${JSON.stringify(fnCallArgsAcc)}}\n\n`)
+        writeRaw(`event: response.output_item.done\ndata: {"type":"response.output_item.done","output_index":${currentBlockIndex},"item":{"type":"function_call","id":"fc_${fnCallId}","call_id":"${fnCallId}","name":"${fnCallName}","arguments":${JSON.stringify(fnCallArgsAcc)},"status":"completed"}}\n\n`)
+        respToolCallOutputs.push({
+          type: 'function_call',
+          id: `fc_${fnCallId}`,
+          call_id: fnCallId,
+          name: fnCallName,
+          arguments: fnCallArgsAcc,
+          status: 'completed',
+        })
       }
       return false
     }
@@ -761,13 +775,17 @@ export async function convertAnthropicStreamToOpenAIResponses(
       // Build output content (text only, reasoning goes to top-level summary)
       const msgContent: unknown[] = []
       msgContent.push({ type: 'output_text', text: acc.content, annotations: [] })
-      const output = [{
+      const output: unknown[] = [{
         type: 'message',
         id: currentMsgId,
         status: 'completed',
         role: 'assistant',
         content: msgContent,
       }]
+      // 把 function_call 追加到 message 后面（保持原始顺序）
+      for (const fc of respToolCallOutputs) {
+        output.push(fc)
+      }
       const respData: Record<string, unknown> = { id: currentRespId, object: 'response', status: 'completed', output }
       // Anthropic thinking → 顶层 reasoning.summary
       if (thinkingText) {
@@ -830,13 +848,16 @@ export async function convertAnthropicStreamToOpenAIResponses(
     if (currentRespId) {
       const msgContent: unknown[] = []
       msgContent.push({ type: 'output_text', text: acc.content, annotations: [] })
-      const output = [{
+      const output: unknown[] = [{
         type: 'message',
         id: currentMsgId,
         status: 'completed',
         role: 'assistant',
         content: msgContent,
       }]
+      for (const fc of respToolCallOutputs) {
+        output.push(fc)
+      }
       const respData: Record<string, unknown> = { id: currentRespId, object: 'response', status: 'completed', output }
       // Anthropic thinking → 顶层 reasoning.summary
       if (thinkingText) {
