@@ -272,12 +272,32 @@ function extractSystemFromOpenAI(messages: unknown[]): { system?: unknown; remai
   return { remainingMessages: messages }
 }
 
+/**
+ * 从请求体中提取 reasoning 配置，统一三种协议的格式。
+ * - Anthropic: thinking: { type, budget_tokens }
+ * - OpenAI: reasoning_effort: "low"|"medium"|"high"
+ * - Responses: reasoning: { effort, summary } 或 reasoning_effort
+ */
+function resolveReasoning(body: Record<string, unknown>): FullParams['reasoning'] {
+  // Responses 新格式: reasoning: { effort: "medium", summary: "auto" }
+  const reasoning = body.reasoning as Record<string, unknown> | undefined
+  if (reasoning) {
+    return { effort: reasoning.effort as string | undefined, summary: reasoning.summary as string | undefined }
+  }
+  // 旧版兼容: reasoning_effort 字符串
+  const effort = body.reasoning_effort as string | undefined
+  if (effort) return effort
+  // Anthropic thinking（跨协议后存为 FullParams，走 reasoning 字段时不会到这儿）
+  return undefined
+}
+
 // --- Full parameter mapping ---
 
 interface FullParams {
   model: string
   messages: unknown[]
   system?: unknown
+  reasoning?: { effort?: string; summary?: string } | string
   temperature?: number
   max_tokens?: number
   stream?: boolean
@@ -294,6 +314,7 @@ function extractFullOpenAI(body: Record<string, unknown>): FullParams {
     model: body.model as string,
     messages: remainingMessages,
     system,
+    reasoning: resolveReasoning(body),
     temperature: body.temperature as number | undefined,
     max_tokens: body.max_tokens as number | undefined,
     stream: body.stream as boolean | undefined,
@@ -506,6 +527,14 @@ function buildOpenAIFromAnthropic(params: FullParams): Record<string, unknown> {
   if (params.system) {
     body.messages = [{ role: 'system', content: params.system }, ...convertedMessages]
   }
+  // Pass reasoning to upstream Chat Completions (extracted from inbound request)
+  if (params.reasoning) {
+    if (typeof params.reasoning === 'string') {
+      body.reasoning_effort = params.reasoning
+    } else if (params.reasoning.effort) {
+      body.reasoning_effort = params.reasoning.effort
+    }
+  }
   if (params.max_tokens !== undefined) body.max_tokens = params.max_tokens
   if (params.temperature !== undefined) body.temperature = params.temperature
   if (params.stream) body.stream = true
@@ -532,6 +561,7 @@ function extractFullOpenAIResponses(body: Record<string, unknown>): FullParams {
     model: body.model as string,
     messages,
     system: body.instructions,
+    reasoning: resolveReasoning(body),
     temperature: body.temperature as number | undefined,
     max_tokens: (body.max_output_tokens ?? body.max_tokens) as number | undefined,
     stream: body.stream as boolean | undefined,
@@ -566,6 +596,14 @@ function buildOpenAIResponsesFromFullParams(params: FullParams): Record<string, 
     input: convertMessagesToResponsesInput(params.messages as unknown[]),
   }
   if (params.system) body.instructions = params.system
+  // Pass reasoning from client request (Responses uses { effort, summary } object format)
+  if (params.reasoning) {
+    if (typeof params.reasoning === 'string') {
+      body.reasoning = { effort: params.reasoning }
+    } else {
+      body.reasoning = { ...params.reasoning }
+    }
+  }
   if (params.temperature !== undefined) body.temperature = params.temperature
   if (params.max_tokens !== undefined) body.max_output_tokens = params.max_tokens
   if (params.stream) body.stream = true
@@ -766,6 +804,8 @@ function injectThinkingConfig(
   if (!route.thinking) return
 
   if (route.providerType === 'anthropic' && route.thinking.budget_tokens) {
+    // 客户端已设置 thinking 则不覆盖
+    if (upstreamBody.thinking) return
     const budget = route.thinking.budget_tokens
     upstreamBody.thinking = { type: 'enabled', budget_tokens: budget }
     // 确保 max_tokens >= budget_tokens，否则 Anthropic API 会报错
@@ -775,7 +815,13 @@ function injectThinkingConfig(
   }
 
   if ((route.providerType === 'openai' || route.providerType === 'openai-responses') && route.thinking.reasoning_effort) {
-    upstreamBody.reasoning_effort = route.thinking.reasoning_effort
+    // 客户端已设置 reasoning 则不覆盖
+    if (upstreamBody.reasoning || upstreamBody.reasoning_effort) return
+    if (route.providerType === 'openai-responses') {
+      upstreamBody.reasoning = { effort: route.thinking.reasoning_effort }
+    } else {
+      upstreamBody.reasoning_effort = route.thinking.reasoning_effort
+    }
   }
 }
 
@@ -793,6 +839,16 @@ export function convertOpenAIResponsesToAnthropic(responsesBody: Record<string, 
 
   const content: unknown[] = []
   let stopReason = 'end_turn'
+
+  // 提取顶层 reasoning.summary → Anthropic thinking 块（作为首个 content block）
+  const topReasoning = responsesBody.reasoning as Record<string, unknown> | undefined
+  if (topReasoning?.summary) {
+    const summaryItems = topReasoning.summary as Array<Record<string, unknown>>
+    const summaryText = summaryItems.map((s) => s.text ?? '').join('')
+    if (summaryText) {
+      content.push({ type: 'thinking', thinking: summaryText, signature: '' })
+    }
+  }
 
   if (output) {
     for (const item of output) {
@@ -850,13 +906,15 @@ export function convertAnthropicResponseToOpenAIResponses(anthropicBody: Record<
 
   const outputMessageContent: unknown[] = []
   const output: unknown[] = []
+  let thinkingText = ''
 
   if (content) {
     for (const block of content) {
       if (block.type === 'text') {
         outputMessageContent.push({ type: 'output_text', text: block.text as string ?? '', annotations: [] })
       } else if (block.type === 'thinking') {
-        // Skip reasoning - Responses client doesn't track it
+        // 收集 thinking 文本，稍后放到顶层的 reasoning.summary
+        thinkingText += (block.thinking as string) ?? ''
       } else if (block.type === 'tool_use') {
         output.push({
           type: 'function_call',
@@ -885,6 +943,8 @@ export function convertAnthropicResponseToOpenAIResponses(anthropicBody: Record<
     status: stopReason === 'end_turn' ? 'completed' : 'incomplete',
     model: anthropicBody.model as string ?? '',
     output,
+    // Anthropic thinking → 顶层 reasoning.summary（非完整推理文本）
+    ...(thinkingText ? { reasoning: { summary: [{ type: 'summary_text', text: thinkingText, index: 0 }] } } : {}),
     usage: (() => {
       const ai = (usage?.input_tokens as number) ?? 0
       const cr = (usage?.cache_read_input_tokens as number) ?? 0
@@ -1034,7 +1094,8 @@ export function convertOpenAIResponseToOpenAIResponses(chatBody: Record<string, 
   const output: unknown[] = []
   const outputMessageContent: unknown[] = []
 
-  // reasoning_content → skip (Responses client doesn't track reasoning for passthrough)
+  // reasoning_content → 收集到变量，稍后放到顶层 reasoning.summary
+  const reasoningText = message?.reasoning_content as string | undefined
   // text content
   const text = message?.content as string | undefined
   if (text) {
@@ -1072,6 +1133,8 @@ export function convertOpenAIResponseToOpenAIResponses(chatBody: Record<string, 
     status: statusMap[finishReason] ?? 'completed',
     model: chatBody.model as string ?? '',
     output,
+    // Chat reasoning_content → 顶层 reasoning.summary
+    ...(reasoningText ? { reasoning: { summary: [{ type: 'summary_text', text: reasoningText, index: 0 }] } } : {}),
     usage: {
       input_tokens: (usage?.prompt_tokens as number) ?? 0,
       output_tokens: (usage?.completion_tokens as number) ?? 0,
@@ -1092,6 +1155,13 @@ export function convertOpenAIResponsesResponseToOpenAI(responsesBody: Record<str
   let reasoningContent = ''
   const toolCalls: Record<string, unknown>[] = []
 
+  // 提取顶层 reasoning.summary（标准 Responses 格式）
+  const topReasoning = responsesBody.reasoning as Record<string, unknown> | undefined
+  if (topReasoning?.summary) {
+    const summaryItems = topReasoning.summary as Array<Record<string, unknown>>
+    reasoningContent = summaryItems.map((s) => s.text ?? '').join('')
+  }
+
   if (output) {
     for (const item of output) {
       if (item.type === 'message' && item.role === 'assistant') {
@@ -1101,9 +1171,12 @@ export function convertOpenAIResponsesResponseToOpenAI(responsesBody: Record<str
             if (block.type === 'output_text') {
               textContent += (block.text as string) ?? ''
             } else if (block.type === 'reasoning') {
-              reasoningContent += (block.summary
-                ? (block.summary as Array<Record<string, unknown>>).map((s) => s.text ?? '').join('')
-                : (block.reasoning_text as string) ?? '')
+              // 消息内嵌 reasoning（兼容格式），优先级低于顶层 summary
+              if (!reasoningContent) {
+                reasoningContent += (block.summary
+                  ? (block.summary as Array<Record<string, unknown>>).map((s) => s.text ?? '').join('')
+                  : (block.reasoning_text as string) ?? '')
+              }
             }
           }
         }
@@ -1123,8 +1196,7 @@ export function convertOpenAIResponsesResponseToOpenAI(responsesBody: Record<str
   const finishMap: Record<string, string> = { completed: 'stop', incomplete: 'length' }
   const finishReason = finishMap[status] ?? 'stop'
 
-  const message: Record<string, unknown> = { role: 'assistant', content: textContent }
-  if (reasoningContent) message.reasoning_content = reasoningContent
+  const message: Record<string, unknown> = { role: 'assistant', content: textContent, reasoning_content: reasoningContent || '' }
   if (toolCalls.length > 0) message.tool_calls = toolCalls
 
   return {

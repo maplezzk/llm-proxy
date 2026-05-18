@@ -627,6 +627,7 @@ export async function convertAnthropicStreamToOpenAIResponses(
   let completed = false
   let thinkingText = ''
   let thinkingChunks: string[] = []
+  let thinkingStarted = false
   let rawLines: string[] = []
   let outLines: string[] = []
   let anthropicUsage: Record<string, unknown> = {}
@@ -681,7 +682,14 @@ export async function convertAnthropicStreamToOpenAIResponses(
 
     if (innerType === 'content_block_start') {
       const cblock = parsed?.content_block as Record<string, unknown> | undefined
-      if (cblock?.type === 'tool_use') {
+      if (cblock?.type === 'thinking') {
+        thinkingStarted = true
+        currentBlockType = 'thinking'
+        currentBlockIndex = (parsed?.index as number) ?? 0
+      } else if (cblock?.type === 'text') {
+        currentBlockType = 'text'
+        currentBlockIndex = (parsed?.index as number) ?? 1
+      } else if (cblock?.type === 'tool_use') {
         currentBlockIndex++
         currentBlockType = 'tool_use'
         fnCallId = (cblock.id as string) ?? ''
@@ -707,14 +715,18 @@ export async function convertAnthropicStreamToOpenAIResponses(
         const chunk = (delta.thinking as string) ?? ''
         thinkingChunks.push(chunk)
         thinkingText += chunk
-        acc.content += chunk
-        // Don't stream reasoning to Responses client - it doesn't track reasoning for passthrough
+        // Emit reasoning_text.delta for Responses client
+        writeRaw(`event: response.reasoning_text.delta\ndata: {"type":"response.reasoning_text.delta","output_index":0,"delta":${JSON.stringify(chunk)}}\n\n`)
       }
       return false
     }
 
     if (innerType === 'content_block_stop') {
-      if (currentBlockType === 'text') {
+      if (currentBlockType === 'thinking') {
+        // Thinking block ended, emit reasoning_text.done
+        writeRaw(`event: response.reasoning_text.done\ndata: {"type":"response.reasoning_text.done","output_index":0,"reasoning_text":${JSON.stringify(thinkingText)}}\n\n`)
+        thinkingStarted = false
+      } else if (currentBlockType === 'text') {
         writeRaw(`event: response.output_text.done\ndata: {"type":"response.output_text.done","output_index":0,"content_index":0,"text":${JSON.stringify(acc.content)}}\n\n`)
       } else if (currentBlockType === 'tool_use') {
         writeRaw(`event: response.function_call_arguments.done\ndata: {"type":"response.function_call_arguments.done","output_index":${currentBlockIndex},"arguments":""}\n\n`)
@@ -729,7 +741,21 @@ export async function convertAnthropicStreamToOpenAIResponses(
     }
 
     if (eventType === 'message_stop' || innerType === 'message_stop') {
-      const respData: Record<string, unknown> = { id: currentRespId, object: 'response', status: 'completed', output: [] }
+      // Build output content (text only, reasoning goes to top-level summary)
+      const msgContent: unknown[] = []
+      msgContent.push({ type: 'output_text', text: acc.content, annotations: [] })
+      const output = [{
+        type: 'message',
+        id: currentMsgId,
+        status: 'completed',
+        role: 'assistant',
+        content: msgContent,
+      }]
+      const respData: Record<string, unknown> = { id: currentRespId, object: 'response', status: 'completed', output }
+      // Anthropic thinking → 顶层 reasoning.summary
+      if (thinkingText) {
+        respData.reasoning = { summary: [{ type: 'summary_text', text: thinkingText, index: 0 }] }
+      }
       if (Object.keys(anthropicUsage).length > 0) {
         const ai = (anthropicUsage.input_tokens as number) ?? 0
         const cr = (anthropicUsage.cache_read_input_tokens as number) ?? 0
@@ -785,7 +811,20 @@ export async function convertAnthropicStreamToOpenAIResponses(
 
   if (!completed) {
     if (currentRespId) {
-      const respData: Record<string, unknown> = { id: currentRespId, object: 'response', status: 'completed', output: [] }
+      const msgContent: unknown[] = []
+      msgContent.push({ type: 'output_text', text: acc.content, annotations: [] })
+      const output = [{
+        type: 'message',
+        id: currentMsgId,
+        status: 'completed',
+        role: 'assistant',
+        content: msgContent,
+      }]
+      const respData: Record<string, unknown> = { id: currentRespId, object: 'response', status: 'completed', output }
+      // Anthropic thinking → 顶层 reasoning.summary
+      if (thinkingText) {
+        respData.reasoning = { summary: [{ type: 'summary_text', text: thinkingText, index: 0 }] }
+      }
       if (Object.keys(anthropicUsage).length > 0) {
         const ai = (anthropicUsage.input_tokens as number) ?? 0
         const cr = (anthropicUsage.cache_read_input_tokens as number) ?? 0
@@ -849,21 +888,22 @@ export async function convertOpenAIStreamToOpenAIResponses(
         // If output_items not yet emitted (no finish_reason before [DONE]), emit them now
         if (outputItems.length === 0 && messageStarted) {
           const msgContent: unknown[] = []
-          if (thinkingText) {
-            // Don't include reasoning in Responses output - Responses clients don't track reasoning for passthrough
-          }
           if (textContent) {
             msgContent.push({ type: 'output_text', text: textContent, annotations: [] })
           }
           writeRaw(`event: response.output_item.done\ndata: {"type":"response.output_item.done","output_index":0,"item":{"id":"${currentMsgId}","type":"message","status":"completed","role":"assistant","content":${JSON.stringify(msgContent)}}}\n\n`)
           outputItems.unshift({ type: 'message', id: currentMsgId, status: 'completed', role: 'assistant', content: msgContent })
         }
-        // Close any open text block
+        // ...close text block...
         if (messageStarted && currentBlockType === 'text') {
           writeRaw(`event: response.output_text.done\ndata: {"type":"response.output_text.done","output_index":0,"content_index":0,"text":${JSON.stringify(textContent)}}\n\n`)
         }
-        // Emit completed
+        // Emit completed with top-level reasoning
         const respData: Record<string, unknown> = { id: currentRespId, object: 'response', status: 'completed', output: outputItems.length > 0 ? outputItems : [] }
+        // Chat reasoning_content → 顶层 reasoning.summary
+        if (thinkingText) {
+          respData.reasoning = { summary: [{ type: 'summary_text', text: thinkingText, index: 0 }] }
+        }
         if (Object.keys(lastUsage).length > 0) {
           respData.usage = { input_tokens: lastUsage.input_tokens ?? 0, output_tokens: lastUsage.output_tokens ?? 0, total_tokens: ((lastUsage.input_tokens as number) ?? 0) + ((lastUsage.output_tokens as number) ?? 0) }
         }
@@ -923,11 +963,11 @@ export async function convertOpenAIStreamToOpenAIResponses(
 
       if (!messageStarted) continue
 
-      // reasoning_content → skip (Responses client doesn't track reasoning for passthrough)
+      // reasoning_content delta → emit reasoning_text.delta for Responses clients
       if (delta?.reasoning_content) {
-        // Still track thinkingText for output_item.done stats but don't stream to client
         const chunk = delta.reasoning_content as string
         thinkingText += chunk
+        writeRaw(`event: response.reasoning_text.delta\ndata: {"type":"response.reasoning_text.delta","output_index":0,"delta":${JSON.stringify(chunk)}}\n\n`)
         continue
       }
 
@@ -976,7 +1016,6 @@ export async function convertOpenAIStreamToOpenAIResponses(
         }
         // Emit response.output_item.done for the message
         const msgContent: unknown[] = []
-        // Don't include reasoning in Responses output
         if (textContent) {
           msgContent.push({ type: 'output_text', text: textContent, annotations: [] })
         }
@@ -993,7 +1032,6 @@ export async function convertOpenAIStreamToOpenAIResponses(
   if (messageStarted) {
     if (outputItems.length === 0) {
       const msgContent: unknown[] = []
-      // Don't include reasoning in Responses output
       if (textContent) {
         msgContent.push({ type: 'output_text', text: textContent, annotations: [] })
       }
@@ -1002,6 +1040,10 @@ export async function convertOpenAIStreamToOpenAIResponses(
     }
     writeRaw(`event: response.output_text.done\ndata: {"type":"response.output_text.done","output_index":0,"content_index":0,"text":${JSON.stringify(textContent)}}\n\n`)
     const respData: Record<string, unknown> = { id: currentRespId, object: 'response', status: 'completed', output: outputItems.length > 0 ? outputItems : [] }
+    // Chat reasoning_content → 顶层 reasoning.summary
+    if (thinkingText) {
+      respData.reasoning = { summary: [{ type: 'summary_text', text: thinkingText, index: 0 }] }
+    }
     if (Object.keys(lastUsage).length > 0) {
       respData.usage = { input_tokens: lastUsage.input_tokens ?? 0, output_tokens: lastUsage.output_tokens ?? 0, total_tokens: ((lastUsage.input_tokens as number) ?? 0) + ((lastUsage.output_tokens as number) ?? 0) }
     }
