@@ -491,12 +491,8 @@ function convertMessagesToOpenAI(messages: unknown[]): unknown[] {
           if (block.signature) thinkingSignature += (block.signature as string)
         }
       }
-      const converted: Record<string, unknown> = { role: 'assistant', content: textContent }
-      if (reasoningContent) {
-        converted.reasoning_content = reasoningContent
-        // Always include signature if reasoning_content is present (some APIs require it paired)
-        converted.reasoning_signature = thinkingSignature || ''
-      }
+      const converted: Record<string, unknown> = { role: 'assistant', content: textContent, reasoning_content: reasoningContent || '' }
+      if (thinkingSignature) converted.reasoning_signature = thinkingSignature
       // Convert Anthropic tool_use blocks → OpenAI tool_calls
       const toolUses = blocks.filter((b) => b.type === 'tool_use')
       if (toolUses.length > 0) {
@@ -511,6 +507,13 @@ function convertMessagesToOpenAI(messages: unknown[]): unknown[] {
       }
       if (m.tool_calls) converted.tool_calls = m.tool_calls
       result.push(converted)
+      continue
+    }
+    // 确保所有 assistant 消息都有 reasoning_content（即使为空）
+    if (m.role === 'assistant') {
+      const cloned = { ...m }
+      if (cloned.reasoning_content === undefined) cloned.reasoning_content = ''
+      result.push(cloned)
       continue
     }
     result.push(m)
