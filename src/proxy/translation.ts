@@ -1043,11 +1043,8 @@ export function convertAnthropicResponseToOpenAI(anthropicBody: Record<string, u
   const stopMap: Record<string, string> = { end_turn: 'stop', max_tokens: 'length', tool_use: 'tool_calls' }
   const stopReason = anthropicBody.stop_reason as string ?? 'stop'
 
-  const message: Record<string, unknown> = { role: 'assistant', content: textContent }
-  if (reasoningContent) {
-    message.reasoning_content = reasoningContent
-    if (thinkingSignature) message.reasoning_signature = thinkingSignature
-  }
+  const message: Record<string, unknown> = { role: 'assistant', content: textContent, reasoning_content: reasoningContent || '' }
+  if (thinkingSignature) message.reasoning_signature = thinkingSignature
   if (toolCalls.length > 0) message.tool_calls = toolCalls
 
   return {

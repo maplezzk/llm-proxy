@@ -91,7 +91,7 @@ export async function convertAnthropicStreamToOpenAI(
         const message = parsed?.message as Record<string, unknown> | undefined
         const msgUsage = message?.usage as Record<string, unknown> | undefined
         if (msgUsage) anthropicUsage = msgUsage
-        write({ choices: [{ delta: { role: 'assistant' }, index: 0 }] })
+        write({ choices: [{ delta: { role: 'assistant', reasoning_content: '' }, index: 0 }] })
         continue
       }
 
@@ -1130,7 +1130,7 @@ export async function convertOpenAIResponsesStreamToOpenAI(
       if (innerType === 'response.output_item.added') {
         const item = parsed?.item as Record<string, unknown> | undefined
         if (item?.type === 'message') {
-          write({ choices: [{ delta: { role: 'assistant' }, index: 0 }] })
+          write({ choices: [{ delta: { role: 'assistant', reasoning_content: '' }, index: 0 }] })
         } else if (item?.type === 'function_call') {
           currentFnCallIndex = ((parsed?.output_index as number) ?? 1) - 1
           if (!hasFunctionCalls) {
