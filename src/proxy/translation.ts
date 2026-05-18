@@ -451,6 +451,19 @@ function convertMessagesToAnthropic(messages: unknown[]): unknown[] {
   return result
 }
 
+/** 确保 Anthropic messages 中每条 assistant 消息的 content 数组第一个 block 是 thinking */
+function ensureThinkingBlock(messages: unknown[]): void {
+  for (const msg of messages) {
+    const m = msg as Record<string, unknown>
+    if (m.role !== 'assistant') continue
+    const content = m.content as Array<Record<string, unknown>> | undefined
+    if (!Array.isArray(content)) continue
+    if (content.length === 0 || content[0].type !== 'thinking') {
+      content.unshift({ type: 'thinking', thinking: '', signature: '' })
+    }
+  }
+}
+
 function buildAnthropicFromOpenAI(params: FullParams): Record<string, unknown> {
   const body: Record<string, unknown> = {
     model: params.model,
@@ -690,6 +703,7 @@ export async function transformInboundRequest(
         if (hasThinkingInMessages(msgs)) {
           ensureThinkingBlocks(msgs)
         }
+        ensureThinkingBlock(msgs)
       }
     }
     return { url, headers, body: upstreamBody, crossProtocol: false }
@@ -735,6 +749,7 @@ export async function transformInboundRequest(
       if (hasThinkingInMessages(msgs)) {
         ensureThinkingBlocks(msgs)
       }
+      ensureThinkingBlock(msgs)
     }
   }
 
