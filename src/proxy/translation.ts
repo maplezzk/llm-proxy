@@ -187,18 +187,39 @@ function convertResponsesInputToMessages(input: unknown[]): unknown[] {
           normalizedContent = blocks
         }
       }
+      // 如果上一条是 assistant 且有 tool_calls，把 content 合并过去（避免连续 assistant 消息）
+      const lastMsg = messages.length > 0 ? messages[messages.length - 1] as Record<string, unknown> : null
+      if (lastMsg && lastMsg.role === 'assistant' && lastMsg.tool_calls && it.role === 'assistant') {
+        const text = typeof normalizedContent === 'string' ? normalizedContent : ''
+        if (text) lastMsg.content = text
+        // 如果 content 是空数组或空字符串，content 保持 null（OpenAI tool_calls 规范需要 content: null）
+        continue
+      }
       messages.push({ role: it.role, content: normalizedContent })
     } else if (it.type === 'function_call') {
       // { type: "function_call", call_id, name, arguments }
-      messages.push({
-        role: 'assistant',
-        content: null,
-        tool_calls: [{
+      // 检查上一条消息是否是 assistant 消息，如果是则合并 tool_calls，避免两条连续 assistant 消息
+      const lastMsg = messages.length > 0 ? messages[messages.length - 1] as Record<string, unknown> : null
+      if (lastMsg && lastMsg.role === 'assistant') {
+        if (!lastMsg.tool_calls) lastMsg.tool_calls = []
+        ;(lastMsg.tool_calls as unknown[]).push({
           id: it.call_id ?? it.id,
           type: 'function',
           function: { name: it.name ?? '', arguments: it.arguments ?? '' },
-        }],
-      })
+        })
+        // 确保 content 不为 undefined（OpenAI 要求 tool_calls 时 content 为 null）
+        if (lastMsg.content === undefined) lastMsg.content = null
+      } else {
+        messages.push({
+          role: 'assistant',
+          content: null,
+          tool_calls: [{
+            id: it.call_id ?? it.id,
+            type: 'function',
+            function: { name: it.name ?? '', arguments: it.arguments ?? '' },
+          }],
+        })
+      }
     } else if (it.type === 'function_call_output') {
       // { type: "function_call_output", call_id, output }
       messages.push({
