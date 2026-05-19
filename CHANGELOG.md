@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.5](https://github.com/maplezzk/llm-proxy/compare/v0.12.4...v0.12.5) (2026-05-19)
+
+
+### Bug Fixes
+
+* 修复更新下载临时目录不存在导致移动失败 ([#104](https://github.com/maplezzk/llm-proxy/issues/104)) ([93c4bea](https://github.com/maplezzk/llm-proxy/commit/93c4bea7cee9fb6e64bc87f7b1eb04bd2963f220))
+
 ## [0.12.4](https://github.com/maplezzk/llm-proxy/compare/v0.12.3...v0.12.4) (2026-05-19)
 
 
