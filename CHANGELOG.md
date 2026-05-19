@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.4](https://github.com/maplezzk/llm-proxy/compare/v0.12.3...v0.12.4) (2026-05-19)
+
+
+### Bug Fixes
+
+* 修复 Anthropic/Responses API 跨协议 reasoning 丢失 ([#102](https://github.com/maplezzk/llm-proxy/issues/102)) ([8cc89a5](https://github.com/maplezzk/llm-proxy/commit/8cc89a56d1eef3851eccdab89e2af9a49fee0097))
+
 ## [0.12.3](https://github.com/maplezzk/llm-proxy/compare/v0.12.2...v0.12.3) (2026-05-17)
 
 
