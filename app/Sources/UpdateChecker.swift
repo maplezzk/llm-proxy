@@ -460,13 +460,22 @@ private class DownloadTaskDelegate: NSObject, URLSessionDownloadDelegate {
                     didFinishDownloadingTo location: URL) {
         // 先复制到可访问的位置，因为 location 是临时目录
         let tempDir = FileManager.default.temporaryDirectory
+        // 确保目标目录存在（沙盒环境下 temporaryDirectory 可能指向不存在的路径）
+        try? FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
         let tempURL = tempDir.appendingPathComponent(location.lastPathComponent)
         try? FileManager.default.removeItem(at: tempURL)
         do {
             try FileManager.default.moveItem(at: location, to: tempURL)
             completionHandler(.success(tempURL))
         } catch {
-            completionHandler(.failure(error))
+            // moveItem 失败时尝试 copyItem，避免因跨卷移动或目录权限问题导致失败
+            do {
+                try FileManager.default.copyItem(at: location, to: tempURL)
+                try? FileManager.default.removeItem(at: location)
+                completionHandler(.success(tempURL))
+            } catch let copyError {
+                completionHandler(.failure(copyError))
+            }
         }
         cleanup?()
     }
