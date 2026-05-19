@@ -280,7 +280,7 @@ describe('proxy/stream-converter', () => {
       assert.ok(output.includes('event: response.completed'), '应有 response.completed')
     })
 
-    it('thinking_delta → reasoning skipped (Responses client doesn\'t track reasoning)', async () => {
+    it('thinking_delta → reasoning_text.delta (with top-level reasoning.summary)', async () => {
       const { chunks, res } = makeResponse()
       const reader = makeReader([
         'event: message_start\ndata: {"type":"message_start","message":{}}\n\n',
@@ -296,13 +296,20 @@ describe('proxy/stream-converter', () => {
       ])
       await convertAnthropicStreamToOpenAIResponses(reader, res)
       const output = chunks.join('')
-      // Verify reasoning_text.delta is NOT emitted (Responses client doesn't track reasoning)
-      assert.ok(!output.includes('event: response.reasoning_text.delta'), '不应该有 reasoning_text.delta')
+      // Verify reasoning_text.delta IS emitted (streaming reasoning text)
+      assert.ok(output.includes('event: response.reasoning_text.delta'), '应该有 reasoning_text.delta')
+      assert.ok(output.includes('"Let me reason"'), 'reasoning 内容应传递')
+      // Verify reasoning_text.done IS emitted when thinking block ends
+      assert.ok(output.includes('event: response.reasoning_text.done'), '应该有 reasoning_text.done')
       // Verify text content still works
       assert.ok(output.includes('event: response.output_text.delta'), '应有 output_text.delta')
       assert.ok(output.includes('"Answer here"'), 'text content preserved')
       // Verify completion events
       assert.ok(output.includes('event: response.completed'), '应有 response.completed')
+      // Verify reasoning is at top-level summary in response.completed
+      assert.ok(output.includes('"summary_text"'), '顶层 reasoning 应为 summary_text 格式')
+      // Verify message content in response.completed does NOT contain reasoning block type
+      // (output item's content should only have output_text, not reasoning)
     })
   })
 })

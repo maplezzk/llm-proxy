@@ -148,7 +148,7 @@ describe('proxy/translation', () => {
       const tools = result.body.tools as Array<Record<string, unknown>>
       assert.ok(tools)
       assert.strictEqual(tools[0].name, 'get_weather')
-      assert.strictEqual(result.body.tool_choice, 'any')
+      assert.strictEqual(result.body.tool_choice.type, 'any')
     })
   })
 
@@ -777,9 +777,11 @@ describe('proxy/response-conversion', () => {
       const msgs = result.body.messages as Array<Record<string, unknown>>
       const asst = msgs.find((m) => m.role === 'assistant')!
       const content = asst.content as Array<Record<string, unknown>>
-      // 没有 thinking 配置，也没有任何 assistant 有 reasoning_content，所以不补 thinking
+      // 即使没有 thinking 配置，也始终补空 thinking 块确保格式一致
       const hasThinking = content.some((c) => c.type === 'thinking')
-      assert.strictEqual(hasThinking, false, '无 thinking 配置时不应有 thinking 块')
+      assert.strictEqual(hasThinking, true, '应有默认空的 thinking 块')
+      const thinkingBlock = content.find((c) => c.type === 'thinking')!
+      assert.strictEqual(thinkingBlock.thinking, '', 'thinking 内容应为空字符串')
     })
 
     it('无 thinking 配置但对话中已有 reasoning_content 时自动补占位 thinking', async () => {

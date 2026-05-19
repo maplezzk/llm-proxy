@@ -20,3 +20,19 @@
 "error.switchFailed" = "Switch failed: %@";
 "error.setLogLevelFailed" = "Set log level failed: %@";
 "app.title" = "LLM Proxy";
+
+"menu.version" = "Version %@";
+"action.checkForUpdates" = "Check for Updates…";
+"menu.updatesAvailable" = "⬆ Update Available: v%@";
+"update.noUpdates" = "LLMProxy is up to date (v%@)";
+"update.available" = "A new version is available!";
+"update.downloadConfirm" = "LLMProxy v%@ is ready to download. Proceed?";
+"update.installPrompt" = "LLMProxy v%@ has been downloaded.\n\nThe app will now quit and automatically install the update.";
+"update.downloading" = "Downloading update…";
+"update.downloadComplete" = "Download complete!";
+"update.downloadFailed" = "Download failed: %@";
+"update.checkFailed" = "Failed to check for updates: %@";
+"action.install" = "Install";
+"action.retry" = "Retry";
+"menu.installNow" = "⬇ Install Now";
+"update.installFailed" = "Installation failed: %@";
