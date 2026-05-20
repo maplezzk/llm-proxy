@@ -71,7 +71,7 @@ export async function cmdStart(opts: StartOptions): Promise<void> {
 
   const tracker = new StatusTracker()
   const tokenTracker = new TokenTracker()
-  const capture = new CaptureBuffer(200)
+  const capture = new CaptureBuffer(store.getConfig().config.captureMaxSize ?? 100)
   const logDir = `${process.env.HOME ?? '/tmp'}/.llm-proxy`
   const persistedLevel = store.getConfig().config.logLevel
   const defaultLevel = (opts.logLevel && ['debug', 'info', 'warn', 'error'].includes(opts.logLevel))

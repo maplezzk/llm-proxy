@@ -43,6 +43,8 @@ export interface Config {
   locale?: string
   /** 请求体大小限制（字节），不设则默认 10MB */
   maxBodySize?: number
+  /** 抓包缓冲区最大条数，默认 100 */
+  captureMaxSize?: number
 }
 
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error'
@@ -74,6 +76,7 @@ export interface ConfigFile {
   log_level?: string
   locale?: string
   max_body_size?: number
+  capture_max_size?: number
 }
 
 export interface ValidationError {
