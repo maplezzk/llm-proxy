@@ -188,12 +188,9 @@ export async function convertAnthropicStreamToOpenAI(
     chunks: totalChunks,
     textLength: acc.content.length - thinkingText.length,
     thinkingLength: thinkingText.length,
-    thinkingChunks: thinkingChunks.length > 0 ? thinkingChunks : undefined,
     toolCalls: acc.toolCalls.size,
     textPreview: acc.content.slice(0, 200),
     thinkingPreview: thinkingText.slice(0, 200),
-    rawLines: rawLines.length > 0 ? rawLines : undefined,
-    outLines: outLines.length > 0 ? outLines : undefined,
   }, 'debug')
 
   if (capture && pairId !== undefined) {
@@ -261,9 +258,6 @@ export async function convertOpenAIStreamToAnthropic(
           chunks: totalChunks,
           textLength: totalText.length - thinkingText.length,
           thinkingLength: thinkingText.length,
-          thinkingChunks: thinkingChunks.length > 0 ? thinkingChunks : undefined,
-          rawLines: rawLines.length > 0 ? rawLines : undefined,
-          outLines: outLines.length > 0 ? outLines : undefined,
           textPreview: totalText.slice(0, 200),
           thinkingPreview: thinkingText.slice(0, 200),
         }, 'debug')
@@ -594,9 +588,6 @@ export async function convertOpenAIResponsesStreamToAnthropic(
           chunks: totalChunks,
           textLength: acc.content.length,
           thinkingLength: thinkingText.length,
-          thinkingChunks: thinkingChunks.length > 0 ? thinkingChunks : undefined,
-          rawLines: rawLines.length > 0 ? rawLines : undefined,
-          outLines: outLines.length > 0 ? outLines : undefined,
           textPreview: acc.content.slice(0, 200),
           thinkingPreview: thinkingText.slice(0, 200),
         }, 'debug')
@@ -804,9 +795,6 @@ export async function convertAnthropicStreamToOpenAIResponses(
         chunks: totalChunks,
         textLength: acc.content.length - thinkingText.length,
         thinkingLength: thinkingText.length,
-        thinkingChunks: thinkingChunks.length > 0 ? thinkingChunks : undefined,
-        rawLines: rawLines.length > 0 ? rawLines : undefined,
-        outLines: outLines.length > 0 ? outLines : undefined,
         textPreview: acc.content.slice(0, 200),
         thinkingPreview: thinkingText.slice(0, 200),
       }, 'debug')
@@ -952,8 +940,6 @@ export async function convertOpenAIStreamToOpenAIResponses(
           chunks: totalChunks,
           textLength: textContent.length,
           thinkingLength: thinkingText.length,
-          rawLines: rawLines.length > 0 ? rawLines : undefined,
-          outLines: outLines.length > 0 ? outLines : undefined,
           textPreview: textContent.slice(0, 200),
           thinkingPreview: thinkingText.slice(0, 200),
         }, 'debug')
@@ -1242,8 +1228,6 @@ export async function convertOpenAIResponsesStreamToOpenAI(
         logger?.log('request', `流式响应完成 (Responses→OpenAI)`, {
           chunks: totalChunks,
           thinkingLength: thinkingText.length,
-          rawLines: rawLines.length > 0 ? rawLines : undefined,
-          outLines: outLines.length > 0 ? outLines : undefined,
           thinkingPreview: thinkingText.slice(0, 200),
         }, 'debug')
 

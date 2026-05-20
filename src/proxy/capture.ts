@@ -41,7 +41,7 @@ export class CaptureBuffer {
   private entryMap: Map<number, CaptureEntry> = new Map()
   private _enabled = false
 
-  constructor(maxSize = 200) {
+  constructor(maxSize = 100) {
     this.maxSize = maxSize
   }
 
@@ -55,6 +55,7 @@ export class CaptureBuffer {
 
   disable(): void {
     this._enabled = false
+    this.clear()
   }
 
   clear(): void {
