@@ -400,13 +400,13 @@ class MenuBarController: NSObject {
     @MainActor @objc func restartService() {
         setTransientStatus(loc("status.restarting"))
         Task { @MainActor in
-            let result = runCLIWithPort("restart", port: currentPort)
-            if !result.success {
-                showError(result.error ?? loc("error.restartFailed"))
+            let error = await startCLIWithPort("restart", port: currentPort)
+            if let err = error {
+                showError(err)
                 await refresh()
                 return
             }
-            try? await Task.sleep(nanoseconds: 3_000_000_000)
+            try? await Task.sleep(nanoseconds: 4_000_000_000)
             await refresh()
         }
     }
@@ -414,14 +414,13 @@ class MenuBarController: NSObject {
     @MainActor @objc func startService() {
         setTransientStatus(loc("status.starting"))
         Task { @MainActor in
-            // 用 start 命令 + 用户设置的端口，从 PID 文件发现旧进程由 start 内部处理
-            let result = runCLIWithPort("start", port: currentPort)
-            if !result.success {
-                showError(result.error ?? loc("error.startFailed"))
+            let error = await startCLIWithPort("start", port: currentPort)
+            if let err = error {
+                showError(err)
                 await refresh()
                 return
             }
-            try? await Task.sleep(nanoseconds: 3_000_000_000)
+            try? await Task.sleep(nanoseconds: 4_000_000_000)
             await refresh()
         }
     }
@@ -465,9 +464,8 @@ class MenuBarController: NSObject {
         return jsEntry
     }
 
-    /// 执行命令并返回结果（同步等待，传端口）
-    /// - Returns: (success: 是否成功, error: 错误信息)
-    func runCLIWithPort(_ command: String, port: Int) -> (success: Bool, error: String?) {
+    /// 异步启动带端口的命令，返回错误信息（nil 表示成功）
+    func startCLIWithPort(_ command: String, port: Int) async -> String? {
         let task = Process()
         let shell = "/bin/zsh"
         task.executableURL = URL(fileURLWithPath: shell)
@@ -485,39 +483,66 @@ class MenuBarController: NSObject {
             task.currentDirectoryURL = URL(fileURLWithPath: projectRoot)
         } else {
             let fallback = "/opt/homebrew/bin/llm-proxy"
-            if FileManager.default.isExecutableFile(atPath: fallback) {
-                cmdLine = "\"\(fallback)\" \(command) --port \(port)"
-                task.arguments = ["-l", "-c", cmdLine]
-            } else {
-                return (false, "找不到 llm-proxy 二进制")
+            guard FileManager.default.isExecutableFile(atPath: fallback) else {
+                return "找不到 llm-proxy 二进制"
             }
+            cmdLine = "\"\(fallback)\" \(command) --port \(port)"
+            task.arguments = ["-l", "-c", cmdLine]
         }
 
-        // 捕获 stderr 输出
+        // 捕获 stderr
         let stderrPipe = Pipe()
         task.standardError = stderrPipe
+        var stderrOutput = ""
 
         do {
             try task.run()
-            task.waitUntilExit()
-
-            // 读取 stderr 判断是否有错误
-            let errData = stderrPipe.fileHandleForReading.readDataToEndOfFile()
-            let errOutput = String(data: errData, encoding: .utf8) ?? ""
-
-            if task.terminationStatus != 0 || errOutput.contains("已被占用") || errOutput.contains("EADDRINUSE") || errOutput.contains("error") || errOutput.contains("Error") || errOutput.contains("失败") {
-                // 提取关键错误信息
-                let lines = errOutput.split(separator: "\n").filter {
-                    $0.contains("已被占用") || $0.contains("EADDRINUSE") || $0.contains("error") || $0.contains("Error") || $0.contains("失败")
-                }
-                let errMsg = lines.first.map(String.init) ?? errOutput.trimmingCharacters(in: .whitespacesAndNewlines)
-                return (false, errMsg.isEmpty ? "启动失败，退出码: \(task.terminationStatus)" : errMsg)
-            }
-
-            return (true, nil)
         } catch {
-            return (false, "启动 llm-proxy 失败: \(error.localizedDescription)")
+            return "启动 llm-proxy 失败: \(error.localizedDescription)"
         }
+
+        // 异步收集 stderr
+        let fh = stderrPipe.fileHandleForReading
+        fh.readabilityHandler = { handle in
+            let data = handle.availableData
+            if let text = String(data: data, encoding: .utf8) {
+                stderrOutput += text
+            }
+        }
+
+        // 等待一小段时间判断是否有启动错误
+        // 如果端口被占用，llm-proxy 会立刻退出，否则进程持续运行
+        try? await Task.sleep(nanoseconds: 2_500_000_000) // 2.5秒
+
+        // 检查进程是否还在运行
+        if task.isRunning {
+            // 启动成功，还在运行
+            fh.readabilityHandler = nil
+            return nil
+        }
+
+        // 进程已退出 → 启动失败，解析 stderr 获取原因
+        fh.readabilityHandler = nil
+        let remaining = fh.readDataToEndOfFile()
+        if let text = String(data: remaining, encoding: .utf8) {
+            stderrOutput += text
+        }
+
+        // 提取关键错误行
+        let lines = stderrOutput.split(separator: "\n").map(String.init)
+        let errorLine = lines.first(where: { line in
+            line.contains("端口") || line.contains("port") || line.contains("Port") ||
+            line.contains("已被占用") || line.contains("EADDRINUSE") || line.contains("in use") ||
+            line.contains("error") || line.contains("Error") || line.contains("失败") || line.contains("failed")
+        })
+
+        if let err = errorLine, !err.isEmpty {
+            return err.trimmingCharacters(in: .whitespaces)
+        }
+
+        // 没有找到明显错误行，返回完整 stderr
+        let all = stderrOutput.trimmingCharacters(in: .whitespacesAndNewlines)
+        return all.isEmpty ? "启动失败，服务进程已退出" : all
     }
 
     func runCLI(_ command: String) {
