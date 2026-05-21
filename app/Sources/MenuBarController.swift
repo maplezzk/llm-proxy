@@ -634,8 +634,8 @@ class MenuBarController: NSObject {
         let alert = NSAlert()
         alert.messageText = loc("action.portTitle")
         alert.informativeText = loc("action.portPrompt")
-        alert.addButton(withTitle: currentLang() == "zh" ? "保存" : "Save")
-        alert.addButton(withTitle: currentLang() == "zh" ? "取消" : "Cancel")
+        alert.addButton(withTitle: loc("action.save"))
+        alert.addButton(withTitle: loc("action.cancel"))
 
         let input = NSTextField(frame: NSRect(x: 0, y: 0, width: 120, height: 22))
         input.stringValue = String(currentPort)

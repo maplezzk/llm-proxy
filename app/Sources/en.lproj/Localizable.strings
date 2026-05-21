@@ -38,6 +38,9 @@
 "menu.installNow" = "⬇ Install Now";
 "update.installFailed" = "Installation failed: %@";
 
+"action.save" = "Save";
+"action.cancel" = "Cancel";
+
 "action.port" = "Port: %@";
 "action.customPort" = "Custom…";
 "action.portTitle" = "Set Port";

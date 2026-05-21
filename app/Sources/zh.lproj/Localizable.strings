@@ -38,6 +38,9 @@
 "menu.installNow" = "⬇ 立即安装";
 "update.installFailed" = "安装失败: %@";
 
+"action.save" = "保存";
+"action.cancel" = "取消";
+
 "action.port" = "端口: %@";
 "action.customPort" = "自定义…";
 "action.portTitle" = "设置端口";
