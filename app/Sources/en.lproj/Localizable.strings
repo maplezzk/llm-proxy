@@ -37,3 +37,8 @@
 "action.retry" = "Retry";
 "menu.installNow" = "⬇ Install Now";
 "update.installFailed" = "Installation failed: %@";
+
+"action.port" = "Port: %@";
+"action.customPort" = "Custom…";
+"action.portTitle" = "Set Port";
+"action.portPrompt" = "Enter port number (1-65535):";

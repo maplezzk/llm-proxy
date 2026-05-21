@@ -3,8 +3,21 @@ import Foundation
 class APIClient {
     var baseURL: String
 
-    init(baseURL: String = "http://127.0.0.1:9000") {
-        self.baseURL = baseURL
+    init() {
+        let port = Self.storedPort()
+        self.baseURL = "http://127.0.0.1:\(port)"
+    }
+
+    /// 从 UserDefaults 读取端口，默认 9000
+    static func storedPort() -> Int {
+        let stored = UserDefaults.standard.integer(forKey: "llm-proxy-port")
+        return stored > 0 ? stored : 9000
+    }
+
+    /// 更新 baseURL（端口变更时调用）
+    func updatePort(_ port: Int) {
+        UserDefaults.standard.set(port, forKey: "llm-proxy-port")
+        baseURL = "http://127.0.0.1:\(port)"
     }
 
     func fetchLogLevel() async throws -> String {
@@ -89,6 +102,30 @@ class APIClient {
         req.httpMethod = "PUT"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = try JSONSerialization.data(withJSONObject: ["locale": locale])
+        let (_, resp) = try await URLSession.shared.data(for: req)
+        guard let http = resp as? HTTPURLResponse, http.statusCode == 200 else {
+            throw URLError(.badServerResponse)
+        }
+    }
+
+    func fetchPort() async throws -> Int? {
+        let url = URL(string: "\(baseURL)/admin/port")!
+        let (data, _) = try await URLSession.shared.data(from: url)
+        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let d = json["data"] as? [String: Any] else { return nil }
+        return d["port"] as? Int
+    }
+
+    func setPort(_ port: Int?) async throws {
+        let url = URL(string: "\(baseURL)/admin/port")!
+        var req = URLRequest(url: url)
+        req.httpMethod = "PUT"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        var bodyDict: [String: Any] = [:]
+        if let p = port {
+            bodyDict["port"] = p
+        }
+        req.httpBody = try JSONSerialization.data(withJSONObject: bodyDict)
         let (_, resp) = try await URLSession.shared.data(for: req)
         guard let http = resp as? HTTPURLResponse, http.statusCode == 200 else {
             throw URLError(.badServerResponse)

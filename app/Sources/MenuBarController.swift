@@ -9,6 +9,7 @@ class MenuBarController: NSObject {
     private var providers: [Provider] = []
     private var serviceRunning: Bool = false
     private var currentLogLevel: String = "info"
+    private var currentPort: Int = APIClient.storedPort()
     private var pollTimer: Timer?
     private var pendingUpdate: UpdateInfo?
     private var isCheckingUpdate = false
@@ -72,6 +73,14 @@ class MenuBarController: NSObject {
         }
         serviceRunning = (try? await client.fetchHealth()) ?? false
         currentLogLevel = (try? await client.fetchLogLevel()) ?? "info"
+        // 尝试从服务端同步端口，失败则从 PID 文件读取
+        if let sp = try? await client.fetchPort() {
+            currentPort = sp
+            client.updatePort(sp)
+        } else {
+            // 服务未运行或端口不对，尝试从 PID 文件发现实际端口
+            discoverActualPort()
+        }
         rebuildMenu()
     }
 
@@ -189,7 +198,7 @@ class MenuBarController: NSObject {
 
         menu.addItem(.separator())
 
-        // 工具区：Admin UI → 日志目录 → 日志级别
+        // 工具区：Admin UI → 日志目录 → 端口 → 日志级别
         let adminItem = NSMenuItem(title: loc("action.openAdmin"), action: #selector(openAdmin), keyEquivalent: "")
         adminItem.target = self
         if #available(macOS 11.0, *) {
@@ -203,6 +212,27 @@ class MenuBarController: NSObject {
             logsItem.image = NSImage(systemSymbolName: "folder", accessibilityDescription: loc("action.openLogs"))
         }
         menu.addItem(logsItem)
+
+        // 端口设置（子菜单）
+        let portItem = NSMenuItem(title: loc("action.port", String(currentPort)), action: nil, keyEquivalent: "")
+        if #available(macOS 11.0, *) {
+            portItem.image = NSImage(systemSymbolName: "network", accessibilityDescription: loc("action.port", String(currentPort)))
+        }
+        let portMenu = NSMenu()
+        // 常用端口快捷选项
+        for p in [9000, 9001, 9002, 8080, 3000] {
+            let item = NSMenuItem(title: String(p), action: #selector(changePort(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = p
+            if p == currentPort { item.state = .on }
+            portMenu.addItem(item)
+        }
+        portMenu.addItem(.separator())
+        let customItem = NSMenuItem(title: loc("action.customPort"), action: #selector(showCustomPortDialog), keyEquivalent: "")
+        customItem.target = self
+        portMenu.addItem(customItem)
+        portItem.submenu = portMenu
+        menu.addItem(portItem)
 
         let logLevelItem = NSMenuItem(title: loc("action.logLevel", currentLogLevel), action: nil, keyEquivalent: "")
         if #available(macOS 11.0, *) {
@@ -571,6 +601,71 @@ class MenuBarController: NSObject {
             task.waitUntilExit()
         } catch {
             NSLog("[LLMProxy] ❌ 同步停止服务失败: \(error.localizedDescription)")
+        }
+    }
+
+    @MainActor @objc func changePort(_ sender: NSMenuItem) {
+        guard let newPort = sender.representedObject as? Int else { return }
+        Task { @MainActor in
+            await performChangePort(newPort)
+        }
+    }
+
+    @MainActor
+    func performChangePort(_ newPort: Int) async {
+        guard newPort >= 1 && newPort <= 65535 else {
+            showError("Port must be between 1 and 65535")
+            return
+        }
+        // 保存到 UserDefaults
+        currentPort = newPort
+        client.updatePort(newPort)
+        // 持久化到 config.yaml
+        do {
+            try await client.setPort(newPort)
+        } catch {
+            // 服务未运行也可以保存到 UserDefaults
+            print("setPort failed (service may be offline): \(error)")
+        }
+        rebuildMenu()
+    }
+
+    @MainActor @objc func showCustomPortDialog() {
+        let alert = NSAlert()
+        alert.messageText = loc("action.portTitle")
+        alert.informativeText = loc("action.portPrompt")
+        alert.addButton(withTitle: currentLang() == "zh" ? "保存" : "Save")
+        alert.addButton(withTitle: currentLang() == "zh" ? "取消" : "Cancel")
+
+        let input = NSTextField(frame: NSRect(x: 0, y: 0, width: 120, height: 22))
+        input.stringValue = String(currentPort)
+        input.placeholderString = "9000"
+        alert.accessoryView = input
+        input.becomeFirstResponder()
+
+        let response = alert.runModal()
+        if response == .alertFirstButtonReturn {
+            let portStr = input.stringValue.trimmingCharacters(in: .whitespaces)
+            guard let port = Int(portStr), port >= 1, port <= 65535 else {
+                showError("Port must be between 1 and 65535")
+                return
+            }
+            Task { @MainActor in
+                await performChangePort(port)
+            }
+        }
+    }
+
+    /// 从 PID 文件发现实际端口（端口冲突自动递增后）
+    func discoverActualPort() {
+        let pidPath = "/tmp/llm-proxy.pid"
+        guard let data = try? String(contentsOfFile: pidPath, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines),
+              let jsonData = data.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
+              let port = json["port"] as? Int else { return }
+        if port != currentPort {
+            currentPort = port
+            client.updatePort(port)
         }
     }
 
