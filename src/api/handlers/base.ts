@@ -118,14 +118,15 @@ export async function handleSetPort(ctx: ServerContext, req: IncomingMessage, re
     return
   }
   const { config } = ctx.store.getConfig()
-  const newConfig = {
+  const newConfig: import('../../config/types.js').Config = {
     providers: config.providers,
     adapters: config.adapters,
     proxyKey: config.proxyKey,
     logLevel: config.logLevel,
-    maxBodySize: config.maxBodySize,
     locale: config.locale,
     port: port || undefined,
+    maxBodySize: config.maxBodySize,
+    captureMaxSize: config.captureMaxSize,
   }
   await ctx.store.writeConfig(newConfig)
   ctx.logger.log('system', `Port changed to ${port ?? 'default (9000)'} (persisted, restart to take effect)`)

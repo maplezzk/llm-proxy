@@ -617,16 +617,17 @@ class MenuBarController: NSObject {
             showError("Port must be between 1 and 65535")
             return
         }
-        // 保存到 UserDefaults
-        currentPort = newPort
-        client.updatePort(newPort)
-        // 持久化到 config.yaml
+        // 先发请求到当前运行的服务，持久化端口到 config.yaml
+        // 注意：不能用 client.updatePort 切换 baseURL 后再请求，因为服务还在旧端口
         do {
             try await client.setPort(newPort)
         } catch {
-            // 服务未运行也可以保存到 UserDefaults
+            // 服务未运行时只保存到 UserDefaults
             print("setPort failed (service may be offline): \(error)")
         }
+        // 再更新本地缓存
+        currentPort = newPort
+        client.updatePort(newPort)
         rebuildMenu()
     }
 
