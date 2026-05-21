@@ -20,6 +20,7 @@
 "error.switchFailed" = "Switch failed: %@";
 "error.setLogLevelFailed" = "Set log level failed: %@";
 "error.startFailed" = "Failed to start service";
+"error.portChangeWhileRunning" = "Cannot change port while service is running. Please stop the service first.";
 "error.restartFailed" = "Failed to restart service";
 "app.title" = "LLM Proxy";
 

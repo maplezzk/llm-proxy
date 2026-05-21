@@ -722,16 +722,30 @@ class MenuBarController: NSObject {
             showError("Port must be between 1 and 65535")
             return
         }
-        // 先发请求到当前运行的服务，持久化端口到 config.yaml
+        // 先持久化到 config.yaml
         do {
             try await client.setPort(newPort)
         } catch {
             print("setPort failed (service may be offline): \(error)")
         }
-        // 更新本地缓存（UserDefaults + 显示）
+        // 更新本地缓存
         currentPort = newPort
         client.updatePort(newPort)
-        rebuildMenu()
+
+        // 如果服务正在运行，自动重启让新端口生效
+        if serviceRunning {
+            rebuildMenu()
+            setTransientStatus(loc("status.restarting"))
+            let error = await startCLIWithPort("restart", port: newPort)
+            if let err = error {
+                showError(err)
+                await refresh()
+                return
+            }
+            await waitForReadyAndRefresh()
+        } else {
+            rebuildMenu()
+        }
     }
 
     @MainActor @objc func showCustomPortDialog() {

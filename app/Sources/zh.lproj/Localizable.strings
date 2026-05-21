@@ -20,6 +20,7 @@
 "error.switchFailed" = "切换失败: %@";
 "error.setLogLevelFailed" = "设置日志级别失败: %@";
 "error.startFailed" = "启动服务失败";
+"error.portChangeWhileRunning" = "服务运行时不能修改端口，请先停止服务";
 "error.restartFailed" = "重启服务失败";
 "app.title" = "LLM Proxy";
 

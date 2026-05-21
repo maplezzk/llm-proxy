@@ -196,6 +196,7 @@ export type TranslationKey =
   | 'admin.sidebar.portPlaceholder'
   | 'admin.sidebar.portRestartHint'
   | 'admin.sidebar.portSetSuccess'
+  | 'admin.sidebar.portSetSuccessWithRestart'
   | 'admin.sidebar.running'
   | 'admin.sidebar.switchLang'
   | 'admin.test.clearResults'

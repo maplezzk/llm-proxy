@@ -15,6 +15,7 @@
       "port": "Port",
       "portPlaceholder": "Leave empty for default 9000",
       "portSetSuccess": "Port saved (restart to take effect)",
+      "portSetSuccessWithRestart": "Port saved, please restart the service",
       "portRestartHint": "restart to take effect"
     },
     "common": {
