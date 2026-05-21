@@ -386,6 +386,20 @@ class MenuBarController: NSObject {
         }
     }
 
+    /// 应用启动时自动检测并启动代理服务
+    @MainActor
+    func autoStartIfNeeded() async {
+        // 先刷新状态（buildMenu 已调用 refresh，但确保拿到最新状态）
+        await refresh()
+        if !serviceRunning {
+            NSLog("[LLMProxy] 🔄 服务未运行，自动启动...")
+            runCLI("restart")
+            setTransientStatus(loc("status.starting"))
+            try? await Task.sleep(nanoseconds: 6_000_000_000)
+            await refresh()
+        }
+    }
+
     @MainActor
     func setTransientStatus(_ text: String) {
         guard let menu = statusItem.menu,
