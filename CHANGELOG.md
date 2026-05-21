@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.13.0](https://github.com/maplezzk/llm-proxy/compare/v0.12.5...v0.13.0) (2026-05-21)
+
+
+### Features
+
+* 直通流式请求支持 token 统计（含缓存命中） ([#108](https://github.com/maplezzk/llm-proxy/issues/108)) ([0fda9d4](https://github.com/maplezzk/llm-proxy/commit/0fda9d4c28e704648f53920b77c5b82059648bdd))
+
+
+### Bug Fixes
+
+* 修复协议抓包导致的内存泄露 ([#106](https://github.com/maplezzk/llm-proxy/issues/106)) ([67e2793](https://github.com/maplezzk/llm-proxy/commit/67e279331365ab5831acb25b4c1757013631dbcd))
+
 ## [0.12.5](https://github.com/maplezzk/llm-proxy/compare/v0.12.4...v0.12.5) (2026-05-19)
 
 
