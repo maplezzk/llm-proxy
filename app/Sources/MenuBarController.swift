@@ -406,8 +406,8 @@ class MenuBarController: NSObject {
                 await refresh()
                 return
             }
-            try? await Task.sleep(nanoseconds: 4_000_000_000)
-            await refresh()
+            // 轮询等待服务就绪后刷新配置
+            await waitForReadyAndRefresh()
         }
     }
 
@@ -420,8 +420,8 @@ class MenuBarController: NSObject {
                 await refresh()
                 return
             }
-            try? await Task.sleep(nanoseconds: 4_000_000_000)
-            await refresh()
+            // 轮询等待服务就绪后刷新配置
+            await waitForReadyAndRefresh()
         }
     }
 
@@ -543,6 +543,21 @@ class MenuBarController: NSObject {
         // 没有找到明显错误行，返回完整 stderr
         let all = stderrOutput.trimmingCharacters(in: .whitespacesAndNewlines)
         return all.isEmpty ? "启动失败，服务进程已退出" : all
+    }
+
+    /// 轮询等待服务就绪（health 可达），然后刷新全部配置
+    @MainActor
+    func waitForReadyAndRefresh() async {
+        // 最多等 15 秒，每 1 秒检查一次
+        for _ in 0..<15 {
+            if (try? await client.fetchHealth()) == true {
+                await refresh()
+                return
+            }
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
+        }
+        // 超时，尝试刷新一次看看能拿到什么
+        await refresh()
     }
 
     func runCLI(_ command: String) {
