@@ -11,7 +11,12 @@
       "running": "Running",
       "offline": "Offline",
       "loading": "Loading...",
-      "switchLang": "Switch Language"
+      "switchLang": "Switch Language",
+      "port": "Port",
+      "portPlaceholder": "Leave empty for default 9000",
+      "portSetSuccess": "Port saved (restart to take effect)",
+      "portSetSuccessWithRestart": "Port saved, please restart the service",
+      "portRestartHint": "restart to take effect"
     },
     "common": {
       "save": "Save",
@@ -239,7 +244,8 @@
     },
     "status": {
       "notRunning": "Proxy is not running",
-      "running": "Proxy is running (PID: {{pid}})"
+      "running": "Proxy is running (PID: {{pid}})",
+      "port": "Port: {{port}}"
     },
     "restart": {
       "stopping": "Stopping proxy (PID: {{pid}})...",

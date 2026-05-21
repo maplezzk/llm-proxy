@@ -19,6 +19,9 @@
 "status.starting" = "◌ Starting...";
 "error.switchFailed" = "Switch failed: %@";
 "error.setLogLevelFailed" = "Set log level failed: %@";
+"error.startFailed" = "Failed to start service";
+"error.portChangeWhileRunning" = "Cannot change port while service is running. Please stop the service first.";
+"error.restartFailed" = "Failed to restart service";
 "app.title" = "LLM Proxy";
 
 "menu.version" = "Version %@";
@@ -37,3 +40,11 @@
 "action.retry" = "Retry";
 "menu.installNow" = "⬇ Install Now";
 "update.installFailed" = "Installation failed: %@";
+
+"action.save" = "Save";
+"action.cancel" = "Cancel";
+
+"action.port" = "Port: %@";
+"action.customPort" = "Custom…";
+"action.portTitle" = "Set Port";
+"action.portPrompt" = "Enter port number (1-65535):";

@@ -41,6 +41,8 @@ export interface Config {
   proxyKey?: string
   logLevel?: LogLevel
   locale?: string
+  /** 端口号，不设则默认 9000 */
+  port?: number
   /** 请求体大小限制（字节），不设则默认 10MB */
   maxBodySize?: number
   /** 抓包缓冲区最大条数，默认 100 */
@@ -75,6 +77,7 @@ export interface ConfigFile {
   proxy_key?: string
   log_level?: string
   locale?: string
+  port?: number
   max_body_size?: number
   capture_max_size?: number
 }

@@ -19,6 +19,9 @@
 "status.starting" = "◌ 正在启动...";
 "error.switchFailed" = "切换失败: %@";
 "error.setLogLevelFailed" = "设置日志级别失败: %@";
+"error.startFailed" = "启动服务失败";
+"error.portChangeWhileRunning" = "服务运行时不能修改端口，请先停止服务";
+"error.restartFailed" = "重启服务失败";
 "app.title" = "LLM Proxy";
 
 "menu.version" = "版本 %@";
@@ -37,3 +40,11 @@
 "action.retry" = "重试";
 "menu.installNow" = "⬇ 立即安装";
 "update.installFailed" = "安装失败: %@";
+
+"action.save" = "保存";
+"action.cancel" = "取消";
+
+"action.port" = "端口: %@";
+"action.customPort" = "自定义…";
+"action.portTitle" = "设置端口";
+"action.portPrompt" = "输入端口号 (1-65535):";

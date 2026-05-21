@@ -21,10 +21,16 @@ interface StartOptions {
   logLevel?: string
 }
 
-function getPid(): number | null {
+function getState(): { pid: number; port: number } | null {
   try {
-    const pid = parseInt(readFileSync(DEFAULT_PID_PATH, 'utf-8').trim(), 10)
-    return isNaN(pid) ? null : pid
+    const raw = readFileSync(DEFAULT_PID_PATH, 'utf-8').trim()
+    const parsed = JSON.parse(raw)
+    if (typeof parsed.pid === 'number' && typeof parsed.port === 'number') {
+      return { pid: parsed.pid, port: parsed.port }
+    }
+    // 兼容旧格式（纯 PID）
+    const pid = parseInt(raw, 10)
+    return isNaN(pid) ? null : { pid, port: DEFAULT_PORT }
   } catch {
     return null
   }
@@ -80,7 +86,8 @@ export async function cmdStart(opts: StartOptions): Promise<void> {
   const level = persistedLevel ?? defaultLevel
   const logger = new Logger(1000, logDir, level)
   const host = opts.host ?? DEFAULT_HOST
-  const port = opts.port ?? DEFAULT_PORT
+  const configPort = store.getConfig().config.port
+  const port = opts.port ?? configPort ?? DEFAULT_PORT
 
   const server = createProxyServer({
     adminHost: host,
@@ -103,8 +110,15 @@ export async function cmdStart(opts: StartOptions): Promise<void> {
 
   logger.log('system', t('cli.start.started', { host, port, config: configPath }), { host, port, config: configPath })
 
+  server.once('error', (err: NodeJS.ErrnoException) => {
+    if (err.code === 'EADDRINUSE') {
+      console.error(`\n  ❌ 端口 ${port} 已被占用`)
+      console.error(`  请用 --port 参数指定其他端口，或在配置文件中设置 port 字段\n`)
+      process.exit(1)
+    }
+  })
   server.listen(port, host, () => {
-    writeFileSync(DEFAULT_PID_PATH, String(process.pid))
+    writeFileSync(DEFAULT_PID_PATH, JSON.stringify({ pid: process.pid, port }))
     console.error(t('cli.start.started', { host, port }))
     console.error(t('cli.start.adminApi', { host, port }))
     console.error(t('cli.start.aiApi', { host, port }))
@@ -116,47 +130,48 @@ export async function cmdStart(opts: StartOptions): Promise<void> {
 export async function cmdStop(): Promise<void> {
   const { t } = createI18n('en')
 
-  const pid = getPid()
-  if (pid === null) {
+  const state = getState()
+  if (state === null) {
     console.error(t('cli.stop.notRunning'))
     return
   }
 
-  if (!isProcessRunning(pid)) {
+  if (!isProcessRunning(state.pid)) {
     console.error(t('cli.stop.stalePid'))
     try { unlinkSync(DEFAULT_PID_PATH) } catch { /* ignore */ }
     return
   }
 
-  console.error(t('cli.stop.stopping', { pid: String(pid) }))
-  process.kill(pid, 'SIGTERM')
+  console.error(t('cli.stop.stopping', { pid: String(state.pid) }))
+  process.kill(state.pid, 'SIGTERM')
 }
 
 export async function cmdStatus(): Promise<void> {
   const { t } = createI18n('en')
 
-  const pid = getPid()
-  if (pid === null || !isProcessRunning(pid)) {
-    if (pid !== null) {
+  const state = getState()
+  if (state === null || !isProcessRunning(state.pid)) {
+    if (state !== null) {
       try { unlinkSync(DEFAULT_PID_PATH) } catch { /* ignore */ }
     }
     console.error(t('cli.status.notRunning'))
     return
   }
-  console.error(t('cli.status.running', { pid: String(pid) }))
+  console.error(t('cli.status.running', { pid: String(state.pid) }))
+  console.error(`  ${t('cli.status.port', { port: String(state.port) })}`)
 }
 
 export async function cmdRestart(opts: StartOptions): Promise<void> {
   const { t } = createI18n('en')
 
-  const pid = getPid()
-  if (pid !== null && isProcessRunning(pid)) {
-    console.error(t('cli.restart.stopping', { pid: String(pid) }))
-    process.kill(pid, 'SIGTERM')
+  const state = getState()
+  if (state !== null && isProcessRunning(state.pid)) {
+    console.error(t('cli.restart.stopping', { pid: String(state.pid) }))
+    process.kill(state.pid, 'SIGTERM')
     // Wait for process to exit
     await new Promise<void>((resolve) => {
       const check = setInterval(() => {
-        if (!isProcessRunning(pid)) {
+        if (!isProcessRunning(state.pid)) {
           clearInterval(check)
           resolve()
         }
@@ -164,7 +179,7 @@ export async function cmdRestart(opts: StartOptions): Promise<void> {
       setTimeout(() => { clearInterval(check); resolve() }, 5000)
     })
     console.error(t('cli.restart.restarting'))
-  } else if (pid !== null) {
+  } else if (state !== null) {
     console.error(t('cli.restart.stalePid'))
     try { unlinkSync(DEFAULT_PID_PATH) } catch { /* ignore */ }
   }
@@ -174,7 +189,8 @@ export async function cmdRestart(opts: StartOptions): Promise<void> {
 export async function cmdReload(opts: { port?: number }): Promise<void> {
   const { t } = createI18n('en')
 
-  const port = opts.port ?? DEFAULT_PORT
+  const state = getState()
+  const port = opts.port ?? state?.port ?? DEFAULT_PORT
   const url = `http://${DEFAULT_HOST}:${port}/admin/config/reload`
 
   try {

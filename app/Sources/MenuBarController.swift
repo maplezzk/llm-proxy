@@ -9,6 +9,8 @@ class MenuBarController: NSObject {
     private var providers: [Provider] = []
     private var serviceRunning: Bool = false
     private var currentLogLevel: String = "info"
+    /// 菜单栏显示的端口（从 UserDefaults 读取，用户意图端口）
+    private var currentPort: Int = APIClient.storedPort()
     private var pollTimer: Timer?
     private var pendingUpdate: UpdateInfo?
     private var isCheckingUpdate = false
@@ -72,6 +74,14 @@ class MenuBarController: NSObject {
         }
         serviceRunning = (try? await client.fetchHealth()) ?? false
         currentLogLevel = (try? await client.fetchLogLevel()) ?? "info"
+        // 从服务端同步端口（仅当服务端可达时才更新，不覆盖用户意图）
+        if let sp = try? await client.fetchPort() {
+            currentPort = sp
+            client.updatePort(sp)
+        } else {
+            // 服务端连不上 → 可能是端口冲突递增了，尝试从 PID 文件发现实际端口，但只更新连接不更新显示
+            discoverActualPort()
+        }
         rebuildMenu()
     }
 
@@ -189,7 +199,7 @@ class MenuBarController: NSObject {
 
         menu.addItem(.separator())
 
-        // 工具区：Admin UI → 日志目录 → 日志级别
+        // 工具区：Admin UI → 日志目录 → 端口 → 日志级别
         let adminItem = NSMenuItem(title: loc("action.openAdmin"), action: #selector(openAdmin), keyEquivalent: "")
         adminItem.target = self
         if #available(macOS 11.0, *) {
@@ -203,6 +213,27 @@ class MenuBarController: NSObject {
             logsItem.image = NSImage(systemSymbolName: "folder", accessibilityDescription: loc("action.openLogs"))
         }
         menu.addItem(logsItem)
+
+        // 端口设置（子菜单）
+        let portItem = NSMenuItem(title: loc("action.port", String(currentPort)), action: nil, keyEquivalent: "")
+        if #available(macOS 11.0, *) {
+            portItem.image = NSImage(systemSymbolName: "network", accessibilityDescription: loc("action.port", String(currentPort)))
+        }
+        let portMenu = NSMenu()
+        // 常用端口快捷选项
+        for p in [9000, 9001, 9002, 8080, 3000] {
+            let item = NSMenuItem(title: String(p), action: #selector(changePort(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = p
+            if p == currentPort { item.state = .on }
+            portMenu.addItem(item)
+        }
+        portMenu.addItem(.separator())
+        let customItem = NSMenuItem(title: loc("action.customPort"), action: #selector(showCustomPortDialog), keyEquivalent: "")
+        customItem.target = self
+        portMenu.addItem(customItem)
+        portItem.submenu = portMenu
+        menu.addItem(portItem)
 
         let logLevelItem = NSMenuItem(title: loc("action.logLevel", currentLogLevel), action: nil, keyEquivalent: "")
         if #available(macOS 11.0, *) {
@@ -367,22 +398,30 @@ class MenuBarController: NSObject {
     }
 
     @MainActor @objc func restartService() {
-        runCLI("restart")
         setTransientStatus(loc("status.restarting"))
         Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 3_000_000_000)
-            await refresh()
+            let error = await startCLIWithPort("restart", port: currentPort)
+            if let err = error {
+                showError(err)
+                await refresh()
+                return
+            }
+            // 轮询等待服务就绪后刷新配置
+            await waitForReadyAndRefresh()
         }
     }
 
     @MainActor @objc func startService() {
-        // 用 restart 而非 start，自动处理旧进程残留/端口冲突
-        runCLI("restart")
         setTransientStatus(loc("status.starting"))
         Task { @MainActor in
-            // restart 内部最多等 5 秒等旧进程退出，这里给 6 秒 buffer
-            try? await Task.sleep(nanoseconds: 6_000_000_000)
-            await refresh()
+            let error = await startCLIWithPort("start", port: currentPort)
+            if let err = error {
+                showError(err)
+                await refresh()
+                return
+            }
+            // 轮询等待服务就绪后刷新配置
+            await waitForReadyAndRefresh()
         }
     }
 
@@ -437,6 +476,102 @@ class MenuBarController: NSObject {
         let jsEntry = (projectRoot as NSString).appendingPathComponent("bin/llm-proxy.js")
         guard FileManager.default.isExecutableFile(atPath: jsEntry) else { return nil }
         return jsEntry
+    }
+
+    /// 异步启动带端口的命令，返回错误信息（nil 表示成功）
+    func startCLIWithPort(_ command: String, port: Int) async -> String? {
+        let task = Process()
+        let shell = "/bin/zsh"
+        task.executableURL = URL(fileURLWithPath: shell)
+
+        let cmdLine: String
+        if let bundled = bundledBinaryPath() {
+            cmdLine = "\"\(bundled)\" \(command) --port \(port)"
+            task.arguments = ["-l", "-c", cmdLine]
+            task.currentDirectoryURL = URL(fileURLWithPath: Bundle.main.resourcePath!)
+        } else if let jsEntry = debugNodeEntryPath() {
+            let projectRoot = ((jsEntry as NSString).deletingLastPathComponent as NSString).deletingLastPathComponent
+            cmdLine = "node \"\(jsEntry)\" \(command) --port \(port)"
+            task.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+            task.arguments = ["node", jsEntry, command, "--port", String(port)]
+            task.currentDirectoryURL = URL(fileURLWithPath: projectRoot)
+        } else {
+            let fallback = "/opt/homebrew/bin/llm-proxy"
+            guard FileManager.default.isExecutableFile(atPath: fallback) else {
+                return "找不到 llm-proxy 二进制"
+            }
+            cmdLine = "\"\(fallback)\" \(command) --port \(port)"
+            task.arguments = ["-l", "-c", cmdLine]
+        }
+
+        // 捕获 stderr
+        let stderrPipe = Pipe()
+        task.standardError = stderrPipe
+        var stderrOutput = ""
+
+        do {
+            try task.run()
+        } catch {
+            return "启动 llm-proxy 失败: \(error.localizedDescription)"
+        }
+
+        // 异步收集 stderr
+        let fh = stderrPipe.fileHandleForReading
+        fh.readabilityHandler = { handle in
+            let data = handle.availableData
+            if let text = String(data: data, encoding: .utf8) {
+                stderrOutput += text
+            }
+        }
+
+        // 等待一小段时间判断是否有启动错误
+        // 如果端口被占用，llm-proxy 会立刻退出，否则进程持续运行
+        try? await Task.sleep(nanoseconds: 2_500_000_000) // 2.5秒
+
+        // 检查进程是否还在运行
+        if task.isRunning {
+            // 启动成功，还在运行
+            fh.readabilityHandler = nil
+            return nil
+        }
+
+        // 进程已退出 → 启动失败，解析 stderr 获取原因
+        fh.readabilityHandler = nil
+        let remaining = fh.readDataToEndOfFile()
+        if let text = String(data: remaining, encoding: .utf8) {
+            stderrOutput += text
+        }
+
+        // 提取关键错误行
+        let lines = stderrOutput.split(separator: "\n").map(String.init)
+        let errorLine = lines.first(where: { line in
+            line.contains("端口") || line.contains("port") || line.contains("Port") ||
+            line.contains("已被占用") || line.contains("EADDRINUSE") || line.contains("in use") ||
+            line.contains("error") || line.contains("Error") || line.contains("失败") || line.contains("failed")
+        })
+
+        if let err = errorLine, !err.isEmpty {
+            return err.trimmingCharacters(in: .whitespaces)
+        }
+
+        // 没有找到明显错误行，返回完整 stderr
+        let all = stderrOutput.trimmingCharacters(in: .whitespacesAndNewlines)
+        return all.isEmpty ? "启动失败，服务进程已退出" : all
+    }
+
+    /// 轮询等待服务就绪（health 可达），然后刷新全部配置
+    @MainActor
+    func waitForReadyAndRefresh() async {
+        // 最多等 15 秒，每 1 秒检查一次
+        for _ in 0..<15 {
+            if (try? await client.fetchHealth()) == true {
+                await refresh()
+                return
+            }
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
+        }
+        // 超时，尝试刷新一次看看能拿到什么
+        await refresh()
     }
 
     func runCLI(_ command: String) {
@@ -585,6 +720,86 @@ class MenuBarController: NSObject {
             task.waitUntilExit()
         } catch {
             NSLog("[LLMProxy] ❌ 同步停止服务失败: \(error.localizedDescription)")
+        }
+    }
+
+    @MainActor @objc func changePort(_ sender: NSMenuItem) {
+        guard let newPort = sender.representedObject as? Int else { return }
+        Task { @MainActor in
+            await performChangePort(newPort)
+        }
+    }
+
+    @MainActor
+    func performChangePort(_ newPort: Int) async {
+        guard newPort >= 1 && newPort <= 65535 else {
+            showError("Port must be between 1 and 65535")
+            return
+        }
+        // 先持久化到 config.yaml
+        do {
+            try await client.setPort(newPort)
+        } catch {
+            print("setPort failed (service may be offline): \(error)")
+        }
+        // 更新本地缓存
+        currentPort = newPort
+        client.updatePort(newPort)
+
+        // 如果服务正在运行，自动重启让新端口生效
+        if serviceRunning {
+            rebuildMenu()
+            setTransientStatus(loc("status.restarting"))
+            let error = await startCLIWithPort("restart", port: newPort)
+            if let err = error {
+                showError(err)
+                await refresh()
+                return
+            }
+            await waitForReadyAndRefresh()
+        } else {
+            rebuildMenu()
+        }
+    }
+
+    @MainActor @objc func showCustomPortDialog() {
+        let alert = NSAlert()
+        alert.messageText = loc("action.portTitle")
+        alert.informativeText = loc("action.portPrompt")
+        alert.addButton(withTitle: loc("action.save"))
+        alert.addButton(withTitle: loc("action.cancel"))
+
+        let input = NSTextField(frame: NSRect(x: 0, y: 0, width: 120, height: 22))
+        input.stringValue = String(currentPort)
+        input.placeholderString = "9000"
+        alert.accessoryView = input
+        input.becomeFirstResponder()
+
+        let response = alert.runModal()
+        if response == .alertFirstButtonReturn {
+            let portStr = input.stringValue.trimmingCharacters(in: .whitespaces)
+            guard let port = Int(portStr), port >= 1, port <= 65535 else {
+                showError("Port must be between 1 and 65535")
+                return
+            }
+            Task { @MainActor in
+                await performChangePort(port)
+            }
+        }
+    }
+
+    /// 从 PID 文件发现实际端口（端口冲突自动递增后）
+    /// 仅更新 client baseURL 用于后续 API 请求，不改变 currentPort（菜单栏显示）
+    func discoverActualPort() {
+        let pidPath = "/tmp/llm-proxy.pid"
+        guard let data = try? String(contentsOfFile: pidPath, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines),
+              let jsonData = data.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
+              let port = json["port"] as? Int else { return }
+        // 只更新 client 的连接端口，用于后续 API 请求能连上
+        // 不改变 currentPort（UserDefaults 中用户意图的端口，菜单栏显示用）
+        if port != currentPort {
+            client.updatePort(port)
         }
     }
 

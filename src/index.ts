@@ -48,7 +48,7 @@ llm-proxy — 本地统一 LLM 模型代理
 选项:
   --config <path>      配置文件路径 (默认: ~/.llm-proxy/config.yaml)
   --host <host>        绑定地址 (默认: 127.0.0.1)
-  --port <port>        端口 (默认: 9000)
+  --port <port>        端口 (默认: 9000，也可在 config.yaml 中设置 port)
   --log-level <level>  日志级别: debug, info, warn, error (默认: info)
 `)
 }

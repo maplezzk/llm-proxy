@@ -11,7 +11,12 @@
       "running": "运行中",
       "offline": "未连接",
       "loading": "加载中",
-      "switchLang": "切换语言"
+      "switchLang": "切换语言",
+      "port": "端口",
+      "portPlaceholder": "留空使用默认 9000",
+      "portSetSuccess": "端口已保存（重启后生效）",
+      "portSetSuccessWithRestart": "端口已保存，请重启服务生效",
+      "portRestartHint": "重启后生效"
     },
     "common": {
       "save": "保存",
@@ -239,7 +244,8 @@
     },
     "status": {
       "notRunning": "代理未运行",
-      "running": "代理正在运行 (PID: {{pid}})"
+      "running": "代理正在运行 (PID: {{pid}})",
+      "port": "端口: {{port}}"
     },
     "restart": {
       "stopping": "正在停止代理 (PID: {{pid}})...",
