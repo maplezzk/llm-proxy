@@ -309,19 +309,32 @@ class UpdateChecker {
         }
 
         let outputData = outputPipe.fileHandleForReading.readDataToEndOfFile()
-        guard let plist = try? PropertyListSerialization.propertyList(from: outputData, options: [], format: nil),
-              let entries = plist as? [[String: Any]] else {
+        guard let plist = try? PropertyListSerialization.propertyList(from: outputData, options: [], format: nil) else {
             throw UpdateError.installationFailed(reason: "无法解析 hdiutil 输出")
         }
 
-        // 查找挂载点
-        for entry in entries {
-            if let mountPoint = entry["mount-point"] as? String {
-                return URL(fileURLWithPath: mountPoint)
+        // 新版 macOS（≥14）输出为 dict 套 system-entities，旧版为顶层 array
+        // 优先查找挂载点
+        var mountPoint: String? = nil
+        if let array = plist as? [[String: Any]] {
+            // 旧版格式：顶层数组
+            for entry in array {
+                mountPoint = entry["mount-point"] as? String
+                if mountPoint != nil { break }
+            }
+        } else if let dict = plist as? [String: Any],
+                  let entities = dict["system-entities"] as? [[String: Any]] {
+            // 新版格式：顶层 dict → system-entities 数组
+            for entry in entities {
+                mountPoint = entry["mount-point"] as? String
+                if mountPoint != nil { break }
             }
         }
 
-        throw UpdateError.installationFailed(reason: "未找到 DMG 挂载点")
+        guard let mountPoint else {
+            throw UpdateError.installationFailed(reason: "未找到 DMG 挂载点")
+        }
+        return URL(fileURLWithPath: mountPoint)
     }
 
     /// 卸载 DMG
@@ -440,6 +453,8 @@ private class DownloadTaskDelegate: NSObject, URLSessionDownloadDelegate {
     let progressHandler: (Double) -> Void
     let completionHandler: (Result<URL, Error>) -> Void
     var cleanup: (() -> Void)?
+    /// 防止 didFinishDownloadingTo + didCompleteWithError 双重回调导致 continuation 被 resume 两次
+    private var isComplete = false
 
     init(progressHandler: @escaping (Double) -> Void,
          completionHandler: @escaping (Result<URL, Error>) -> Void) {
@@ -458,34 +473,44 @@ private class DownloadTaskDelegate: NSObject, URLSessionDownloadDelegate {
 
     func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask,
                     didFinishDownloadingTo location: URL) {
-        // 先复制到可访问的位置，因为 location 是临时目录
+        guard !isComplete else { return }
+
+        // 用 UUID 生成唯一临时文件名，避免 location 和 tempDir 解析到同一 inode
+        // （/var -> /private/var 符号链接会导致 removeItem 误删源文件）
         let tempDir = FileManager.default.temporaryDirectory
-        // 确保目标目录存在（沙盒环境下 temporaryDirectory 可能指向不存在的路径）
         try? FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
-        let tempURL = tempDir.appendingPathComponent(location.lastPathComponent)
-        try? FileManager.default.removeItem(at: tempURL)
+        let tempURL = tempDir.appendingPathComponent("\(UUID().uuidString).dmg")
         do {
             try FileManager.default.moveItem(at: location, to: tempURL)
-            completionHandler(.success(tempURL))
+            finish(.success(tempURL))
         } catch {
             // moveItem 失败时尝试 copyItem，避免因跨卷移动或目录权限问题导致失败
             do {
                 try FileManager.default.copyItem(at: location, to: tempURL)
                 try? FileManager.default.removeItem(at: location)
-                completionHandler(.success(tempURL))
+                finish(.success(tempURL))
             } catch let copyError {
-                completionHandler(.failure(copyError))
+                finish(.failure(copyError))
             }
         }
-        cleanup?()
     }
 
     func urlSession(_ session: URLSession, task: URLSessionTask,
                     didCompleteWithError error: Error?) {
         if let error = error {
-            completionHandler(.failure(error))
+            finish(.failure(error))
+        } else {
+            // 下载成功且 didFinishDownloadingTo 已完成，这里只需清理
             cleanup?()
         }
+    }
+
+    /// 确保只 resume 一次 continuation，之后清理
+    private func finish(_ result: Result<URL, Error>) {
+        guard !isComplete else { return }
+        isComplete = true
+        completionHandler(result)
+        cleanup?()
     }
 }
 

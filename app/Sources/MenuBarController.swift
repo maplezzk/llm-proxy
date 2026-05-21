@@ -376,10 +376,12 @@ class MenuBarController: NSObject {
     }
 
     @MainActor @objc func startService() {
-        runCLI("start")
+        // 用 restart 而非 start，自动处理旧进程残留/端口冲突
+        runCLI("restart")
         setTransientStatus(loc("status.starting"))
         Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            // restart 内部最多等 5 秒等旧进程退出，这里给 6 秒 buffer
+            try? await Task.sleep(nanoseconds: 6_000_000_000)
             await refresh()
         }
     }
@@ -535,7 +537,41 @@ class MenuBarController: NSObject {
     }
 
     @objc func quitApp() {
+        stopSync()
         NSApplication.shared.terminate(nil)
+    }
+
+    /// 同步停止后台服务，等待进程退出后再退出应用
+    /// 避免异步 stop 未完成时 terminate 导致旧进程残留
+    private func stopSync() {
+        let task = Process()
+        let shell = "/bin/zsh"
+        task.executableURL = URL(fileURLWithPath: shell)
+
+        if let bundled = bundledBinaryPath() {
+            task.arguments = ["-l", "-c", "\"\(bundled)\" stop"]
+            task.currentDirectoryURL = URL(fileURLWithPath: Bundle.main.resourcePath!)
+        } else if let jsEntry = debugNodeEntryPath() {
+            let projectRoot = ((jsEntry as NSString).deletingLastPathComponent as NSString).deletingLastPathComponent
+            task.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+            task.arguments = ["node", jsEntry, "stop"]
+            task.currentDirectoryURL = URL(fileURLWithPath: projectRoot)
+        } else {
+            let fallback = "/opt/homebrew/bin/llm-proxy"
+            guard FileManager.default.isExecutableFile(atPath: fallback) else {
+                NSLog("[LLMProxy] ❌ 找不到 llm-proxy 二进制")
+                return
+            }
+            task.arguments = ["-l", "-c", "\"\(fallback)\" stop"]
+        }
+
+        do {
+            try task.run()
+            // 阻塞直到 stop 完成（llm-proxy stop 内部会 SIGTERM + 清理 PID 文件）
+            task.waitUntilExit()
+        } catch {
+            NSLog("[LLMProxy] ❌ 同步停止服务失败: \(error.localizedDescription)")
+        }
     }
 
     @MainActor @objc func reloadConfig() {
@@ -622,7 +658,7 @@ class MenuBarController: NSObject {
                     let alert = NSAlert()
                     alert.messageText = loc("update.available")
                     alert.informativeText = loc("update.downloadConfirm", update.version)
-                    alert.addButton(withTitle: loc("update.downloading"))
+                    alert.addButton(withTitle: loc("action.download"))
                     alert.addButton(withTitle: "Cancel")
                     if alert.runModal() == .alertFirstButtonReturn {
                         await performDownloadAndInstall(update)
