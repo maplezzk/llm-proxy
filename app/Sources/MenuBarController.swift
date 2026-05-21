@@ -622,7 +622,7 @@ class MenuBarController: NSObject {
                     let alert = NSAlert()
                     alert.messageText = loc("update.available")
                     alert.informativeText = loc("update.downloadConfirm", update.version)
-                    alert.addButton(withTitle: loc("update.downloading"))
+                    alert.addButton(withTitle: loc("action.download"))
                     alert.addButton(withTitle: "Cancel")
                     if alert.runModal() == .alertFirstButtonReturn {
                         await performDownloadAndInstall(update)
