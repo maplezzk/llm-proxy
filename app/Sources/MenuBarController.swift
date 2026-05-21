@@ -376,10 +376,12 @@ class MenuBarController: NSObject {
     }
 
     @MainActor @objc func startService() {
-        runCLI("start")
+        // 用 restart 而非 start，自动处理旧进程残留/端口冲突
+        runCLI("restart")
         setTransientStatus(loc("status.starting"))
         Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            // restart 内部最多等 5 秒等旧进程退出，这里给 6 秒 buffer
+            try? await Task.sleep(nanoseconds: 6_000_000_000)
             await refresh()
         }
     }
