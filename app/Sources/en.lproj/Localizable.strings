@@ -19,6 +19,8 @@
 "status.starting" = "◌ Starting...";
 "error.switchFailed" = "Switch failed: %@";
 "error.setLogLevelFailed" = "Set log level failed: %@";
+"error.startFailed" = "Failed to start service";
+"error.restartFailed" = "Failed to restart service";
 "app.title" = "LLM Proxy";
 
 "menu.version" = "Version %@";

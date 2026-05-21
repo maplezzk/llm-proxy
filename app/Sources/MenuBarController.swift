@@ -398,21 +398,30 @@ class MenuBarController: NSObject {
     }
 
     @MainActor @objc func restartService() {
-        runCLI("restart")
         setTransientStatus(loc("status.restarting"))
         Task { @MainActor in
+            let result = runCLIWithPort("restart", port: currentPort)
+            if !result.success {
+                showError(result.error ?? loc("error.restartFailed"))
+                await refresh()
+                return
+            }
             try? await Task.sleep(nanoseconds: 3_000_000_000)
             await refresh()
         }
     }
 
     @MainActor @objc func startService() {
-        // 用 restart 而非 start，自动处理旧进程残留/端口冲突
-        runCLI("restart")
         setTransientStatus(loc("status.starting"))
         Task { @MainActor in
-            // restart 内部最多等 5 秒等旧进程退出，这里给 6 秒 buffer
-            try? await Task.sleep(nanoseconds: 6_000_000_000)
+            // 用 start 命令 + 用户设置的端口，从 PID 文件发现旧进程由 start 内部处理
+            let result = runCLIWithPort("start", port: currentPort)
+            if !result.success {
+                showError(result.error ?? loc("error.startFailed"))
+                await refresh()
+                return
+            }
+            try? await Task.sleep(nanoseconds: 3_000_000_000)
             await refresh()
         }
     }
@@ -454,6 +463,61 @@ class MenuBarController: NSObject {
         let jsEntry = (projectRoot as NSString).appendingPathComponent("bin/llm-proxy.js")
         guard FileManager.default.isExecutableFile(atPath: jsEntry) else { return nil }
         return jsEntry
+    }
+
+    /// 执行命令并返回结果（同步等待，传端口）
+    /// - Returns: (success: 是否成功, error: 错误信息)
+    func runCLIWithPort(_ command: String, port: Int) -> (success: Bool, error: String?) {
+        let task = Process()
+        let shell = "/bin/zsh"
+        task.executableURL = URL(fileURLWithPath: shell)
+
+        let cmdLine: String
+        if let bundled = bundledBinaryPath() {
+            cmdLine = "\"\(bundled)\" \(command) --port \(port)"
+            task.arguments = ["-l", "-c", cmdLine]
+            task.currentDirectoryURL = URL(fileURLWithPath: Bundle.main.resourcePath!)
+        } else if let jsEntry = debugNodeEntryPath() {
+            let projectRoot = ((jsEntry as NSString).deletingLastPathComponent as NSString).deletingLastPathComponent
+            cmdLine = "node \"\(jsEntry)\" \(command) --port \(port)"
+            task.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+            task.arguments = ["node", jsEntry, command, "--port", String(port)]
+            task.currentDirectoryURL = URL(fileURLWithPath: projectRoot)
+        } else {
+            let fallback = "/opt/homebrew/bin/llm-proxy"
+            if FileManager.default.isExecutableFile(atPath: fallback) {
+                cmdLine = "\"\(fallback)\" \(command) --port \(port)"
+                task.arguments = ["-l", "-c", cmdLine]
+            } else {
+                return (false, "找不到 llm-proxy 二进制")
+            }
+        }
+
+        // 捕获 stderr 输出
+        let stderrPipe = Pipe()
+        task.standardError = stderrPipe
+
+        do {
+            try task.run()
+            task.waitUntilExit()
+
+            // 读取 stderr 判断是否有错误
+            let errData = stderrPipe.fileHandleForReading.readDataToEndOfFile()
+            let errOutput = String(data: errData, encoding: .utf8) ?? ""
+
+            if task.terminationStatus != 0 || errOutput.contains("已被占用") || errOutput.contains("EADDRINUSE") || errOutput.contains("error") || errOutput.contains("Error") || errOutput.contains("失败") {
+                // 提取关键错误信息
+                let lines = errOutput.split(separator: "\n").filter {
+                    $0.contains("已被占用") || $0.contains("EADDRINUSE") || $0.contains("error") || $0.contains("Error") || $0.contains("失败")
+                }
+                let errMsg = lines.first.map(String.init) ?? errOutput.trimmingCharacters(in: .whitespacesAndNewlines)
+                return (false, errMsg.isEmpty ? "启动失败，退出码: \(task.terminationStatus)" : errMsg)
+            }
+
+            return (true, nil)
+        } catch {
+            return (false, "启动 llm-proxy 失败: \(error.localizedDescription)")
+        }
     }
 
     func runCLI(_ command: String) {
