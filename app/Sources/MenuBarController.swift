@@ -9,6 +9,7 @@ class MenuBarController: NSObject {
     private var providers: [Provider] = []
     private var serviceRunning: Bool = false
     private var currentLogLevel: String = "info"
+    /// 菜单栏显示的端口（从 UserDefaults 读取，用户意图端口）
     private var currentPort: Int = APIClient.storedPort()
     private var pollTimer: Timer?
     private var pendingUpdate: UpdateInfo?
@@ -73,12 +74,12 @@ class MenuBarController: NSObject {
         }
         serviceRunning = (try? await client.fetchHealth()) ?? false
         currentLogLevel = (try? await client.fetchLogLevel()) ?? "info"
-        // 尝试从服务端同步端口，失败则从 PID 文件读取
+        // 从服务端同步端口（仅当服务端可达时才更新，不覆盖用户意图）
         if let sp = try? await client.fetchPort() {
             currentPort = sp
             client.updatePort(sp)
         } else {
-            // 服务未运行或端口不对，尝试从 PID 文件发现实际端口
+            // 服务端连不上 → 可能是端口冲突递增了，尝试从 PID 文件发现实际端口，但只更新连接不更新显示
             discoverActualPort()
         }
         rebuildMenu()
@@ -618,14 +619,12 @@ class MenuBarController: NSObject {
             return
         }
         // 先发请求到当前运行的服务，持久化端口到 config.yaml
-        // 注意：不能用 client.updatePort 切换 baseURL 后再请求，因为服务还在旧端口
         do {
             try await client.setPort(newPort)
         } catch {
-            // 服务未运行时只保存到 UserDefaults
             print("setPort failed (service may be offline): \(error)")
         }
-        // 再更新本地缓存
+        // 更新本地缓存（UserDefaults + 显示）
         currentPort = newPort
         client.updatePort(newPort)
         rebuildMenu()
@@ -658,14 +657,16 @@ class MenuBarController: NSObject {
     }
 
     /// 从 PID 文件发现实际端口（端口冲突自动递增后）
+    /// 仅更新 client baseURL 用于后续 API 请求，不改变 currentPort（菜单栏显示）
     func discoverActualPort() {
         let pidPath = "/tmp/llm-proxy.pid"
         guard let data = try? String(contentsOfFile: pidPath, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines),
               let jsonData = data.data(using: .utf8),
               let json = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
               let port = json["port"] as? Int else { return }
+        // 只更新 client 的连接端口，用于后续 API 请求能连上
+        // 不改变 currentPort（UserDefaults 中用户意图的端口，菜单栏显示用）
         if port != currentPort {
-            currentPort = port
             client.updatePort(port)
         }
     }

@@ -234,21 +234,17 @@
       "pid": "PID: {{pid}}",
       "configFile": "配置文件: {{configPath}}",
       "sigterm": "\n收到 SIGTERM，正在关闭...",
-      "language": "当前语言: {{lang}}",
-      "portConflict": "端口 {{port}} 已被占用，尝试 {{nextPort}}...",
-      "portExhausted": "端口 {{startPort}}-{{endPort}} 均被占用，无法启动",
-      "portFallbackSuffix": "（因端口冲突实际使用 {{port}}）",
-      "portConflictError": "启动失败: {{error}}"
-    },
-    "status": {
-      "notRunning": "代理未运行",
-      "running": "代理正在运行 (PID: {{pid}})",
-      "port": "端口: {{port}}"
+      "language": "当前语言: {{lang}}"
     },
     "stop": {
       "notRunning": "未找到运行中的代理",
       "stalePid": "发现残留 PID 文件，清理中...",
       "stopping": "正在停止代理 (PID: {{pid}})..."
+    },
+    "status": {
+      "notRunning": "代理未运行",
+      "running": "代理正在运行 (PID: {{pid}})",
+      "port": "端口: {{port}}"
     },
     "restart": {
       "stopping": "正在停止代理 (PID: {{pid}})...",

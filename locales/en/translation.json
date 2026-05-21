@@ -234,21 +234,17 @@
       "pid": "PID: {{pid}}",
       "configFile": "Config: {{configPath}}",
       "sigterm": "\nSIGTERM received, shutting down...",
-      "language": "Language: {{lang}}",
-      "portConflict": "Port {{port}} in use, trying {{nextPort}}...",
-      "portExhausted": "Ports {{startPort}}-{{endPort}} all in use, cannot start",
-      "portFallbackSuffix": "(Using {{port}} due to port conflict)",
-      "portConflictError": "Start failed: {{error}}"
-    },
-    "status": {
-      "notRunning": "Proxy is not running",
-      "running": "Proxy is running (PID: {{pid}})",
-      "port": "Port: {{port}}"
+      "language": "Language: {{lang}}"
     },
     "stop": {
       "notRunning": "No running proxy found",
       "stalePid": "Found stale PID file, cleaning up...",
       "stopping": "Stopping proxy (PID: {{pid}})..."
+    },
+    "status": {
+      "notRunning": "Proxy is not running",
+      "running": "Proxy is running (PID: {{pid}})",
+      "port": "Port: {{port}}"
     },
     "restart": {
       "stopping": "Stopping proxy (PID: {{pid}})...",
