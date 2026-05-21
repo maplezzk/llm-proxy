@@ -11,7 +11,11 @@
       "running": "Running",
       "offline": "Offline",
       "loading": "Loading...",
-      "switchLang": "Switch Language"
+      "switchLang": "Switch Language",
+      "port": "Port",
+      "portPlaceholder": "Leave empty for default 9000",
+      "portSetSuccess": "Port saved (restart to take effect)",
+      "portRestartHint": "restart to take effect"
     },
     "common": {
       "save": "Save",
@@ -230,16 +234,21 @@
       "pid": "PID: {{pid}}",
       "configFile": "Config: {{configPath}}",
       "sigterm": "\nSIGTERM received, shutting down...",
-      "language": "Language: {{lang}}"
+      "language": "Language: {{lang}}",
+      "portConflict": "Port {{port}} in use, trying {{nextPort}}...",
+      "portExhausted": "Ports {{startPort}}-{{endPort}} all in use, cannot start",
+      "portFallbackSuffix": "(Using {{port}} due to port conflict)",
+      "portConflictError": "Start failed: {{error}}"
+    },
+    "status": {
+      "notRunning": "Proxy is not running",
+      "running": "Proxy is running (PID: {{pid}})",
+      "port": "Port: {{port}}"
     },
     "stop": {
       "notRunning": "No running proxy found",
       "stalePid": "Found stale PID file, cleaning up...",
       "stopping": "Stopping proxy (PID: {{pid}})..."
-    },
-    "status": {
-      "notRunning": "Proxy is not running",
-      "running": "Proxy is running (PID: {{pid}})"
     },
     "restart": {
       "stopping": "Stopping proxy (PID: {{pid}})...",

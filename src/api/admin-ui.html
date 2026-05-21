@@ -288,7 +288,7 @@ tbody tr:hover td { background: #f8f9fb; }
       </a>
     </template>
   </div>
-  <div class="sidebar-footer" x-data>
+  <div class="sidebar-footer" x-data="portSettingForm">
     <span class="dot" :class="{ running: $store.app.status === 'running' }"></span>
     <span x-text="$store.app.status === 'running' ? $t('admin.sidebar.running') : $store.app.status === 'offline' ? $t('admin.sidebar.offline') : $t('admin.sidebar.loading')"></span>
     <span style="flex:1"></span>
@@ -298,6 +298,20 @@ tbody tr:hover td { background: #f8f9fb; }
     <button @click="$store.app.switchLang($store.app.language === 'zh' ? 'en' : 'zh')" style="font-size:11px;cursor:pointer;background:none;border:none;color:var(--sidebar-text);padding:2px 4px;border-radius:4px">
       🌐 <span x-text="$store.app.language === 'zh' ? 'EN' : '中文'"></span>
     </button>
+    <!-- Port -->
+    <template x-if="!editing">
+      <button @click="toggleEdit()" style="font-size:10px;cursor:pointer;background:none;border:none;color:var(--sidebar-text);padding:2px 4px;border-radius:4px" title="$t('admin.sidebar.port')">
+        <span x-text="'🔌 ' + (configPort || 9000)"></span>
+      </button>
+    </template>
+    <template x-if="editing">
+      <div style="display:flex;align-items:center;gap:4px;font-size:11px">
+        <input type="number" x-model="port" :placeholder="$t('admin.sidebar.portPlaceholder')" min="1" max="65535"
+               style="width:55px;padding:2px 4px;font-size:10px;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text)">
+        <button @click="save()" :disabled="saving" style="font-size:10px;cursor:pointer;background:none;border:none;color:var(--success);padding:2px">✓</button>
+        <button @click="toggleEdit()" style="font-size:10px;cursor:pointer;background:none;border:none;color:var(--danger);padding:2px">✕</button>
+      </div>
+    </template>
   </div>
 </div>
 

@@ -105,6 +105,33 @@ export async function handleSetLocale(ctx: ServerContext, req: IncomingMessage, 
   json(res, 200, { success: true, data: { locale } })
 }
 
+export function handleGetPort(ctx: ServerContext, _req: IncomingMessage, res: ServerResponse): void {
+  const { config } = ctx.store.getConfig()
+  json(res, 200, { success: true, data: { port: config.port } })
+}
+
+export async function handleSetPort(ctx: ServerContext, req: IncomingMessage, res: ServerResponse): Promise<void> {
+  const body = JSON.parse(await (await import('../../lib/http-utils.js')).readBody(req))
+  const port = body.port
+  if (port != null && (!Number.isInteger(port) || port < 1 || port > 65535)) {
+    json(res, 400, { success: false, error: 'Port must be between 1 and 65535' })
+    return
+  }
+  const { config } = ctx.store.getConfig()
+  const newConfig = {
+    providers: config.providers,
+    adapters: config.adapters,
+    proxyKey: config.proxyKey,
+    logLevel: config.logLevel,
+    maxBodySize: config.maxBodySize,
+    locale: config.locale,
+    port: port || undefined,
+  }
+  await ctx.store.writeConfig(newConfig)
+  ctx.logger.log('system', `Port changed to ${port ?? 'default (9000)'} (persisted, restart to take effect)`)
+  json(res, 200, { success: true, data: { port: newConfig.port } })
+}
+
 export function handleGetProxyKey(_ctx: ServerContext, _req: IncomingMessage, res: ServerResponse): void {
   const { config } = _ctx.store.getConfig()
   json(res, 200, { success: true, data: { set: !!config.proxyKey, key: config.proxyKey ? '***' : null } })
