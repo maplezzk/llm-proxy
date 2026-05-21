@@ -20,5 +20,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         
         // 启动时触发后台更新检查
         menuBarController.checkForUpdatesOnLaunch()
+        
+        // 启动时自动启动代理服务（如果未运行）
+        Task { @MainActor in
+            await menuBarController.autoStartIfNeeded()
+        }
     }
 }
