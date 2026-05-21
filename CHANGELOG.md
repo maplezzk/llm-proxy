@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.14.0](https://github.com/maplezzk/llm-proxy/compare/v0.13.1...v0.14.0) (2026-05-21)
+
+
+### Features
+
+* 端口配置持久化 + 菜单栏端口设置 + 启动失败弹窗 ([#111](https://github.com/maplezzk/llm-proxy/issues/111)) ([15284fc](https://github.com/maplezzk/llm-proxy/commit/15284fc86694c2dfe3ee249803028fee498f4166))
+* 菜单栏启动时自动启动代理服务 ([#112](https://github.com/maplezzk/llm-proxy/issues/112)) ([8dcc39f](https://github.com/maplezzk/llm-proxy/commit/8dcc39f2bf02a8e8b5d4d25ccee561dab56525a7))
+
 ## [0.13.1](https://github.com/maplezzk/llm-proxy/compare/v0.13.0...v0.13.1) (2026-05-21)
 
 
