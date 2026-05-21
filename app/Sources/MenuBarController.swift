@@ -535,6 +535,9 @@ class MenuBarController: NSObject {
     }
 
     @objc func quitApp() {
+        runCLI("stop")
+        // 等待 stop 命令完成（最多 2 秒），再退出应用
+        Thread.sleep(forTimeInterval: 0.5)
         NSApplication.shared.terminate(nil)
     }
 
