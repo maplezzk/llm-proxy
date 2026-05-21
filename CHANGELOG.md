@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.1](https://github.com/maplezzk/llm-proxy/compare/v0.13.0...v0.13.1) (2026-05-21)
+
+
+### Bug Fixes
+
+* 修复自动更新下载/安装多个问题 ([#109](https://github.com/maplezzk/llm-proxy/issues/109)) ([5e37f12](https://github.com/maplezzk/llm-proxy/commit/5e37f120181477b4f8c0596b783bb7dfad616cb7))
+
 ## [0.13.0](https://github.com/maplezzk/llm-proxy/compare/v0.12.5...v0.13.0) (2026-05-21)
 
 
