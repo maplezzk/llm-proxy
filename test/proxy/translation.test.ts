@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert'
-import { transformInboundRequest, convertOpenAIResponseToAnthropic, convertAnthropicResponseToOpenAI, convertOpenAIResponsesToAnthropic, convertAnthropicResponseToOpenAIResponses } from '../../src/proxy/translation.js'
+import { transformInboundRequest, convertOpenAIResponseToAnthropic, convertAnthropicResponseToOpenAI, convertOpenAIResponsesToAnthropic, convertAnthropicResponseToOpenAIResponses, convertOpenAIResponsesResponseToOpenAI } from '../../src/proxy/translation.js'
 
 const anthropicRoute = {
   providerName: 'anthropic-main',
@@ -721,6 +721,55 @@ describe('proxy/response-conversion', () => {
     assert.strictEqual(result.stop_reason, 'tool_use')
   })
 
+  it('OpenAI Responses computer_call → Anthropic tool_use (computer)', () => {
+    const result = convertOpenAIResponsesToAnthropic({
+      output: [{
+        type: 'computer_call',
+        id: 'cc_1',
+        call_id: 'call_screenshot',
+        action: { type: 'screenshot' },
+        pending_safety_checks: [],
+        status: 'completed',
+      }],
+    })
+    const content = result.content as Array<Record<string, unknown>>
+    assert.strictEqual(content[0].type, 'tool_use')
+    assert.strictEqual(content[0].name, 'computer')
+    const input = content[0].input as Record<string, unknown>
+    assert.strictEqual(input.action, 'screenshot')
+    assert.strictEqual(result.stop_reason, 'tool_use')
+  })
+
+  it('OpenAI Responses click action → Anthropic coordinate', () => {
+    const result = convertOpenAIResponsesToAnthropic({
+      output: [{
+        type: 'computer_call',
+        call_id: 'call_click',
+        action: { type: 'click', x: 100, y: 200 },
+        status: 'completed',
+      }],
+    })
+    const content = result.content as Array<Record<string, unknown>>
+    const input = content[0].input as Record<string, unknown>
+    assert.strictEqual(input.action, 'click')
+    assert.deepStrictEqual(input.coordinate, [100, 200])
+  })
+
+  it('OpenAI Responses keypress → Anthropic key + text', () => {
+    const result = convertOpenAIResponsesToAnthropic({
+      output: [{
+        type: 'computer_call',
+        call_id: 'call_key',
+        action: { type: 'keypress', keys: ['ctrl', 'c'] },
+        status: 'completed',
+      }],
+    })
+    const content = result.content as Array<Record<string, unknown>>
+    const input = content[0].input as Record<string, unknown>
+    assert.strictEqual(input.action, 'key')
+    assert.strictEqual(input.text, 'ctrlc')
+  })
+
   it('Anthropic 响应 → OpenAI Responses 格式', () => {
     const result = convertAnthropicResponseToOpenAIResponses({
       id: 'msg_xyz',
@@ -743,6 +792,77 @@ describe('proxy/response-conversion', () => {
     assert.strictEqual(msgContent[0].text, 'Hi there!')
     assert.strictEqual(result.usage.input_tokens, 10)
     assert.strictEqual(result.usage.output_tokens, 5)
+  })
+
+  it('Anthropic tool_use (computer) → OpenAI Responses computer_call', () => {
+    const result = convertAnthropicResponseToOpenAIResponses({
+      content: [
+        { type: 'text', text: 'Taking screenshot' },
+        { type: 'tool_use', id: 'toolu_1', name: 'computer', input: { action: 'screenshot' } },
+      ],
+      stop_reason: 'tool_use',
+      usage: { input_tokens: 10, output_tokens: 5 },
+    })
+    const output = result.output as Array<Record<string, unknown>>
+    // First item should be message
+    assert.strictEqual(output[0].type, 'message')
+    // Second item should be computer_call
+    const cc = output[1]
+    assert.strictEqual(cc.type, 'computer_call')
+    assert.strictEqual(cc.call_id, 'toolu_1')
+    const action = cc.action as Record<string, unknown>
+    assert.strictEqual(action.type, 'screenshot')
+    assert.deepStrictEqual(cc.pending_safety_checks, [])
+    assert.strictEqual(cc.status, 'completed')
+  })
+
+  it('Anthropic tool_use (computer) click → OpenAI click action with coordinates', () => {
+    const result = convertAnthropicResponseToOpenAIResponses({
+      content: [
+        { type: 'tool_use', id: 'toolu_2', name: 'computer', input: { action: 'click', coordinate: [500, 300] } },
+      ],
+      stop_reason: 'tool_use',
+      usage: { input_tokens: 5, output_tokens: 3 },
+    })
+    const output = result.output as Array<Record<string, unknown>>
+    const cc = output[1]
+    const action = cc.action as Record<string, unknown>
+    assert.strictEqual(action.type, 'click')
+    assert.strictEqual(action.x, 500)
+    assert.strictEqual(action.y, 300)
+  })
+
+  it('Anthropic tool_use (bash) → 不转为特殊 item（保持 function_call 格式）', () => {
+    const result = convertAnthropicResponseToOpenAIResponses({
+      content: [
+        { type: 'tool_use', id: 'toolu_3', name: 'bash', input: { cmd: 'ls' } },
+      ],
+      stop_reason: 'tool_use',
+      usage: { input_tokens: 5, output_tokens: 3 },
+    })
+    const output = result.output as Array<Record<string, unknown>>
+    const fc = output[1]
+    assert.strictEqual(fc.type, 'function_call')
+    assert.strictEqual(fc.name, 'bash')
+  })
+
+  it('OpenAI Responses computer_call → Chat tool_calls (lossy)', () => {
+    const result = convertOpenAIResponsesResponseToOpenAI({
+      output: [{
+        type: 'computer_call',
+        id: 'cc_1',
+        call_id: 'call_click',
+        action: { type: 'click', x: 100, y: 200 },
+        status: 'completed',
+      }],
+      status: 'completed',
+    })
+    const tcs = (result.choices[0].message as Record<string, unknown>).tool_calls as Array<Record<string, unknown>>
+    assert.ok(tcs, 'computer_call → Chat tool_calls')
+    assert.strictEqual(tcs.length, 1)
+    assert.strictEqual(tcs[0].function.name, 'computer')
+    const args = JSON.parse(tcs[0].function.arguments as string)
+    assert.strictEqual(args.type, 'click')
   })
 
   it('OpenAI reasoning_content → Anthropic thinking 块', () => {

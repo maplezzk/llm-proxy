@@ -994,6 +994,102 @@ function injectThinkingConfig(
   }
 }
 
+// --- Action mapping helpers (Computer Use) ---
+
+/** OpenAI ComputerAction → Anthropic tool_use input */
+function convertActionToAnthropic(action: Record<string, unknown>): Record<string, unknown> {
+  const type = action.type as string
+  const result: Record<string, unknown> = { action: type }
+  switch (type) {
+    case 'click':
+    case 'double_click':
+    case 'drag':
+      result.coordinate = [action.x as number, action.y as number]
+      break
+    case 'move':
+      result.action = 'mouse_move'
+      result.coordinate = [action.x as number, action.y as number]
+      break
+    case 'keypress':
+      result.action = 'key'
+      const keys = action.keys as string[] | undefined
+      result.text = keys ? keys.join('') : ''
+      break
+    case 'scroll':
+      result.coordinate = [action.x as number, action.y as number]
+      result.scroll_x = action.scroll_x as number | undefined
+      result.scroll_y = action.scroll_y as number | undefined
+      break
+    case 'type':
+      result.text = (action.text as string) ?? ''
+      break
+    case 'wait':
+      result.action = 'wait'
+      result.duration = (action.ms as number) ?? (action.duration as number) ?? 0
+      break
+    case 'screenshot':
+      break
+    default:
+      // Pass through unknown actions as-is
+      Object.assign(result, action)
+  }
+  return result
+}
+
+/** Anthropic tool_use input → OpenAI ComputerAction */
+function convertActionToOpenAI(input: Record<string, unknown>): Record<string, unknown> {
+  const action = input.action as string
+  const coord = input.coordinate as [number, number] | undefined
+  const result: Record<string, unknown> = {}
+  switch (action) {
+    case 'click':
+    case 'double_click':
+    case 'drag':
+      result.type = action
+      if (coord) {
+        result.x = coord[0]
+        result.y = coord[1]
+      }
+      break
+    case 'mouse_move':
+      result.type = 'move'
+      if (coord) {
+        result.x = coord[0]
+        result.y = coord[1]
+      }
+      break
+    case 'key':
+      result.type = 'keypress'
+      result.keys = [(input.text as string) ?? '']
+      break
+    case 'scroll':
+      result.type = 'scroll'
+      if (coord) {
+        result.x = coord[0]
+        result.y = coord[1]
+      }
+      result.scroll_x = input.scroll_x as number | undefined
+      result.scroll_y = input.scroll_y as number | undefined
+      break
+    case 'type':
+      result.type = 'type'
+      result.text = (input.text as string) ?? ''
+      break
+    case 'wait':
+      result.type = 'wait'
+      result.ms = (input.duration as number) ?? 0
+      break
+    case 'screenshot':
+      result.type = 'screenshot'
+      break
+    default:
+      // Pass through unknown actions as-is
+      result.type = action
+      Object.assign(result, input)
+  }
+  return result
+}
+
 // --- OpenAI Responses ↔ Anthropic response conversion ---
 
 function mapResponsesStopReason(stop: string, hasToolCalls: boolean): string {
@@ -1046,6 +1142,28 @@ export function convertOpenAIResponsesToAnthropic(responsesBody: Record<string, 
           input,
         })
         stopReason = 'tool_use'
+      } else if (item.type === 'computer_call') {
+        // OpenAI computer_call → Anthropic tool_use with name "computer"
+        const action = item.action as Record<string, unknown> | undefined
+        content.push({
+          type: 'tool_use',
+          id: item.call_id ?? item.id,
+          name: 'computer',
+          input: action ? convertActionToAnthropic(action) : {},
+        })
+        stopReason = 'tool_use'
+      } else if (['web_search_call', 'code_interpreter_call', 'file_search_call'].includes(item.type as string)) {
+        // 忽略无 Anthropic 对应物的内置工具输出
+        continue
+      } else if (item.type === 'reasoning') {
+        // Standalone reasoning output item → thinking block
+        const summary = item.summary as Array<Record<string, unknown>> | undefined
+        if (summary) {
+          const reasonText = summary.map((s) => s.text ?? '').join('')
+          if (reasonText) {
+            content.push({ type: 'thinking', thinking: reasonText, signature: '' })
+          }
+        }
       }
     }
   }
@@ -1085,13 +1203,28 @@ export function convertAnthropicResponseToOpenAIResponses(anthropicBody: Record<
         // 收集 thinking 文本，稍后放到顶层的 reasoning.summary
         thinkingText += (block.thinking as string) ?? ''
       } else if (block.type === 'tool_use') {
-        output.push({
-          type: 'function_call',
-          id: `fc_${Date.now().toString(36)}_${(block.id as string) ?? ''}`,
-          call_id: block.id as string,
-          name: block.name as string ?? '',
-          arguments: JSON.stringify(block.input ?? {}),
-        })
+        const name = block.name as string ?? ''
+        if (name === 'computer') {
+          // Computer use tool → computer_call output item
+          const input = block.input as Record<string, unknown> ?? {}
+          output.push({
+            type: 'computer_call',
+            id: `cc_${Date.now().toString(36)}_${(block.id as string) ?? ''}`,
+            call_id: block.id as string,
+            action: convertActionToOpenAI(input),
+            pending_safety_checks: [],
+            status: 'completed',
+          })
+        } else {
+          // Regular tool_use → function_call
+          output.push({
+            type: 'function_call',
+            id: `fc_${Date.now().toString(36)}_${(block.id as string) ?? ''}`,
+            call_id: block.id as string,
+            name,
+            arguments: JSON.stringify(block.input ?? {}),
+          })
+        }
       }
     }
   }
@@ -1355,6 +1488,20 @@ export function convertOpenAIResponsesResponseToOpenAI(responsesBody: Record<str
             arguments: item.arguments ?? '',
           },
         })
+      } else if (item.type === 'computer_call') {
+        // Computer call → Chat tool_calls (lossy conversion: serialize action as arguments)
+        const action = item.action as Record<string, unknown> | undefined
+        toolCalls.push({
+          id: item.call_id ?? item.id,
+          type: 'function',
+          function: {
+            name: 'computer',
+            arguments: JSON.stringify(action ?? {}),
+          },
+        })
+      } else if (['web_search_call', 'code_interpreter_call', 'file_search_call'].includes(item.type as string)) {
+        // 无 Chat 对应物 → 跳过
+        continue
       }
     }
   }
