@@ -45,6 +45,24 @@ describe('proxy/translation', () => {
       assert.strictEqual(result.body.model, 'gpt-4o')
       assert.strictEqual(result.headers['Authorization'], 'Bearer sk-openai-1')
     })
+
+    it('Anthropic → Anthropic 同协议：built-in tools 透传', async () => {
+      const result = await transformInboundRequest('anthropic', anthropicRoute, {
+        model: 'claude-sonnet',
+        messages: [{ role: 'user', content: 'control computer' }],
+        tools: [
+          { type: 'computer_20251124', name: 'computer', display_width_px: 1024, display_height_px: 768 },
+          { type: 'bash_20250124', name: 'bash' },
+        ],
+      })
+      const tools = result.body.tools as Array<Record<string, unknown>>
+      assert.ok(tools, 'built-in tools 应被透传')
+      const computerTool = tools.find((t) => t.name === 'computer')
+      assert.ok(computerTool, 'computer tool 应被保留')
+      assert.strictEqual((computerTool as Record<string, unknown>).type, 'computer_20251124')
+      const bashTool = tools.find((t) => t.name === 'bash')
+      assert.ok(bashTool, 'bash tool 应被保留')
+    })
   })
 
   describe('跨协议翻译 — OpenAI → Anthropic', () => {
@@ -261,6 +279,23 @@ describe('proxy/translation', () => {
       assert.strictEqual(result.body.temperature, 0.5)
       assert.strictEqual(result.body.stream, true)
       assert.strictEqual(result.headers['Authorization'], 'Bearer sk-resp-1')
+    })
+
+    it('Responses → Responses 同协议：built-in tools 透传', async () => {
+      const result = await transformInboundRequest('openai-responses', responsesRoute, {
+        model: 'gpt-4o',
+        input: 'control computer',
+        tools: [
+          { type: 'computer_use_preview', display_width: 1024, display_height: 768 },
+          { type: 'web_search_preview' },
+        ],
+      })
+      const tools = result.body.tools as Array<Record<string, unknown>>
+      assert.ok(tools, 'built-in tools 应被透传')
+      const cuTool = tools.find((t) => t.type === 'computer_use_preview')
+      assert.ok(cuTool, 'computer_use_preview 应被保留')
+      const wsTool = tools.find((t) => t.type === 'web_search_preview')
+      assert.ok(wsTool, 'web_search_preview 应被保留')
     })
   })
 
