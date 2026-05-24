@@ -150,6 +150,60 @@ describe('proxy/translation', () => {
       assert.strictEqual(tools[0].name, 'get_weather')
       assert.strictEqual(result.body.tool_choice.type, 'any')
     })
+
+    it('built-in tool: computer_use_preview → Anthropic computer_20251124', async () => {
+      const result = await transformInboundRequest('openai-responses', anthropicRoute, {
+        model: 'claude-sonnet',
+        input: 'control the computer',
+        tools: [{
+          type: 'computer_use_preview',
+          display_width: 1024,
+          display_height: 768,
+        }],
+      })
+      const tools = result.body.tools as Array<Record<string, unknown>>
+      assert.ok(tools, 'computer_use_preview 不应被过滤')
+      assert.strictEqual(tools.length, 1)
+      assert.strictEqual(tools[0].type, 'computer_20251124')
+      assert.strictEqual(tools[0].name, 'computer')
+      assert.strictEqual(tools[0].display_width_px, 1024)
+      assert.strictEqual(tools[0].display_height_px, 768)
+    })
+
+    it('built-in tool: web_search_preview / code_interpreter / file_search → 被过滤（无 Anthropic 等效工具）', async () => {
+      const result = await transformInboundRequest('openai-responses', anthropicRoute, {
+        model: 'claude-sonnet',
+        input: 'search something',
+        tools: [
+          { type: 'function', function: { name: 'get_weather', description: 'Get weather', parameters: { type: 'object', properties: { loc: { type: 'string' } } } } },
+          { type: 'web_search_preview' },
+          { type: 'code_interpreter' },
+          { type: 'file_search' },
+        ],
+      })
+      const tools = result.body.tools as Array<Record<string, unknown>>
+      assert.ok(tools, 'function tool 仍然保留')
+      assert.strictEqual(tools.length, 1)
+      assert.strictEqual(tools[0].name, 'get_weather')
+    })
+
+    it('built-in tool: 混合 function + computer_use_preview', async () => {
+      const result = await transformInboundRequest('openai-responses', anthropicRoute, {
+        model: 'claude-sonnet',
+        input: 'use the computer',
+        tools: [
+          { type: 'function', function: { name: 'get_weather', description: 'Get weather', parameters: {} } },
+          { type: 'computer_use_preview', display_width: 1920, display_height: 1080 },
+        ],
+      })
+      const tools = result.body.tools as Array<Record<string, unknown>>
+      assert.strictEqual(tools.length, 2)
+      // function tool preserved
+      assert.strictEqual(tools[0].name, 'get_weather')
+      // computer tool mapped
+      assert.strictEqual(tools[1].type, 'computer_20251124')
+      assert.strictEqual(tools[1].name, 'computer')
+    })
   })
 
   describe('同协议转发 — OpenAI Responses → OpenAI Responses', () => {
@@ -233,6 +287,42 @@ describe('proxy/translation', () => {
       assert.strictEqual(fn.description, 'Get weather')
       assert.ok(fn.parameters)
       assert.deepStrictEqual(result.body.tool_choice, { type: 'function', function: { name: 'get_weather' } })
+    })
+
+    it('built-in tool: computer_20251124 → OpenAI computer_use_preview', async () => {
+      const result = await transformInboundRequest('anthropic', openaiRoute, {
+        model: 'gpt-4o',
+        messages: [{ role: 'user', content: 'control computer' }],
+        tools: [{
+          type: 'computer_20251124',
+          name: 'computer',
+          display_width_px: 1024,
+          display_height_px: 768,
+          display_number: 1,
+        }],
+      })
+      const tools = result.body.tools as Array<Record<string, unknown>>
+      assert.ok(tools, 'computer_20251124 不应被过滤')
+      assert.strictEqual(tools.length, 1)
+      assert.strictEqual(tools[0].type, 'computer_use_preview')
+    })
+
+    it('built-in tool: bash + text_editor → 被过滤（无 OpenAI 等效工具）', async () => {
+      const result = await transformInboundRequest('anthropic', openaiRoute, {
+        model: 'gpt-4o',
+        messages: [{ role: 'user', content: 'run command' }],
+        tools: [
+          { name: 'get_weather', description: 'Get weather', input_schema: { type: 'object', properties: {} } },
+          { type: 'bash_20250124', name: 'bash' },
+          { type: 'text_editor_20250728', name: 'str_replace_based_edit_tool' },
+        ],
+      })
+      const tools = result.body.tools as Array<Record<string, unknown>>
+      assert.ok(tools, 'function tool 仍然保留')
+      assert.strictEqual(tools.length, 1)
+      assert.strictEqual(tools[0].type, 'function')
+      const fn = tools[0].function as Record<string, unknown>
+      assert.strictEqual(fn.name, 'get_weather')
     })
 
     it('Anthropic assistant thinking + text 内容块 → OpenAI reasoning_content + content 字符串', async () => {

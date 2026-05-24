@@ -33,72 +33,114 @@ function truncateBody(obj: Record<string, unknown>, maxLen = 500): Record<string
 
 function convertToolsToAnthropic(tools: unknown[]): unknown[] | undefined {
   if (!Array.isArray(tools)) return undefined
-  return tools
-    .filter((t: unknown) => {
-      // Filter out non-function tools (web_search, code_interpreter, etc.) -
-      // Anthropic API only supports standard tools
-      const item = t as Record<string, unknown>
-      return item.type === 'function' || (item.name && item.input_schema)
-    })
-    .map((t: unknown) => {
+  const result: unknown[] = []
+  for (const t of tools) {
     const item = t as Record<string, unknown>
+    const type = String(item.type ?? '')
+
+    // OpenAI Responses built-in: computer_use_preview → Anthropic computer_20251124
+    if (type.startsWith('computer_use_preview')) {
+      result.push({
+        type: 'computer_20251124',
+        name: 'computer',
+        display_width_px: (item.display_width ?? item.display_width_px) as number | undefined,
+        display_height_px: (item.display_height ?? item.display_height_px) as number | undefined,
+        display_number: item.display_number as number | undefined,
+      })
+      continue
+    }
+
+    // OpenAI built-in tools with no Anthropic equivalent → skip
+    if (['web_search_preview', 'code_interpreter', 'file_search'].includes(type)) {
+      continue
+    }
+
     // OpenAI Chat format: { type: "function", function: { name, description, parameters } }
-    if (item.type === 'function' && item.function) {
+    if (type === 'function' && item.function) {
       const fn = item.function as Record<string, unknown>
-      return {
+      result.push({
         name: fn.name ?? '',
         description: (fn.description as string) || undefined,
         input_schema: fn.parameters ?? {},
-      }
+      })
+      continue
     }
+
     // OpenAI Responses flat format: { type: "function", name, description, parameters } (no "function" wrapper)
-    if (item.type === 'function' && item.name) {
-      return {
+    if (type === 'function' && item.name) {
+      result.push({
         name: item.name ?? '',
         description: (item.description as string) || undefined,
         input_schema: (item.parameters as Record<string, unknown>) ?? {},
-      }
+      })
+      continue
     }
-    // Already Anthropic format or unknown
-    return item
-  })
+
+    // Already Anthropic format: { name, input_schema }
+    if (item.name && item.input_schema) {
+      result.push(item)
+      continue
+    }
+  }
+  return result.length > 0 ? result : undefined
 }
 
 function convertToolsToOpenAI(tools: unknown[]): unknown[] | undefined {
   if (!Array.isArray(tools)) return undefined
-  return tools
-    .filter((t: unknown) => {
-      // Filter out non-function tools (web_search, code_interpreter, etc.) -
-      // Chat Completions API only supports type: "function"
-      const item = t as Record<string, unknown>
-      return item.type === 'function' || (item.name && item.input_schema)
-    })
-    .map((t: unknown) => {
+  const result: unknown[] = []
+  for (const t of tools) {
     const item = t as Record<string, unknown>
+    const type = String(item.type ?? '')
+
+    // Anthropic built-in: computer_2025* (versioned type) → OpenAI Responses computer_use_preview
+    if (type.startsWith('computer_20')) {
+      result.push({
+        type: 'computer_use_preview',
+        display_width: (item.display_width_px ?? item.display_width) as number | undefined,
+        display_height: (item.display_height_px ?? item.display_height) as number | undefined,
+        display_number: item.display_number as number | undefined,
+      })
+      continue
+    }
+
+    // Anthropic built-in tools with no OpenAI equivalent → skip
+    if (type.startsWith('bash_20') || item.name === 'bash') {
+      continue
+    }
+    if (type.startsWith('text_editor_20') || item.name === 'str_replace_based_edit_tool') {
+      continue
+    }
+
     // Anthropic format: { name, description, input_schema }
     if (item.name && item.input_schema) {
-      return {
+      result.push({
         type: 'function',
         function: {
           name: item.name,
           description: (item.description as string) || undefined,
           parameters: item.input_schema,
         },
-      }
+      })
+      continue
     }
+
     // OpenAI Responses flat format: { type: "function", name, parameters } → wrap in "function" for Chat Completions
-    if (item.type === 'function' && item.name && !item.function) {
-      return {
+    if (type === 'function' && item.name && !item.function) {
+      result.push({
         type: 'function',
         function: {
           name: item.name ?? '',
           description: (item.description as string) || undefined,
           parameters: (item.parameters as Record<string, unknown>) ?? {},
         },
-      }
+      })
+      continue
     }
-    return item
-  })
+
+    // Already Chat format or unknown
+    result.push(item)
+  }
+  return result.length > 0 ? result : undefined
 }
 
 function convertToolChoiceToAnthropic(toolChoice: unknown): unknown {
