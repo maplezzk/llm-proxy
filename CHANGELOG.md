@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.14.1](https://github.com/maplezzk/llm-proxy/compare/v0.14.0...v0.14.1) (2026-05-24)
+
+
+### Bug Fixes
+
+* stream 默认流式 + 清除 thinking 占位文案 + reasoning_signature 移入 finish chunk ([#114](https://github.com/maplezzk/llm-proxy/issues/114)) ([b1a59fd](https://github.com/maplezzk/llm-proxy/commit/b1a59fd8c3aceafea87d94bfb5ecdd66b50dea9a))
+
 ## [0.14.0](https://github.com/maplezzk/llm-proxy/compare/v0.13.1...v0.14.0) (2026-05-21)
 
 
