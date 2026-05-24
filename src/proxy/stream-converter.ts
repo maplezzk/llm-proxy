@@ -2,6 +2,7 @@ import type { ServerResponse } from 'node:http'
 import type { Logger } from '../log/logger.js'
 import type { CaptureBuffer } from './capture.js'
 import { createHash } from 'node:crypto'
+import { convertActionToAnthropic, convertActionToOpenAI } from './translation.js'
 
 export interface StreamUsage {
   input_tokens: number
@@ -458,6 +459,18 @@ export async function convertOpenAIResponsesStreamToAnthropic(
             type: 'content_block_start', index: currentBlockIndex,
             content_block: { type: 'tool_use', id: item.call_id, name: item.name, input: {} },
           })
+        } else if (item?.type === 'computer_call') {
+          currentBlockIndex++
+          currentBlockType = 'tool_use'
+          responsesHasToolCalls = true
+          const action = item.action as Record<string, unknown> | undefined
+          const anthropicInput = convertActionToAnthropic(action ?? {})
+          writeEvent('content_block_start', {
+            type: 'content_block_start', index: currentBlockIndex,
+            content_block: { type: 'tool_use', id: item.call_id, name: 'computer', input: anthropicInput },
+          })
+          // computer_call has no delta events — action is complete at start
+          writeEvent('content_block_stop', { type: 'content_block_stop', index: currentBlockIndex })
         }
         continue
       }
@@ -706,7 +719,16 @@ export async function convertAnthropicStreamToOpenAIResponses(
         fnCallId = (cblock.id as string) ?? ''
         fnCallName = (cblock.name as string) ?? ''
         fnCallArgsAcc = ''
-        writeRaw(`event: response.output_item.added\ndata: {"type":"response.output_item.added","output_index":${currentBlockIndex},"item":{"type":"function_call","id":"fc_${fnCallId}","call_id":"${fnCallId}","name":"${fnCallName}","arguments":""}}\n\n`)
+        if (fnCallName === 'computer') {
+          // Computer tool_use → computer_call output item (action complete at start)
+          const input = cblock.input as Record<string, unknown> | undefined
+          const action = convertActionToOpenAI(input ?? {})
+          const actionStr = JSON.stringify(action)
+          writeRaw(`event: response.output_item.added\ndata: {"type":"response.output_item.added","output_index":${currentBlockIndex},"item":{"type":"computer_call","id":"cc_${fnCallId}","call_id":"${fnCallId}","action":${actionStr},"pending_safety_checks":[],"status":"in_progress"}}\n\n`)
+        } else {
+          // Regular tool_use → function_call
+          writeRaw(`event: response.output_item.added\ndata: {"type":"response.output_item.added","output_index":${currentBlockIndex},"item":{"type":"function_call","id":"fc_${fnCallId}","call_id":"${fnCallId}","name":"${fnCallName}","arguments":""}}\n\n`)
+        }
       }
       return false
     }
@@ -742,16 +764,28 @@ export async function convertAnthropicStreamToOpenAIResponses(
       } else if (currentBlockType === 'text') {
         writeRaw(`event: response.output_text.done\ndata: {"type":"response.output_text.done","output_index":0,"content_index":0,"text":${JSON.stringify(acc.content)}}\n\n`)
       } else if (currentBlockType === 'tool_use') {
-        writeRaw(`event: response.function_call_arguments.done\ndata: {"type":"response.function_call_arguments.done","output_index":${currentBlockIndex},"arguments":${JSON.stringify(fnCallArgsAcc)}}\n\n`)
-        writeRaw(`event: response.output_item.done\ndata: {"type":"response.output_item.done","output_index":${currentBlockIndex},"item":{"type":"function_call","id":"fc_${fnCallId}","call_id":"${fnCallId}","name":"${fnCallName}","arguments":${JSON.stringify(fnCallArgsAcc)},"status":"completed"}}\n\n`)
-        respToolCallOutputs.push({
-          type: 'function_call',
-          id: `fc_${fnCallId}`,
-          call_id: fnCallId,
-          name: fnCallName,
-          arguments: fnCallArgsAcc,
-          status: 'completed',
-        })
+        if (fnCallName === 'computer') {
+          // Computer tool_use: action was already sent at output_item.added, just emit done
+          const input = {} // input not needed here since it was sent at start
+          writeRaw(`event: response.output_item.done\ndata: {"type":"response.output_item.done","output_index":${currentBlockIndex},"item":{"type":"computer_call","id":"cc_${fnCallId}","call_id":"${fnCallId}","action":{},"pending_safety_checks":[],"status":"completed"}}\n\n`)
+          respToolCallOutputs.push({
+            type: 'computer_call',
+            id: `cc_${fnCallId}`,
+            call_id: fnCallId,
+            status: 'completed',
+          })
+        } else {
+          writeRaw(`event: response.function_call_arguments.done\ndata: {"type":"response.function_call_arguments.done","output_index":${currentBlockIndex},"arguments":${JSON.stringify(fnCallArgsAcc)}}\n\n`)
+          writeRaw(`event: response.output_item.done\ndata: {"type":"response.output_item.done","output_index":${currentBlockIndex},"item":{"type":"function_call","id":"fc_${fnCallId}","call_id":"${fnCallId}","name":"${fnCallName}","arguments":${JSON.stringify(fnCallArgsAcc)},"status":"completed"}}\n\n`)
+          respToolCallOutputs.push({
+            type: 'function_call',
+            id: `fc_${fnCallId}`,
+            call_id: fnCallId,
+            name: fnCallName,
+            arguments: fnCallArgsAcc,
+            status: 'completed',
+          })
+        }
       }
       return false
     }
@@ -1145,6 +1179,15 @@ export async function convertOpenAIResponsesStreamToOpenAI(
             firstFnCallOutputIndex = (parsed?.output_index as number) ?? 1
           }
           write({ choices: [{ delta: { tool_calls: [{ index: currentFnCallIndex, id: item?.call_id ?? item?.id, type: 'function', function: { name: item?.name ?? '', arguments: (item?.arguments as string) ?? '' } }] }, index: 0 }] })
+        } else if (item?.type === 'computer_call') {
+          // Computer call → Chat tool_calls (lossy: serialize action as arguments)
+          const action = item.action as Record<string, unknown> | undefined
+          currentFnCallIndex = ((parsed?.output_index as number) ?? 1) - 1
+          if (!hasFunctionCalls) {
+            hasFunctionCalls = true
+            firstFnCallOutputIndex = (parsed?.output_index as number) ?? 1
+          }
+          write({ choices: [{ delta: { tool_calls: [{ index: currentFnCallIndex, id: item?.call_id ?? item?.id, type: 'function', function: { name: 'computer', arguments: JSON.stringify(action ?? {}) } }] }, index: 0 }] })
         }
         continue
       }

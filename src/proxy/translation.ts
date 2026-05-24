@@ -997,7 +997,7 @@ function injectThinkingConfig(
 // --- Action mapping helpers (Computer Use) ---
 
 /** OpenAI ComputerAction → Anthropic tool_use input */
-function convertActionToAnthropic(action: Record<string, unknown>): Record<string, unknown> {
+export function convertActionToAnthropic(action: Record<string, unknown>): Record<string, unknown> {
   const type = action.type as string
   const result: Record<string, unknown> = { action: type }
   switch (type) {
@@ -1037,7 +1037,7 @@ function convertActionToAnthropic(action: Record<string, unknown>): Record<strin
 }
 
 /** Anthropic tool_use input → OpenAI ComputerAction */
-function convertActionToOpenAI(input: Record<string, unknown>): Record<string, unknown> {
+export function convertActionToOpenAI(input: Record<string, unknown>): Record<string, unknown> {
   const action = input.action as string
   const coord = input.coordinate as [number, number] | undefined
   const result: Record<string, unknown> = {}
