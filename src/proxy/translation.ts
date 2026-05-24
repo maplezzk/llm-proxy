@@ -482,7 +482,7 @@ function buildAnthropicFromOpenAI(params: FullParams): Record<string, unknown> {
   }
   if (params.system) body.system = params.system
   if (params.temperature !== undefined) body.temperature = params.temperature
-  if (params.stream) body.stream = true
+  if (params.stream !== undefined) body.stream = params.stream
   if (params.top_p !== undefined) body.top_p = params.top_p
   if (params.stop) body.stop_sequences = params.stop
   if (params.tools) body.tools = convertToolsToAnthropic(params.tools)
@@ -584,7 +584,7 @@ function buildOpenAIFromAnthropic(params: FullParams): Record<string, unknown> {
   }
   if (params.max_tokens !== undefined) body.max_tokens = params.max_tokens
   if (params.temperature !== undefined) body.temperature = params.temperature
-  if (params.stream) body.stream = true
+  if (params.stream !== undefined) body.stream = params.stream
   if (params.top_p !== undefined) body.top_p = params.top_p
   if (params.stop) body.stop = params.stop
   if (params.tools) body.tools = convertToolsToOpenAI(params.tools)
@@ -629,7 +629,7 @@ function buildAnthropicFromOpenAIResponses(params: FullParams): Record<string, u
   }
   if (params.system) body.system = params.system
   if (params.temperature !== undefined) body.temperature = params.temperature
-  if (params.stream) body.stream = true
+  if (params.stream !== undefined) body.stream = params.stream
   if (params.top_p !== undefined) body.top_p = params.top_p
   if (params.stop) body.stop_sequences = params.stop
   if (params.tools) body.tools = convertToolsToAnthropic(params.tools)
@@ -653,7 +653,7 @@ function buildOpenAIResponsesFromFullParams(params: FullParams): Record<string, 
   }
   if (params.temperature !== undefined) body.temperature = params.temperature
   if (params.max_tokens !== undefined) body.max_output_tokens = params.max_tokens
-  if (params.stream) body.stream = true
+  if (params.stream !== undefined) body.stream = params.stream
   if (params.top_p !== undefined) body.top_p = params.top_p
   if (params.stop) body.stop = params.stop
   if (params.tools) body.tools = convertToolsToOpenAI(params.tools)
