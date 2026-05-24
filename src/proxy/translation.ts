@@ -279,6 +279,21 @@ function convertResponsesInputToMessages(input: unknown[]): unknown[] {
         tool_call_id: it.call_id,
         content: it.output ?? '',
       })
+    } else if (it.type === 'computer_call_output') {
+      // { type: "computer_call_output", call_id, output: { type: "computer_screenshot", image_url } }
+      const output = it.output as Record<string, unknown> | undefined
+      const imageUrl = output?.image_url as string | undefined
+      const fileId = output?.file_id as string | undefined
+      const content = imageUrl
+        ? [{ type: 'image', source: { type: 'url', url: imageUrl } }]
+        : fileId
+          ? [{ type: 'text', text: '[screenshot from file_id]' }]
+          : ''
+      messages.push({
+        role: 'tool',
+        tool_call_id: it.call_id,
+        content,
+      })
     } else if (it.type === 'item_reference') {
       // Skip item references (they reference previous response items, not applicable to stateless chat)
     } else {
@@ -325,8 +340,69 @@ function convertMessagesToResponsesInput(messages: unknown[]): unknown[] {
       // system is handled via instructions field, but if it appears in messages we include it
       input.push({ type: 'message', role: 'system', content: m.content })
     } else {
-      // user, developer, etc.
-      input.push({ type: 'message', role: m.role ?? 'user', content: m.content })
+      // Check for Anthropic tool_result blocks in user message content array
+      const content = m.content
+      if (m.role === 'user' && Array.isArray(content)) {
+        const blocks = content as Array<Record<string, unknown>>
+        const toolResults = blocks.filter((b) => b.type === 'tool_result')
+        const otherBlocks = blocks.filter((b) => b.type !== 'tool_result')
+
+        // Emit computer_call_output for tool_results with image content
+        for (const tr of toolResults) {
+          const trContent = tr.content
+          let imageUrl: string | undefined
+          let fileId: string | undefined
+          if (Array.isArray(trContent)) {
+            const imgBlock = (trContent as Array<Record<string, unknown>>).find(
+              (b) => b.type === 'image'
+            )
+            if (imgBlock) {
+              const src = imgBlock.source as Record<string, unknown> | undefined
+              if (src?.type === 'url') {
+                imageUrl = src.url as string
+              } else {
+                fileId = imgBlock.file_id as string | undefined
+              }
+            }
+          }
+          if (imageUrl) {
+            input.push({
+              type: 'computer_call_output',
+              call_id: tr.tool_use_id as string,
+              output: { type: 'computer_screenshot', image_url: imageUrl },
+            })
+          } else if (fileId) {
+            input.push({
+              type: 'computer_call_output',
+              call_id: tr.tool_use_id as string,
+              output: { type: 'computer_screenshot', file_id: fileId },
+            })
+          } else {
+            // tool_result without image → function_call_output
+            input.push({
+              type: 'function_call_output',
+              call_id: tr.tool_use_id as string,
+              output: typeof trContent === 'string' ? trContent : JSON.stringify(trContent),
+            })
+          }
+        }
+
+        // Emit remaining non-tool_result blocks as message items
+        if (otherBlocks.length > 0) {
+          const textBlocks = otherBlocks.filter((b) => b.type === 'text' || b.type === 'input_text')
+          const text = textBlocks.map((b) => b.text ?? '').join('')
+          if (text || otherBlocks.length !== textBlocks.length) {
+            input.push({
+              type: 'message',
+              role: m.role ?? 'user',
+              content: otherBlocks,
+            })
+          }
+        }
+      } else {
+        // user, developer, etc. (non-Anthropic format)
+        input.push({ type: 'message', role: m.role ?? 'user', content: m.content })
+      }
     }
   }
   return input
@@ -430,7 +506,9 @@ function convertMessagesToAnthropic(messages: unknown[]): unknown[] {
         toolResults.push({
           type: 'tool_result',
           tool_use_id: cur.tool_call_id,
-          content: typeof cur.content === 'string' ? cur.content : JSON.stringify(cur.content),
+          content: typeof cur.content === 'string' || Array.isArray(cur.content)
+            ? cur.content
+            : JSON.stringify(cur.content),
         })
         i++
       }

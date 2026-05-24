@@ -204,6 +204,35 @@ describe('proxy/translation', () => {
       assert.strictEqual(tools[1].type, 'computer_20251124')
       assert.strictEqual(tools[1].name, 'computer')
     })
+
+    it('computer_call_output input → Anthropic tool_result with image', async () => {
+      const result = await transformInboundRequest('openai-responses', anthropicRoute, {
+        model: 'claude-sonnet',
+        input: [
+          { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'what do you see?' }] },
+          {
+            type: 'computer_call_output',
+            call_id: 'call_123',
+            output: { type: 'computer_screenshot', image_url: 'https://example.com/screen.png' },
+          },
+        ],
+        tools: [{ type: 'computer_use_preview' }],
+      })
+      const msgs = result.body.messages as Array<Record<string, unknown>>
+      // First message: user text
+      assert.strictEqual(msgs[0].role, 'user')
+      assert.strictEqual(msgs[0].content, 'what do you see?')
+      // Second message: tool_result with image (tool role → combined into user message with tool_results)
+      assert.strictEqual(msgs[1].role, 'user')
+      const content = msgs[1].content as Array<Record<string, unknown>>
+      assert.strictEqual(content[0].type, 'tool_result')
+      assert.strictEqual(content[0].tool_use_id, 'call_123')
+      const trContent = content[0].content as Array<Record<string, unknown>>
+      assert.strictEqual(trContent[0].type, 'image')
+      const source = trContent[0].source as Record<string, unknown>
+      assert.strictEqual(source.type, 'url')
+      assert.strictEqual(source.url, 'https://example.com/screen.png')
+    })
   })
 
   describe('同协议转发 — OpenAI Responses → OpenAI Responses', () => {
@@ -232,6 +261,54 @@ describe('proxy/translation', () => {
       assert.strictEqual(result.body.temperature, 0.5)
       assert.strictEqual(result.body.stream, true)
       assert.strictEqual(result.headers['Authorization'], 'Bearer sk-resp-1')
+    })
+  })
+
+  describe('跨协议翻译 — Anthropic → OpenAI Responses', () => {
+    const responsesRoute = {
+      providerName: 'responses-main',
+      providerType: 'openai-responses' as const,
+      apiKey: 'sk-resp-1',
+      apiBase: 'https://api.openai.com',
+      modelId: 'gpt-4o',
+    }
+
+    it('user message 带 tool_result（含 image）→ computer_call_output', async () => {
+      const result = await transformInboundRequest('anthropic', responsesRoute, {
+        model: 'claude-sonnet',
+        messages: [
+          { role: 'user', content: 'what do you see?' },
+          {
+            role: 'assistant',
+            content: [
+              { type: 'text', text: 'Let me look' },
+              { type: 'tool_use', id: 'toolu_1', name: 'computer', input: { action: 'screenshot' } },
+            ],
+          },
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'tool_result',
+                tool_use_id: 'toolu_1',
+                content: [
+                  { type: 'text', text: 'Screenshot taken' },
+                  { type: 'image', source: { type: 'url', url: 'https://example.com/desktop.png' } },
+                ],
+              },
+            ],
+          },
+        ],
+      })
+      const input = result.body.input as Array<Record<string, unknown>>
+      assert.ok(input, 'input should exist')
+      // Find computer_call_output items
+      const cco = input.filter((item) => item.type === 'computer_call_output')
+      assert.strictEqual(cco.length, 1, '应有 1 个 computer_call_output')
+      assert.strictEqual(cco[0].call_id, 'toolu_1')
+      const output = cco[0].output as Record<string, unknown>
+      assert.strictEqual(output.type, 'computer_screenshot')
+      assert.strictEqual(output.image_url, 'https://example.com/desktop.png')
     })
   })
 
