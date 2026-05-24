@@ -142,7 +142,11 @@ export async function convertAnthropicStreamToOpenAI(
         if (stopReason) {
           const finishMap: Record<string, string> = { end_turn: 'stop', max_tokens: 'length', tool_use: 'tool_calls' }
           const finish = finishMap[stopReason] ?? stopReason
-          const chunk: Record<string, unknown> = { choices: [{ delta: {}, finish_reason: finish, index: 0 }] }
+          const delta: Record<string, unknown> = {}
+          if (acc.thinkingSignature) {
+            delta.reasoning_signature = acc.thinkingSignature
+          }
+          const chunk: Record<string, unknown> = { choices: [{ delta, finish_reason: finish, index: 0 }] }
           if (Object.keys(anthropicUsage).length > 0) {
             // Anthropic input_tokens = 计费 token（不含缓存命中），
             // OpenAI prompt_tokens = 总输入 token（含缓存命中）
@@ -178,9 +182,6 @@ export async function convertAnthropicStreamToOpenAI(
     }
   }
 
-  if (acc.thinkingSignature) {
-    write({ choices: [{ delta: { reasoning_signature: acc.thinkingSignature }, index: 0 }] })
-  }
   res.write('data: [DONE]\n\n')
   res.end()
 

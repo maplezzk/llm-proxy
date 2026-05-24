@@ -135,7 +135,7 @@ describe('adapter/handlers', { timeout: 10000 }, () => {
       const resp = await fetch(`http://127.0.0.1:${PORT + 2}/cli-tool/v1/messages`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model: 'sonnet', messages: [{ role: 'user', content: 'hi' }] }),
+        body: JSON.stringify({ model: 'sonnet', messages: [{ role: 'user', content: 'hi' }], stream: false }),
       })
       assert.strictEqual(resp.status, 200)
       const data = await resp.json()

@@ -482,7 +482,7 @@ function buildAnthropicFromOpenAI(params: FullParams): Record<string, unknown> {
   }
   if (params.system) body.system = params.system
   if (params.temperature !== undefined) body.temperature = params.temperature
-  if (params.stream) body.stream = true
+  if (params.stream !== undefined) body.stream = params.stream
   if (params.top_p !== undefined) body.top_p = params.top_p
   if (params.stop) body.stop_sequences = params.stop
   if (params.tools) body.tools = convertToolsToAnthropic(params.tools)
@@ -584,7 +584,7 @@ function buildOpenAIFromAnthropic(params: FullParams): Record<string, unknown> {
   }
   if (params.max_tokens !== undefined) body.max_tokens = params.max_tokens
   if (params.temperature !== undefined) body.temperature = params.temperature
-  if (params.stream) body.stream = true
+  if (params.stream !== undefined) body.stream = params.stream
   if (params.top_p !== undefined) body.top_p = params.top_p
   if (params.stop) body.stop = params.stop
   if (params.tools) body.tools = convertToolsToOpenAI(params.tools)
@@ -629,7 +629,7 @@ function buildAnthropicFromOpenAIResponses(params: FullParams): Record<string, u
   }
   if (params.system) body.system = params.system
   if (params.temperature !== undefined) body.temperature = params.temperature
-  if (params.stream) body.stream = true
+  if (params.stream !== undefined) body.stream = params.stream
   if (params.top_p !== undefined) body.top_p = params.top_p
   if (params.stop) body.stop_sequences = params.stop
   if (params.tools) body.tools = convertToolsToAnthropic(params.tools)
@@ -653,7 +653,7 @@ function buildOpenAIResponsesFromFullParams(params: FullParams): Record<string, 
   }
   if (params.temperature !== undefined) body.temperature = params.temperature
   if (params.max_tokens !== undefined) body.max_output_tokens = params.max_tokens
-  if (params.stream) body.stream = true
+  if (params.stream !== undefined) body.stream = params.stream
   if (params.top_p !== undefined) body.top_p = params.top_p
   if (params.stop) body.stop = params.stop
   if (params.tools) body.tools = convertToolsToOpenAI(params.tools)
@@ -699,9 +699,9 @@ export async function transformInboundRequest(
 
   if (sameProtocol) {
     const upstreamBody: Record<string, unknown> = { ...body, model: route.modelId }
-    // 客户端没传 stream 时默认非流式，避免上游默认返回 SSE
+    // 客户端没传 stream 时默认流式
     if (upstreamBody.stream === undefined) {
-      upstreamBody.stream = false
+      upstreamBody.stream = true
     }
     // max_tokens: 0 → 不传（让上游用默认值）, 应用路由级默认值
     sanitizeMaxTokens(upstreamBody, route)
@@ -748,9 +748,9 @@ export async function transformInboundRequest(
   sanitizeMaxTokens(upstreamBody, route)
   // 注入 thinking 配置到转换后的请求体
   injectThinkingConfig(upstreamBody, route)
-  // 客户端没传 stream 时默认非流式
+  // 客户端没传 stream 时默认流式
   if (upstreamBody.stream === undefined) {
-    upstreamBody.stream = false
+    upstreamBody.stream = true
   }
   // thinking 模式检测：配置开启了 或 消息中已有 thinking 块，都需要补全
   if (route.providerType === 'anthropic') {
@@ -771,22 +771,6 @@ export async function transformInboundRequest(
   }, 'debug')
 
   return { url, headers, body: upstreamBody, crossProtocol: true }
-}
-
-/**
- * 根据 content 块生成描述性的占位 thinking 文本。
- */
-function generatePlaceholderThinking(content: Array<Record<string, unknown>>): string {
-  const toolUses = content.filter((c) => c.type === 'tool_use')
-  if (toolUses.length > 0) {
-    const names = toolUses.map((c) => c.name as string).filter(Boolean)
-    const uniqueNames = [...new Set(names)]
-    if (uniqueNames.length === 1) {
-      return `让我调用 ${uniqueNames[0]} 工具`
-    }
-    return `让我调用 ${uniqueNames.join('、')} 等多个工具`
-  }
-  return '让我思考一下'
 }
 
 /**
@@ -816,10 +800,8 @@ function ensureThinkingBlocks(messages: Array<Record<string, unknown>>): void {
     if (msg.role !== 'assistant') continue
     const content = msg.content
     if (!Array.isArray(content)) continue
-    // 如果第一个 block 不是 thinking，在前面插入占位 thinking
     if (content.length === 0 || content[0].type !== 'thinking') {
-      const placeholder = generatePlaceholderThinking(content)
-      content.unshift({ type: 'thinking', thinking: placeholder, signature: makeSignature(placeholder) })
+      content.unshift({ type: 'thinking', thinking: '', signature: '' })
     }
   }
 }

@@ -122,8 +122,14 @@ describe('proxy/stream-converter', () => {
       const output = chunks.join('')
       // Verify reasoning_content is emitted
       assert.ok(output.includes('"reasoning_content":"Let me analyze"'), 'thinking → reasoning_content')
-      // Verify reasoning_signature is emitted at end
+      // Verify reasoning_signature is emitted
       assert.ok(output.includes('"reasoning_signature":"sig_abc"'), 'signature → reasoning_signature')
+      // reasoning_signature 应在 finish_reason chunk 的 delta 中，而非独立 chunk
+      const finishIdx = output.indexOf('"finish_reason":"stop"')
+      assert.ok(finishIdx > -1, '应有 finish_reason')
+      // 找到包含 finish_reason 的 SSE data 行
+      const finishLine = output.slice(Math.max(0, finishIdx - 200), finishIdx + 100)
+      assert.ok(finishLine.includes('"reasoning_signature":"sig_abc"'), 'reasoning_signature 应在 finish_reason 同一个 chunk 的 delta 中')
       // Verify text content still works
       assert.ok(output.includes('"content":"Answer"'), 'text content preserved')
       assert.ok(output.includes('[DONE]'), '应包含 [DONE]')

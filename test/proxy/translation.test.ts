@@ -755,7 +755,7 @@ describe('proxy/response-conversion', () => {
       const asst3 = msgs[6] as Record<string, unknown>
       const c3 = asst3.content as Array<Record<string, unknown>>
       assert.strictEqual(c3[0].type, 'thinking', '首块应为 thinking')
-      assert.strictEqual(c3[0].thinking, '让我调用 bash 工具', '应有描述性占位')
+      assert.strictEqual(c3[0].thinking, '', '占位 thinking 应为空字符串')
       assert.strictEqual(c3[1].type, 'tool_use')
     })
 
@@ -815,7 +815,7 @@ describe('proxy/response-conversion', () => {
       const asst2 = msgs.filter((m: Record<string, unknown>) => m.role === 'assistant')[1]
       const content2 = asst2.content as Array<Record<string, unknown>>
       assert.strictEqual(content2[0].type, 'thinking', '工具调用 assistant 首块应为 thinking')
-      assert.strictEqual(content2[0].thinking, '让我调用 bash 工具', '应有描述性占位')
+      assert.strictEqual(content2[0].thinking, '', '占位 thinking 应为空字符串')
       assert.strictEqual(content2[1].type, 'tool_use', '第二块为 tool_use')
     })
 
@@ -861,7 +861,7 @@ describe('proxy/response-conversion', () => {
   })
 
   describe('stream 默认值 fallback', () => {
-    it('同协议 Anthropic→Anthropic: 未传 stream → 设为 false', async () => {
+    it('同协议 Anthropic→Anthropic: 未传 stream → 设为 true', async () => {
       const result = await transformInboundRequest('anthropic', anthropicRoute, {
         model: 'claude-sonnet-4',
         messages: [{ role: 'user', content: 'hi' }],
@@ -870,8 +870,8 @@ describe('proxy/response-conversion', () => {
       assert.strictEqual(result.crossProtocol, false)
       assert.strictEqual(
         (result.body as Record<string, unknown>).stream,
-        false,
-        '未传 stream 时应默认 false',
+        true,
+        '未传 stream 时应默认 true',
       )
     })
 
@@ -901,7 +901,7 @@ describe('proxy/response-conversion', () => {
       )
     })
 
-    it('跨协议 OpenAI Chat→Anthropic: 未传 stream → 设为 false', async () => {
+    it('跨协议 OpenAI Chat→Anthropic: 未传 stream → 设为 true', async () => {
       const result = await transformInboundRequest('openai', anthropicRoute, {
         model: 'claude-sonnet-4',
         messages: [{ role: 'user', content: 'hi' }],
@@ -910,8 +910,8 @@ describe('proxy/response-conversion', () => {
       assert.strictEqual(result.crossProtocol, true)
       assert.strictEqual(
         (result.body as Record<string, unknown>).stream,
-        false,
-        '跨协议未传 stream 时应默认 false',
+        true,
+        '跨协议未传 stream 时应默认 true',
       )
     })
 
@@ -928,7 +928,7 @@ describe('proxy/response-conversion', () => {
       )
     })
 
-    it('跨协议 Anthropic→OpenAI: 未传 stream → 设为 false', async () => {
+    it('跨协议 Anthropic→OpenAI: 未传 stream → 设为 true', async () => {
       const result = await transformInboundRequest('anthropic', openaiRoute, {
         model: 'claude-sonnet-4',
         messages: [{ role: 'user', content: 'hi' }],
@@ -937,8 +937,8 @@ describe('proxy/response-conversion', () => {
       assert.strictEqual(result.crossProtocol, true)
       assert.strictEqual(
         (result.body as Record<string, unknown>).stream,
-        false,
-        '跨协议未传 stream 时应默认 false',
+        true,
+        '跨协议未传 stream 时应默认 true',
       )
     })
 
