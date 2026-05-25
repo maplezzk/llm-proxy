@@ -644,6 +644,7 @@ export async function convertAnthropicStreamToOpenAIResponses(
   let fnCallId = ''
   let fnCallName = ''
   let fnCallArgsAcc = ''
+  let fnCallComputerAction: Record<string, unknown> | null = null
   let currentRespId = ''
   let currentMsgId = ''
   let completed = false
@@ -723,6 +724,7 @@ export async function convertAnthropicStreamToOpenAIResponses(
           // Computer tool_use → computer_call output item (action complete at start)
           const input = cblock.input as Record<string, unknown> | undefined
           const action = convertActionToOpenAI(input ?? {})
+          fnCallComputerAction = action  // preserve for output_item.done
           const actionStr = JSON.stringify(action)
           writeRaw(`event: response.output_item.added\ndata: {"type":"response.output_item.added","output_index":${currentBlockIndex},"item":{"type":"computer_call","id":"cc_${fnCallId}","call_id":"${fnCallId}","action":${actionStr},"pending_safety_checks":[],"status":"in_progress"}}\n\n`)
         } else {
@@ -765,13 +767,15 @@ export async function convertAnthropicStreamToOpenAIResponses(
         writeRaw(`event: response.output_text.done\ndata: {"type":"response.output_text.done","output_index":0,"content_index":0,"text":${JSON.stringify(acc.content)}}\n\n`)
       } else if (currentBlockType === 'tool_use') {
         if (fnCallName === 'computer') {
-          // Computer tool_use: action was already sent at output_item.added, just emit done
-          const input = {} // input not needed here since it was sent at start
-          writeRaw(`event: response.output_item.done\ndata: {"type":"response.output_item.done","output_index":${currentBlockIndex},"item":{"type":"computer_call","id":"cc_${fnCallId}","call_id":"${fnCallId}","action":{},"pending_safety_checks":[],"status":"completed"}}\n\n`)
+          const action = fnCallComputerAction ?? {}
+          const actionStr = JSON.stringify(action)
+          writeRaw(`event: response.output_item.done\ndata: {"type":"response.output_item.done","output_index":${currentBlockIndex},"item":{"type":"computer_call","id":"cc_${fnCallId}","call_id":"${fnCallId}","action":${actionStr},"pending_safety_checks":[],"status":"completed"}}\n\n`)
           respToolCallOutputs.push({
             type: 'computer_call',
             id: `cc_${fnCallId}`,
             call_id: fnCallId,
+            action: action,
+            pending_safety_checks: [],
             status: 'completed',
           })
         } else {
