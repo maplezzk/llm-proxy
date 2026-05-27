@@ -51,7 +51,12 @@ function convertToolsToAnthropic(tools: unknown[]): unknown[] | undefined {
     }
 
     // OpenAI built-in tools with no Anthropic equivalent → skip
-    if (['web_search_preview', 'code_interpreter', 'file_search'].includes(type)) {
+    if (['web_search_preview', 'web_search', 'code_interpreter', 'file_search'].includes(type)) {
+      continue
+    }
+
+    // OpenAI namespace tools (grouped sub-tools) → skip (Anthropic has no equivalent)
+    if (type === 'namespace') {
       continue
     }
 
@@ -276,12 +281,35 @@ function convertResponsesInputToMessages(input: unknown[]): unknown[] {
           }],
         })
       }
+    } else if (it.type === 'reasoning') {
+      // { type: "reasoning", summary, content } → skip (not a message type in Chat format)
+      continue
     } else if (it.type === 'function_call_output') {
-      // { type: "function_call_output", call_id, output }
+      // { type: "function_call_output", call_id, output: string | array of content blocks }
+      let outputContent = it.output ?? ''
+      // Normalize Responses content blocks to Anthropic-compatible format
+      if (Array.isArray(outputContent)) {
+        outputContent = (outputContent as Array<Record<string, unknown>>).map((block) => {
+          if (block.type === 'input_text') {
+            return { type: 'text', text: block.text }
+          }
+          if (block.type === 'output_text') {
+            return { type: 'text', text: block.text }
+          }
+          if (block.type === 'input_image') {
+            const imageUrl = block.image_url as string | undefined
+            if (imageUrl) {
+              return { type: 'image', source: { type: 'url', url: imageUrl } }
+            }
+            return { type: 'text', text: '[image]' }
+          }
+          return block
+        })
+      }
       messages.push({
         role: 'tool',
         tool_call_id: it.call_id,
-        content: it.output ?? '',
+        content: outputContent,
       })
     } else if (it.type === 'computer_call_output') {
       // { type: "computer_call_output", call_id, output: { type: "computer_screenshot", image_url } }
