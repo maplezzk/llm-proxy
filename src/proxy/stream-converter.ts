@@ -721,7 +721,11 @@ export async function convertAnthropicStreamToOpenAIResponses(
         fnCallId = (cblock.id as string) ?? ''
         fnCallName = (cblock.name as string) ?? ''
         fnCallArgsAcc = ''
-        fnCallNamespace = (cblock.namespace as string) ?? ''
+        // Decode namespace from function name (encoded as "namespace:name")
+        const colonIdx = fnCallName.indexOf(':')
+        fnCallNamespace = colonIdx > 0 ? fnCallName.substring(0, colonIdx) : ''
+        if (fnCallNamespace) fnCallName = fnCallName.substring(colonIdx + 1)
+
         if (fnCallName === 'computer') {
           // Computer tool_use → computer_call output item (action complete at start)
           const input = cblock.input as Record<string, unknown> | undefined

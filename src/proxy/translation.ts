@@ -259,15 +259,18 @@ function convertResponsesInputToMessages(input: unknown[]): unknown[] {
       messages.push({ role: it.role, content: normalizedContent })
     } else if (it.type === 'function_call') {
       // { type: "function_call", call_id, name, arguments, namespace? }
+      // Encode namespace in function name so it survives Anthropic round-trip
+      let fnName = it.name as string ?? ''
+      const namespace = it.namespace as string | undefined
+      if (namespace) fnName = `${namespace}:${fnName}`
+
       // 检查上一条消息是否是 assistant 消息，如果是则合并 tool_calls，避免两条连续 assistant 消息
       const lastMsg = messages.length > 0 ? messages[messages.length - 1] as Record<string, unknown> : null
       const tcEntry: Record<string, unknown> = {
         id: it.call_id ?? it.id,
         type: 'function',
-        function: { name: it.name ?? '', arguments: it.arguments ?? '' },
+        function: { name: fnName, arguments: it.arguments ?? '' },
       }
-      // Preserve namespace for MCP routing (Codex uses it to route to correct MCP server)
-      if (it.namespace) tcEntry.namespace = it.namespace
 
       if (lastMsg && lastMsg.role === 'assistant') {
         if (!lastMsg.tool_calls) lastMsg.tool_calls = []
@@ -579,15 +582,12 @@ function convertMessagesToAnthropic(messages: unknown[]): unknown[] {
         const fn = tc.function as Record<string, unknown> | undefined
         let input: unknown = {}
         try { input = fn?.arguments ? JSON.parse(fn.arguments as string) : {} } catch { input = {} }
-        const toolUse: Record<string, unknown> = {
+        content.push({
           type: 'tool_use',
           id: tc.id as string,
           name: fn?.name as string ?? '',
           input,
-        }
-        // Preserve namespace for MCP routing (used when converting back to Responses format)
-        if (tc.namespace) toolUse.namespace = tc.namespace
-        content.push(toolUse)
+        })
       }
       result.push({ role: 'assistant', content })
       i++
@@ -1252,15 +1252,22 @@ export function convertAnthropicResponseToOpenAIResponses(anthropicBody: Record<
           })
         } else {
           // Regular tool_use → function_call
+          // Decode namespace from function name (encoded as "namespace:name")
+          let fnName = name
+          let fnNamespace: string | undefined
+          const colonIdx = name.indexOf(':')
+          if (colonIdx > 0) {
+            fnNamespace = name.substring(0, colonIdx)
+            fnName = name.substring(colonIdx + 1)
+          }
           const fcOut: Record<string, unknown> = {
             type: 'function_call',
             id: `fc_${Date.now().toString(36)}_${(block.id as string) ?? ''}`,
             call_id: block.id as string,
-            name,
+            name: fnName,
             arguments: JSON.stringify(block.input ?? {}),
           }
-          // Preserve namespace for MCP routing (Codex needs it)
-          if (block.namespace) fcOut.namespace = block.namespace
+          if (fnNamespace) fcOut.namespace = fnNamespace
           output.push(fcOut)
         }
       }
