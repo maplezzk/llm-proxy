@@ -137,8 +137,12 @@ function convertToolsToOpenAI(tools: unknown[]): unknown[] | undefined {
       continue
     }
 
-    // Already Chat format or unknown
-    result.push(item)
+    // Already valid Chat format (type: "function" with nested "function") → keep
+    if (type === 'function' && item.function) {
+      result.push(item)
+      continue
+    }
+    // Unknown tool type → skip (OpenAI Chat only accepts type: "function")
   }
   return result.length > 0 ? result : undefined
 }
