@@ -644,6 +644,7 @@ export async function convertAnthropicStreamToOpenAIResponses(
   let fnCallId = ''
   let fnCallName = ''
   let fnCallArgsAcc = ''
+  let fnCallNamespace = ''
   let fnCallComputerAction: Record<string, unknown> | null = null
   let currentRespId = ''
   let currentMsgId = ''
@@ -720,6 +721,7 @@ export async function convertAnthropicStreamToOpenAIResponses(
         fnCallId = (cblock.id as string) ?? ''
         fnCallName = (cblock.name as string) ?? ''
         fnCallArgsAcc = ''
+        fnCallNamespace = (cblock.namespace as string) ?? ''
         if (fnCallName === 'computer') {
           // Computer tool_use → computer_call output item (action complete at start)
           const input = cblock.input as Record<string, unknown> | undefined
@@ -729,7 +731,8 @@ export async function convertAnthropicStreamToOpenAIResponses(
           writeRaw(`event: response.output_item.added\ndata: {"type":"response.output_item.added","output_index":${currentBlockIndex},"item":{"type":"computer_call","id":"cc_${fnCallId}","call_id":"${fnCallId}","action":${actionStr},"pending_safety_checks":[],"status":"in_progress"}}\n\n`)
         } else {
           // Regular tool_use → function_call
-          writeRaw(`event: response.output_item.added\ndata: {"type":"response.output_item.added","output_index":${currentBlockIndex},"item":{"type":"function_call","id":"fc_${fnCallId}","call_id":"${fnCallId}","name":"${fnCallName}","arguments":""}}\n\n`)
+          const nsPart = fnCallNamespace ? `,"namespace":"${fnCallNamespace}"` : ''
+          writeRaw(`event: response.output_item.added\ndata: {"type":"response.output_item.added","output_index":${currentBlockIndex},"item":{"type":"function_call","id":"fc_${fnCallId}","call_id":"${fnCallId}","name":"${fnCallName}","arguments":""${nsPart}}}\n\n`)
         }
       }
       return false
@@ -779,16 +782,19 @@ export async function convertAnthropicStreamToOpenAIResponses(
             status: 'completed',
           })
         } else {
+          const nsPart = fnCallNamespace ? `,"namespace":"${fnCallNamespace}"` : ''
           writeRaw(`event: response.function_call_arguments.done\ndata: {"type":"response.function_call_arguments.done","output_index":${currentBlockIndex},"arguments":${JSON.stringify(fnCallArgsAcc)}}\n\n`)
-          writeRaw(`event: response.output_item.done\ndata: {"type":"response.output_item.done","output_index":${currentBlockIndex},"item":{"type":"function_call","id":"fc_${fnCallId}","call_id":"${fnCallId}","name":"${fnCallName}","arguments":${JSON.stringify(fnCallArgsAcc)},"status":"completed"}}\n\n`)
-          respToolCallOutputs.push({
+          writeRaw(`event: response.output_item.done\ndata: {"type":"response.output_item.done","output_index":${currentBlockIndex},"item":{"type":"function_call","id":"fc_${fnCallId}","call_id":"${fnCallId}","name":"${fnCallName}","arguments":${JSON.stringify(fnCallArgsAcc)},"status":"completed"${nsPart}}}\n\n`)
+          const fcOut: Record<string, unknown> = {
             type: 'function_call',
             id: `fc_${fnCallId}`,
             call_id: fnCallId,
             name: fnCallName,
             arguments: fnCallArgsAcc,
             status: 'completed',
-          })
+          }
+          if (fnCallNamespace) fcOut.namespace = fnCallNamespace
+          respToolCallOutputs.push(fcOut)
         }
       }
       return false
