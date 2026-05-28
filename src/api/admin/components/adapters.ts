@@ -17,6 +17,7 @@ export function adaptersPage() {
     editingName: null as string | null,
     showModal: false,
     form: { name: '', type: 'openai', max_tokens: '', models: [] as any[] },
+    bulkImportProvider: '',
     adapterTestModal: { visible: false, adapterName: '', selectedModelId: '', models: [] as any[], results: [] as any[], running: false },
 
     init() {
@@ -70,6 +71,40 @@ export function adaptersPage() {
 
     addMappingRow() {
       this.form.models.push({ sourceModelId: '', provider: '', targetModelId: '', thinking: {}, reasoning_effort: '' })
+    },
+
+    bulkImportAllModels() {
+      const providerName = this.bulkImportProvider
+      if (!providerName) {
+        toast(t('admin.adapters.selectProviderFirst'), 'error')
+        return
+      }
+      const provider = this.providers.find((p: any) => p.name === providerName)
+      if (!provider?.models?.length) {
+        toast(t('admin.adapters.noModelsInProvider', { provider: providerName }), 'error')
+        return
+      }
+      const existingSourceIds = new Set(this.form.models.map((m: any) => m.sourceModelId).filter(Boolean))
+      let added = 0
+      for (const model of provider.models) {
+        if (!existingSourceIds.has(model.id)) {
+          this.form.models.push({
+            sourceModelId: model.id,
+            provider: providerName,
+            targetModelId: model.id,
+            thinking: {},
+            reasoning_effort: '',
+          })
+          existingSourceIds.add(model.id)
+          added++
+        }
+      }
+      const skipped = provider.models.length - added
+      const msg = skipped > 0
+        ? `${t('admin.adapters.importedModels', { added })}${t('admin.adapters.importedModelsSkip', { skipped })}`
+        : t('admin.adapters.importedModels', { added })
+      toast(msg, 'success')
+      this.bulkImportProvider = ''
     },
 
     removeMappingRow(index: number) {
