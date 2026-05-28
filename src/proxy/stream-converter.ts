@@ -697,8 +697,10 @@ export async function convertAnthropicStreamToOpenAIResponses(
       if (msgUsage) anthropicUsage = msgUsage
       currentRespId = respId()
       currentMsgId = msgId()
-      writeRaw(`event: response.created\ndata: {"type":"response.created","response":{"id":"${currentRespId}","object":"response","status":"in_progress","output":[]}}\n\n`)
-      writeRaw(`event: response.in_progress\ndata: {"type":"response.in_progress","response":{"id":"${currentRespId}","object":"response","status":"in_progress","output":[]}}\n\n`)
+      const createdAt = Math.floor(Date.now() / 1000)
+      const model = message?.model ?? ''
+      writeRaw(`event: response.created\ndata: {"type":"response.created","response":{"id":"${currentRespId}","object":"response","created_at":${createdAt},"model":"${model}","status":"in_progress","output":[]}}\n\n`)
+      writeRaw(`event: response.in_progress\ndata: {"type":"response.in_progress","response":{"id":"${currentRespId}","object":"response","created_at":${createdAt},"model":"${model}","status":"in_progress","output":[]}}\n\n`)
       writeRaw(`event: response.output_item.added\ndata: {"type":"response.output_item.added","output_index":0,"item":{"type":"message","id":"${currentMsgId}","status":"in_progress","role":"assistant","content":[]}}\n\n`)
       writeRaw(`event: response.content_part.added\ndata: {"type":"response.content_part.added","output_index":0,"content_index":0,"part":{"type":"output_text","text":"","annotations":[]}}\n\n`)
       currentBlockIndex = 0
@@ -824,7 +826,7 @@ export async function convertAnthropicStreamToOpenAIResponses(
       for (const fc of respToolCallOutputs) {
         output.push(fc)
       }
-      const respData: Record<string, unknown> = { id: currentRespId, object: 'response', status: 'completed', output }
+      const respData: Record<string, unknown> = { id: currentRespId, object: 'response', created_at: Math.floor(Date.now() / 1000), status: 'completed', output }
       // Anthropic thinking → 顶层 reasoning.summary
       if (thinkingText) {
         respData.reasoning = { summary: [{ type: 'summary_text', text: thinkingText, index: 0 }] }
@@ -893,7 +895,7 @@ export async function convertAnthropicStreamToOpenAIResponses(
       for (const fc of respToolCallOutputs) {
         output.push(fc)
       }
-      const respData: Record<string, unknown> = { id: currentRespId, object: 'response', status: 'completed', output }
+      const respData: Record<string, unknown> = { id: currentRespId, object: 'response', created_at: Math.floor(Date.now() / 1000), status: 'completed', output }
       // Anthropic thinking → 顶层 reasoning.summary
       if (thinkingText) {
         respData.reasoning = { summary: [{ type: 'summary_text', text: thinkingText, index: 0 }] }
@@ -940,6 +942,7 @@ export async function convertOpenAIStreamToOpenAIResponses(
   let fnCallName = ''
   let fnCallArgsAcc = ''        // accumulated args from deltas
   let outputItems: Record<string, unknown>[] = [] // accumulated for response.completed
+  let upstreamModel = ''         // store upstream model for response events
 
   const writeRaw = (data: string): void => {
     outLines.push(`[${ts()}] ${data}`)
@@ -971,8 +974,15 @@ export async function convertOpenAIStreamToOpenAIResponses(
         if (messageStarted && currentBlockType === 'text') {
           writeRaw(`event: response.output_text.done\ndata: {"type":"response.output_text.done","output_index":0,"content_index":0,"text":${JSON.stringify(textContent)}}\n\n`)
         }
-        // Emit completed with top-level reasoning
-        const respData: Record<string, unknown> = { id: currentRespId, object: 'response', status: 'completed', output: outputItems.length > 0 ? outputItems : [] }
+        // Emit completed with model, created_at, top-level reasoning
+        const respData: Record<string, unknown> = {
+          id: currentRespId,
+          object: 'response',
+          created_at: Math.floor(Date.now() / 1000),
+          status: 'completed',
+          model: upstreamModel,
+          output: outputItems.length > 0 ? outputItems : [],
+        }
         // Chat reasoning_content → 顶层 reasoning.summary
         if (thinkingText) {
           respData.reasoning = { summary: [{ type: 'summary_text', text: thinkingText, index: 0 }] }
@@ -1023,8 +1033,11 @@ export async function convertOpenAIStreamToOpenAIResponses(
         messageStarted = true
         currentRespId = respId()
         currentMsgId = msgId()
-        writeRaw(`event: response.created\ndata: {"type":"response.created","response":{"id":"${currentRespId}","object":"response","status":"in_progress","output":[]}}\n\n`)
-        writeRaw(`event: response.in_progress\ndata: {"type":"response.in_progress","response":{"id":"${currentRespId}","object":"response","status":"in_progress","output":[]}}\n\n`)
+        const createdAt = Math.floor(Date.now() / 1000)
+        upstreamModel = (parsed?.model as string) ?? ''
+        const model = upstreamModel
+        writeRaw(`event: response.created\ndata: {"type":"response.created","response":{"id":"${currentRespId}","object":"response","created_at":${createdAt},"model":"${model}","status":"in_progress","output":[]}}\n\n`)
+        writeRaw(`event: response.in_progress\ndata: {"type":"response.in_progress","response":{"id":"${currentRespId}","object":"response","created_at":${createdAt},"model":"${model}","status":"in_progress","output":[]}}\n\n`)
         writeRaw(`event: response.output_item.added\ndata: {"type":"response.output_item.added","output_index":0,"item":{"type":"message","id":"${currentMsgId}","status":"in_progress","role":"assistant","content":[]}}\n\n`)
         writeRaw(`event: response.content_part.added\ndata: {"type":"response.content_part.added","output_index":0,"content_index":0,"part":{"type":"output_text","text":"","annotations":[]}}\n\n`)
         currentBlockIndex = 0
@@ -1110,7 +1123,7 @@ export async function convertOpenAIStreamToOpenAIResponses(
       outputItems.unshift({ type: 'message', id: currentMsgId, status: 'completed', role: 'assistant', content: msgContent })
     }
     writeRaw(`event: response.output_text.done\ndata: {"type":"response.output_text.done","output_index":0,"content_index":0,"text":${JSON.stringify(textContent)}}\n\n`)
-    const respData: Record<string, unknown> = { id: currentRespId, object: 'response', status: 'completed', output: outputItems.length > 0 ? outputItems : [] }
+    const respData: Record<string, unknown> = { id: currentRespId, object: 'response', created_at: Math.floor(Date.now() / 1000), status: 'completed', output: outputItems.length > 0 ? outputItems : [] }
     // Chat reasoning_content → 顶层 reasoning.summary
     if (thinkingText) {
       respData.reasoning = { summary: [{ type: 'summary_text', text: thinkingText, index: 0 }] }
