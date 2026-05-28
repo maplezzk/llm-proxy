@@ -55,8 +55,28 @@ function convertToolsToAnthropic(tools: unknown[]): unknown[] | undefined {
       continue
     }
 
-    // OpenAI namespace tools (grouped sub-tools) → skip (Anthropic has no equivalent)
+    // OpenAI namespace tools → flatten: extract child function tools with double-underscore prefix
+    // e.g. namespace "mcp__computer_use__" with child "get_app_state" → tool name "mcp__computer_use____get_app_state"
     if (type === 'namespace') {
+      const namespaceName = item.name as string ?? ''
+      const children = item.tools as unknown[] | undefined
+      if (namespaceName && children) {
+        for (const child of children) {
+          const childItem = child as Record<string, unknown>
+          if (childItem.type !== 'function') continue
+          const childName = childItem.name as string
+          if (!childName) continue
+          const flatName = `${namespaceName}__${childName}`
+          const childFn = childItem.function as Record<string, unknown> | undefined
+          const childDesc = (childFn?.description as string) ?? (childItem.description as string) ?? undefined
+          const childParams = (childFn?.parameters ?? childItem.parameters) as Record<string, unknown> ?? {}
+          result.push({
+            name: flatName,
+            description: childDesc,
+            input_schema: childParams,
+          })
+        }
+      }
       continue
     }
 
@@ -259,10 +279,13 @@ function convertResponsesInputToMessages(input: unknown[]): unknown[] {
       messages.push({ role: it.role, content: normalizedContent })
     } else if (it.type === 'function_call') {
       // { type: "function_call", call_id, name, arguments, namespace? }
-      // Encode namespace in function name so it survives Anthropic round-trip
+      // Encode namespace in function name using `__` prefix convention (CCX-compatible)
       let fnName = it.name as string ?? ''
       const namespace = it.namespace as string | undefined
-      if (namespace) fnName = `${namespace}:${fnName}`
+      if (namespace) {
+        // CCX convention: if namespace ends with __, don't add separator
+        fnName = namespace.endsWith('__') ? `${namespace}${fnName}` : `${namespace}__${fnName}`
+      }
 
       // 检查上一条消息是否是 assistant 消息，如果是则合并 tool_calls，避免两条连续 assistant 消息
       const lastMsg = messages.length > 0 ? messages[messages.length - 1] as Record<string, unknown> : null
@@ -1252,13 +1275,14 @@ export function convertAnthropicResponseToOpenAIResponses(anthropicBody: Record<
           })
         } else {
           // Regular tool_use → function_call
-          // Decode namespace from function name (encoded as "namespace:name")
+          // Decode namespace from function name (CCX convention: namespace__name)
+          // Use lastIndexOf to handle namespaces ending with __ (e.g. "mcp__computer_use__get_app_state")
           let fnName = name
           let fnNamespace: string | undefined
-          const colonIdx = name.indexOf(':')
-          if (colonIdx > 0) {
-            fnNamespace = name.substring(0, colonIdx)
-            fnName = name.substring(colonIdx + 1)
+          const sepIdx = name.lastIndexOf('__')
+          if (sepIdx > 0) {
+            fnNamespace = name.substring(0, sepIdx)
+            fnName = name.substring(sepIdx + 2)
           }
           const fcOut: Record<string, unknown> = {
             type: 'function_call',
