@@ -59,6 +59,21 @@
 "nav.logs" = "Logs";
 "nav.capture" = "Capture";
 
+// Test Panel
+"test.title" = "Test";
+"test.help" = "Open test panel";
+"test.model" = "Model";
+"test.provider" = "Provider";
+"test.apiKey" = "API Key";
+"test.apiBase" = "API Base";
+"test.type" = "Type";
+"test.send" = "Send";
+"test.result" = "Result";
+"test.latency" = "Latency: %@ms";
+"test.reachable" = "Reachable";
+"test.unreachable" = "Unreachable";
+"test.selectProvider" = "Select provider…";
+
 // Providers
 "providers.loading" = "Loading providers...";
 "providers.searchPlaceholder" = "Search providers...";
@@ -205,3 +220,10 @@
 "dashboard.hitRate" = "Hit Rate";
 "dashboard.empty" = "No data";
 "dashboard.loading" = "Loading...";
+
+// Common
+"console.empty" = "No data";
+"common.copy" = "Copy";
+"common.copied" = "Copied";
+"common.refresh" = "Refresh";
+"common.close" = "Close";

@@ -223,4 +223,15 @@ final class LogsViewModel {
         }
         return ts
     }
+
+    /// 仅提取时间部分（如 "14:30:01"）
+    static func formatTimeOnly(_ ts: String) -> String {
+        // 时间戳格式: "2026-05-28 14:30:00.123"
+        if ts.count >= 19 {
+            let start = ts.index(ts.startIndex, offsetBy: 11)
+            let end = ts.index(ts.startIndex, offsetBy: 19)
+            return String(ts[start..<end])
+        }
+        return ts
+    }
 }

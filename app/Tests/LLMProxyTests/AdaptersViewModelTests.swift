@@ -192,7 +192,7 @@ final class AdaptersViewModelTests: XCTestCase {
     func testIsTestingState() {
         XCTAssertFalse(viewModel.isTesting)
         XCTAssertNil(viewModel.testingAdapterName)
-        XCTAssertNil(viewModel.testResult)
+        XCTAssertNil(viewModel.testResults["test-adapter"])
 
         viewModel.testingAdapterName = "test-adapter"
         viewModel.isTesting = true

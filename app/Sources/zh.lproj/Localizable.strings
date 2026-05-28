@@ -59,6 +59,21 @@
 "nav.logs" = "日志";
 "nav.capture" = "抓包";
 
+// Test Panel
+"test.title" = "测试";
+"test.help" = "打开测试面板";
+"test.model" = "模型";
+"test.provider" = "供应商";
+"test.apiKey" = "API Key";
+"test.apiBase" = "API Base";
+"test.type" = "类型";
+"test.send" = "发送";
+"test.result" = "结果";
+"test.latency" = "延迟: %@ms";
+"test.reachable" = "可达";
+"test.unreachable" = "不可达";
+"test.selectProvider" = "选择供应商…";
+
 // Providers
 "providers.loading" = "正在加载供应商...";
 "providers.searchPlaceholder" = "搜索供应商...";
@@ -205,3 +220,10 @@
 "dashboard.hitRate" = "命中率";
 "dashboard.empty" = "暂无数据";
 "dashboard.loading" = "加载中...";
+
+// Common
+"console.empty" = "暂无数据";
+"common.copy" = "复制";
+"common.copied" = "已复制";
+"common.refresh" = "刷新";
+"common.close" = "关闭";

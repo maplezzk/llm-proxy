@@ -90,20 +90,6 @@ class MenuBarController: NSObject {
     func rebuildMenu() {
         let menu = NSMenu()
 
-        // 控制台入口
-        let consoleItem = NSMenuItem()
-        let consoleText = loc("console.openConsole")
-        let attrConsole = NSMutableAttributedString(string: consoleText)
-        attrConsole.addAttribute(.font, value: NSFont.systemFont(ofSize: 13, weight: .medium), range: NSRange(location: 0, length: attrConsole.length))
-        consoleItem.attributedTitle = attrConsole
-        consoleItem.target = self
-        consoleItem.action = #selector(openConsole)
-        if #available(macOS 11.0, *) {
-            consoleItem.image = NSImage(systemSymbolName: "sidebar.left", accessibilityDescription: loc("console.openConsole"))
-        }
-        menu.addItem(consoleItem)
-        menu.addItem(.separator())
-
         // 状态行
         let statusMenuItem = NSMenuItem()
         let statusText = serviceRunning ? loc("status.running") : loc("status.notRunning")
@@ -147,6 +133,19 @@ class MenuBarController: NSObject {
             reloadItem.image = NSImage(systemSymbolName: "gearshape", accessibilityDescription: loc("action.reloadConfig"))
         }
         menu.addItem(reloadItem)
+
+        // 控制台入口
+        let consoleItem = NSMenuItem()
+        let consoleText = loc("console.openConsole")
+        let attrConsole = NSMutableAttributedString(string: consoleText)
+        attrConsole.addAttribute(.font, value: NSFont.systemFont(ofSize: 13, weight: .medium), range: NSRange(location: 0, length: attrConsole.length))
+        consoleItem.attributedTitle = attrConsole
+        consoleItem.target = self
+        consoleItem.action = #selector(openConsole)
+        if #available(macOS 11.0, *) {
+            consoleItem.image = NSImage(systemSymbolName: "sidebar.left", accessibilityDescription: loc("console.openConsole"))
+        }
+        menu.addItem(consoleItem)
 
         menu.addItem(.separator())
 

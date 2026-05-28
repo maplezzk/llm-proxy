@@ -27,7 +27,7 @@ struct LogsView: View {
 
     private var filterBar: some View {
         HStack(spacing: 12) {
-            // 级别过滤
+            // 级别过滤 - segmented style
             Picker(loc("logs.levelFilter"), selection: Binding(
                 get: { viewModel.levelFilter ?? "all" },
                 set: { newVal in
@@ -42,10 +42,9 @@ struct LogsView: View {
                 Text(loc("logs.level.warn")).tag("warn")
                 Text(loc("logs.level.error")).tag("error")
             }
-            .pickerStyle(.menu)
-            .frame(width: 110)
+            .pickerStyle(.segmented)
 
-            // 类型过滤
+            // 类型过滤 - segmented style
             Picker(loc("logs.typeFilter"), selection: Binding(
                 get: { viewModel.typeFilter ?? "all" },
                 set: { newVal in
@@ -58,43 +57,49 @@ struct LogsView: View {
                 Text(loc("logs.type.request")).tag("request")
                 Text(loc("logs.type.system")).tag("system")
             }
-            .pickerStyle(.menu)
-            .frame(width: 120)
+            .pickerStyle(.segmented)
 
-            // 搜索
-            HStack(spacing: 4) {
+            Spacer()
+
+            // 搜索框 - rounded style
+            HStack(spacing: 6) {
                 Image(systemName: "magnifyingglass")
                     .foregroundColor(.secondary)
+                    .font(.caption)
                 TextField(loc("logs.searchPlaceholder"), text: Binding(
                     get: { viewModel.search },
                     set: { viewModel.setSearch($0) }
                 ))
                 .textFieldStyle(.plain)
+                .font(.subheadline)
                 if !viewModel.search.isEmpty {
                     Button(action: { viewModel.setSearch("") }) {
                         Image(systemName: "xmark.circle.fill")
                             .foregroundColor(.secondary)
+                            .font(.caption)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.borderless)
                 }
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
             .background(
-                RoundedRectangle(cornerRadius: 6)
-                    .strokeBorder(Color.secondary.opacity(0.3), lineWidth: 1)
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(Color(nsColor: .textBackgroundColor))
             )
-            .frame(width: 180)
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .strokeBorder(Color.secondary.opacity(0.25), lineWidth: 1)
+            )
+            .frame(width: 190)
 
-            Spacer()
-
-            // 自动滚动开关
+            // 自动滚动按钮
             Button(action: { viewModel.autoScroll.toggle() }) {
                 Image(systemName: viewModel.autoScroll ? "arrow.down.to.line.circle.fill" : "arrow.down.to.line.circle")
-                    .font(.system(size: 14))
-                    .foregroundColor(viewModel.autoScroll ? .blue : .secondary)
+                    .font(.system(size: 16))
+                    .foregroundColor(viewModel.autoScroll ? .accentColor : .secondary)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.borderless)
             .help(viewModel.autoScroll ? loc("logs.autoScroll.on") : loc("logs.autoScroll.off"))
 
             // 日志总数
@@ -102,10 +107,12 @@ struct LogsView: View {
                 Text(loc("logs.totalCount", viewModel.totalCount))
                     .font(.caption)
                     .foregroundColor(.secondary)
+                    .monospacedDigit()
             }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
+        .background(Color(nsColor: .controlBackgroundColor))
     }
 
     // MARK: - Log List
@@ -127,15 +134,17 @@ struct LogsView: View {
     private var scrollableLogList: some View {
         ScrollViewReader { proxy in
             List {
-                ForEach(viewModel.pagedLogs, id: \.id) { entry in
-                    logRow(entry)
+                ForEach(Array(viewModel.pagedLogs.enumerated()), id: \.element.id) { index, entry in
+                    logRow(entry, index: index)
                         .id(entry.id)
+                        .listRowSeparator(.hidden)
                 }
 
                 // 底部哨兵元素，用于自动滚动
                 Color.clear
                     .frame(height: 1)
                     .id(logListBottom)
+                    .listRowSeparator(.hidden)
 
                 // "加载更多"按钮
                 if viewModel.hasMore {
@@ -155,9 +164,11 @@ struct LogsView: View {
                         Spacer()
                     }
                     .padding(.vertical, 8)
+                    .listRowSeparator(.hidden)
                 }
             }
             .listStyle(.plain)
+            .scrollContentBackground(.hidden)
             .overlay(alignment: .bottomTrailing) {
                 // 自动滚动关闭时显示"回到底部"按钮
                 if !viewModel.autoScroll && viewModel.currentPage == 1 && !viewModel.pagedLogs.isEmpty {
@@ -172,7 +183,7 @@ struct LogsView: View {
                             .foregroundColor(.blue)
                             .background(Circle().fill(Color.white).shadow(radius: 2))
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.borderless)
                     .padding(.trailing, 16)
                     .padding(.bottom, 12)
                 }
@@ -196,15 +207,15 @@ struct LogsView: View {
 
     // MARK: - Log Row
 
-    private func logRow(_ entry: LogEntry) -> some View {
+    private func logRow(_ entry: LogEntry, index: Int) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 8) {
-                // 时间戳
-                Text(LogsViewModel.formatTimestamp(entry.timestamp))
+                // 时间戳 — 仅显示时间
+                Text(LogsViewModel.formatTimeOnly(entry.timestamp))
                     .font(.system(.caption, design: .monospaced))
                     .foregroundColor(.secondary)
 
-                // 级别标签
+                // 级别标签 — pill shaped
                 levelBadge(entry.level)
 
                 // 类型标签
@@ -221,28 +232,34 @@ struct LogsView: View {
                 detailsDisclosure(entry.id, details: details)
             }
         }
-        .padding(.vertical, 4)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(
+            index.isMultiple(of: 2)
+                ? Color(nsColor: .controlBackgroundColor)
+                : Color.primary.opacity(0.03)
+        )
     }
 
     private func levelBadge(_ level: String) -> some View {
         Text(level.uppercased())
             .font(.system(.caption2, design: .monospaced))
             .fontWeight(.semibold)
-            .padding(.horizontal, 5)
-            .padding(.vertical, 1)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 2)
             .background(levelColor(level).opacity(0.15))
             .foregroundColor(levelColor(level))
-            .clipShape(RoundedRectangle(cornerRadius: 3))
+            .clipShape(Capsule())
     }
 
     private func typeBadge(_ type: String) -> some View {
         Text(type)
             .font(.system(.caption2))
-            .padding(.horizontal, 5)
-            .padding(.vertical, 1)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 2)
             .background(Color.secondary.opacity(0.12))
             .foregroundColor(.secondary)
-            .clipShape(RoundedRectangle(cornerRadius: 3))
+            .clipShape(Capsule())
     }
 
     private func detailsDisclosure(_ id: Int, details: [String: AnyCodable]) -> some View {
@@ -257,7 +274,7 @@ struct LogsView: View {
                 }
                 .foregroundColor(.blue)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.borderless)
 
             if isExpanded {
                 Text(LogsViewModel.formatDetails(details))
@@ -302,12 +319,13 @@ struct LogsView: View {
                 Image(systemName: "chevron.backward")
             }
             .disabled(viewModel.currentPage <= 1)
-            .buttonStyle(.plain)
+            .buttonStyle(.borderless)
 
             // 页码
             Text("\(viewModel.currentPage) / \(viewModel.totalPages)")
                 .font(.system(.body, design: .monospaced))
                 .foregroundColor(.secondary)
+                .monospacedDigit()
 
             // 下一页
             Button(action: {
@@ -317,7 +335,7 @@ struct LogsView: View {
                 Image(systemName: "chevron.forward")
             }
             .disabled(viewModel.currentPage >= viewModel.totalPages)
-            .buttonStyle(.plain)
+            .buttonStyle(.borderless)
 
             Spacer()
 

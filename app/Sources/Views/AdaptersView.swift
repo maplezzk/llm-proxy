@@ -122,6 +122,9 @@ struct AdaptersView: View {
 
             Spacer()
 
+            // 测试状态（行内）
+            testStatusView(adapter)
+
             // 操作按钮
             HStack(spacing: 4) {
                 // 测试按钮
@@ -161,58 +164,32 @@ struct AdaptersView: View {
             }
         }
         .padding(.vertical, 4)
-        // 测试结果弹窗
-        .popover(isPresented: Binding(
-            get: { viewModel.testResult != nil && viewModel.testingAdapterName == adapter.name },
-            set: { if !$0 { viewModel.testResult = nil } }
-        )) {
-            if let result = viewModel.testResult {
-                testResultPopover(result, adapterName: adapter.name)
-            }
-        }
     }
 
+    // MARK: - Test Status (inline)
+
     @ViewBuilder
-    private func testResultPopover(_ result: TestModelResult, adapterName: String) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text(loc("adapter.testResult", adapterName))
-                .font(.headline)
-
-            Divider()
-
-            HStack {
-                Text(loc("adapter.testStatus"))
-                Spacer()
-                if result.reachable {
-                    Label(loc("adapter.testOk"), systemImage: "checkmark.circle.fill")
+    private func testStatusView(_ adapter: Adapter) -> some View {
+        if let result = viewModel.testResults[adapter.name] {
+            HStack(spacing: 4) {
+                if result.reachable, let latency = result.latency {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundColor(.green)
+                        .font(.caption)
+                    Text("\(latency)ms")
+                        .font(.caption)
                         .foregroundColor(.green)
                 } else {
-                    Label(loc("adapter.testFail"), systemImage: "xmark.circle.fill")
+                    Image(systemName: "xmark.circle.fill")
                         .foregroundColor(.red)
+                        .font(.caption)
+                    Text(result.error ?? loc("adapter.testFailed"))
+                        .font(.caption)
+                        .foregroundColor(.red)
+                        .lineLimit(1)
                 }
-            }
-
-            if let latency = result.latency {
-                HStack {
-                    Text(loc("adapter.testLatency"))
-                    Spacer()
-                    Text("\(latency) ms")
-                        .foregroundColor(.secondary)
-                }
-            }
-
-            if let errMsg = result.error {
-                Text(errMsg)
-                    .font(.caption)
-                    .foregroundColor(.red)
-            }
-
-            Button(loc("adapter.testDismiss")) {
-                viewModel.testResult = nil
             }
         }
-        .padding()
-        .frame(width: 280)
     }
 
     // MARK: - Helpers

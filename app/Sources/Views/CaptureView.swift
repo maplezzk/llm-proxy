@@ -3,6 +3,7 @@ import SwiftUI
 /// 抓包查看器——启停开关、SSE 实时流、条目列表、JSON 详情、来源过滤、左右对比视图
 struct CaptureView: View {
     @State private var viewModel = CaptureViewModel()
+    @State private var copiedEntryId: Int? = nil
 
     var body: some View {
         VStack(spacing: 0) {
@@ -35,15 +36,17 @@ struct CaptureView: View {
     // MARK: - Toolbar
 
     private var toolbar: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 14) {
             // 抓包开关
-            HStack(spacing: 6) {
+            HStack(spacing: 8) {
                 Circle()
                     .fill(viewModel.running ? Color.green : Color.gray)
                     .frame(width: 8, height: 8)
+                    .shadow(color: viewModel.running ? Color.green.opacity(0.4) : Color.clear, radius: 3)
 
-                Text(loc(viewModel.running ? "capture.stop" : "capture.start"))
+                Text(viewModel.running ? loc("capture.stop") : loc("capture.start"))
                     .fontWeight(.medium)
+                    .font(.subheadline)
 
                 Toggle("", isOn: Binding(
                     get: { viewModel.running },
@@ -61,15 +64,15 @@ struct CaptureView: View {
                 .labelsHidden()
             }
 
-            Divider()
-                .frame(height: 20)
-
-            // 结束并清空按钮
             if viewModel.running {
+                Divider()
+                    .frame(height: 20)
+
+                // 结束并清空按钮
                 Button(loc("capture.endAndClear")) {
                     Task { await viewModel.endCapture() }
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.borderless)
                 .foregroundColor(.red)
                 .font(.caption)
             }
@@ -78,7 +81,7 @@ struct CaptureView: View {
 
             // 来源过滤
             if !viewModel.sources.isEmpty {
-                HStack(spacing: 4) {
+                HStack(spacing: 6) {
                     Text(loc("capture.sourceFilter") + ":")
                         .font(.caption)
                         .foregroundColor(.secondary)
@@ -101,13 +104,16 @@ struct CaptureView: View {
             }
 
             // 条目计数
-            Text("\(viewModel.filteredEntries.count) entries")
-                .font(.caption)
-                .foregroundColor(.secondary)
+            if !viewModel.filteredEntries.isEmpty {
+                Text("\(viewModel.filteredEntries.count) entries")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .monospacedDigit()
+            }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(Color(NSColor.controlBackgroundColor))
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(Color(nsColor: .controlBackgroundColor))
     }
 
     // MARK: - Empty State
@@ -119,6 +125,7 @@ struct CaptureView: View {
                 .foregroundColor(.secondary)
             Text(loc("capture.noData"))
                 .foregroundColor(.secondary)
+                .font(.subheadline)
             Text("Toggle the switch above to start capturing")
                 .font(.caption)
                 .foregroundColor(.secondary)
@@ -146,15 +153,17 @@ struct CaptureView: View {
                     get: { viewModel.selectedId },
                     set: { viewModel.selectedId = $0 }
                 )) {
-                    ForEach(viewModel.filteredEntries, id: \.id) { entry in
-                        CaptureEntryRow(entry: entry, isSelected: viewModel.selectedId == entry.id)
+                    ForEach(Array(viewModel.filteredEntries.enumerated()), id: \.element.id) { index, entry in
+                        CaptureEntryRow(entry: entry, isSelected: viewModel.selectedId == entry.id, index: index)
                             .contentShape(Rectangle())
                             .onTapGesture {
                                 viewModel.toggleSelected(entry.id)
                             }
+                            .listRowSeparator(.hidden)
                     }
                 }
                 .listStyle(.plain)
+                .scrollContentBackground(.hidden)
             }
 
             // 错误信息
@@ -191,8 +200,9 @@ struct CaptureView: View {
         }
         .font(.caption)
         .foregroundColor(.secondary)
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 5)
+        .background(Color(nsColor: .controlBackgroundColor).opacity(0.5))
     }
 
     // MARK: - Detail Panel
@@ -247,30 +257,36 @@ struct CaptureView: View {
     }
 
     private func entryMetaHeader(_ entry: CaptureEntry) -> some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 10) {
             Text("#\(entry.id)")
                 .font(.caption)
                 .foregroundColor(.secondary)
+                .monospacedDigit()
 
             Text(formatTimestamp(entry.timestamp))
-                .font(.caption)
+                .font(.caption.monospacedDigit())
                 .foregroundColor(.secondary)
 
             sourceBadge(entry.source)
 
             Text(entry.protocol.uppercased())
-                .font(.caption)
-                .padding(.horizontal, 4)
-                .padding(.vertical, 1)
-                .background(Color.blue.opacity(0.15))
-                .cornerRadius(3)
+                .font(.caption2)
+                .fontWeight(.medium)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(Color.blue.opacity(0.12))
+                .foregroundColor(.blue)
+                .clipShape(Capsule())
 
             Text(entry.model)
                 .font(.caption)
                 .foregroundColor(.primary)
 
             if let adapter = entry.adapterName, !adapter.isEmpty {
-                Text("→ \(adapter)")
+                Image(systemName: "arrow.right")
+                    .font(.system(size: 8))
+                    .foregroundColor(.secondary)
+                Text(adapter)
                     .font(.caption)
                     .foregroundColor(.orange)
             }
@@ -279,25 +295,39 @@ struct CaptureView: View {
 
             Button {
                 copyToClipboard(rawJSON: formatEntryJSON(entry))
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    copiedEntryId = entry.id
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        if copiedEntryId == entry.id {
+                            copiedEntryId = nil
+                        }
+                    }
+                }
             } label: {
-                Image(systemName: "doc.on.doc")
+                Image(systemName: copiedEntryId == entry.id ? "checkmark" : "doc.on.doc")
                     .font(.caption)
+                    .foregroundColor(copiedEntryId == entry.id ? .green : .secondary)
             }
-            .buttonStyle(.plain)
-            .help("Copy raw JSON")
+            .buttonStyle(.borderless)
+            .help(copiedEntryId == entry.id ? loc("common.copied") : loc("common.copy"))
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(Color(nsColor: .controlBackgroundColor).opacity(0.6))
     }
 
     private func sourceBadge(_ source: String) -> some View {
         let color: Color = source == "proxy" ? .green : .orange
         return Text(source)
-            .font(.caption)
-            .padding(.horizontal, 4)
-            .padding(.vertical, 1)
-            .background(color.opacity(0.15))
-            .cornerRadius(3)
+            .font(.caption2)
+            .fontWeight(.medium)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(color.opacity(0.12))
+            .foregroundColor(color)
+            .clipShape(Capsule())
     }
 
     // MARK: - Phase Column
@@ -316,9 +346,9 @@ struct CaptureView: View {
                 .font(.caption)
                 .fontWeight(.semibold)
                 .foregroundColor(.secondary)
-                .padding(.vertical, 4)
+                .padding(.vertical, 6)
                 .frame(maxWidth: .infinity)
-                .background(Color(NSColor.controlBackgroundColor))
+                .background(Color(nsColor: .controlBackgroundColor).opacity(0.7))
 
             VSplitView {
                 // 请求（上）
@@ -346,13 +376,13 @@ struct CaptureView: View {
                         Image(systemName: "doc.on.doc")
                             .font(.system(size: 10))
                     }
-                    .buttonStyle(.plain)
-                    .help("Copy")
+                    .buttonStyle(.borderless)
+                    .help(loc("common.copy"))
                 }
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 3)
-            .background(Color(NSColor.controlBackgroundColor).opacity(0.5))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 4)
+            .background(Color(nsColor: .controlBackgroundColor).opacity(0.4))
 
             // 内容
             if let contentStr = content, !contentStr.isEmpty {
@@ -360,9 +390,10 @@ struct CaptureView: View {
                     Text(formatPhaseContent(contentStr, isResponse: isResponse))
                         .font(.system(.caption, design: .monospaced))
                         .textSelection(.enabled)
-                        .padding(8)
+                        .padding(10)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
+                .background(Color.primary.opacity(0.03))
             } else {
                 VStack {
                     Spacer()
@@ -430,6 +461,7 @@ struct CaptureView: View {
 private struct CaptureEntryRow: View {
     let entry: CaptureEntry
     let isSelected: Bool
+    let index: Int
 
     var body: some View {
         HStack(spacing: 4) {
@@ -452,9 +484,15 @@ private struct CaptureEntryRow: View {
                 .foregroundColor(.secondary)
         }
         .font(.caption)
-        .padding(.vertical, 2)
-        .padding(.horizontal, 4)
-        .background(isSelected ? Color.accentColor.opacity(0.15) : Color.clear)
+        .padding(.vertical, 4)
+        .padding(.horizontal, 6)
+        .background(
+            isSelected
+                ? Color.accentColor.opacity(0.15)
+                : (index.isMultiple(of: 2)
+                    ? Color(nsColor: .controlBackgroundColor)
+                    : Color.primary.opacity(0.03))
+        )
         .cornerRadius(4)
     }
 

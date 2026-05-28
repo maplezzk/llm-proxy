@@ -18,7 +18,7 @@ final class AdaptersViewModel {
     var formMappings: [FormMappingRow] = []
 
     // 测试状态
-    var testResult: TestModelResult?
+    var testResults: [String: TestModelResult] = [:]
     var testingAdapterName: String?
     var isTesting: Bool = false
 
@@ -155,12 +155,22 @@ final class AdaptersViewModel {
     func testAdapter(_ name: String) async {
         testingAdapterName = name
         isTesting = true
-        testResult = nil
+        testResults.removeValue(forKey: name)
         error = nil
         do {
-            testResult = try await client.testAdapter(name: name)
+            testResults[name] = try await client.testAdapter(name: name)
         } catch {
-            self.error = loc("adapter.testFailed")
+            testResults[name] = TestModelResult(
+                reachable: false,
+                latency: nil,
+                model: nil,
+                error: error.localizedDescription,
+                adapterUrl: nil,
+                requestUrl: nil,
+                requestBody: nil,
+                responseBody: nil,
+                responseStatus: nil
+            )
         }
         isTesting = false
     }

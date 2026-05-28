@@ -3,6 +3,7 @@ import SwiftUI
 /// 控制台根视图——macOS 侧边栏导航
 struct ConsoleRootView: View {
     @State private var selectedTab: ConsoleTab = .dashboard
+    @State private var showTestPanel = false
 
     var body: some View {
         NavigationSplitView {
@@ -10,6 +11,19 @@ struct ConsoleRootView: View {
                 .navigationSplitViewColumnWidth(min: 160, ideal: 180, max: 220)
         } detail: {
             tabContent
+                .toolbar {
+                    ToolbarItem(placement: .primaryAction) {
+                        Button {
+                            showTestPanel = true
+                        } label: {
+                            Label(loc("test.title"), systemImage: "flask")
+                        }
+                        .help(loc("test.help"))
+                    }
+                }
+        }
+        .sheet(isPresented: $showTestPanel) {
+            TestPanelView()
         }
     }
 
@@ -22,11 +36,15 @@ struct ConsoleRootView: View {
         }
         .listStyle(.sidebar)
         .safeAreaInset(edge: .top) {
-            Text(loc("console.title"))
-                .font(.headline)
-                .padding(.horizontal)
-                .padding(.top, 20)
-                .padding(.bottom, 8)
+            VStack(spacing: 0) {
+                Text(loc("console.title"))
+                    .font(.headline)
+                    .padding(.horizontal)
+                    .padding(.top, 20)
+                    .padding(.bottom, 10)
+                Divider()
+                    .padding(.horizontal)
+            }
         }
     }
 

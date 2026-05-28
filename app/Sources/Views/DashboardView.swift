@@ -42,81 +42,102 @@ struct DashboardView: View {
     // MARK: - Service Status Card
 
     private var serviceStatusCard: some View {
-        HStack(spacing: 12) {
-            Circle()
-                .fill(viewModel.health ? Color.green : Color.red)
-                .frame(width: 12, height: 12)
-            Text(loc("dashboard.serviceStatus"))
-                .font(.headline)
-            Spacer()
-            Text(viewModel.health ? loc("dashboard.online") : loc("dashboard.offline"))
+        HStack(spacing: 14) {
+            Image(systemName: viewModel.health ? "checkmark.circle.fill" : "xmark.circle.fill")
                 .font(.title3)
-                .fontWeight(.semibold)
                 .foregroundColor(viewModel.health ? .green : .red)
+                .symbolEffect(.pulse, isActive: viewModel.health)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(loc("dashboard.serviceStatus"))
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                Text(viewModel.health ? loc("dashboard.online") : loc("dashboard.offline"))
+                    .font(.title2)
+                    .fontWeight(.bold)
+                    .foregroundColor(viewModel.health ? .green : .red)
+            }
+            Spacer()
         }
-        .padding(16)
+        .padding(18)
         .background(
-            RoundedRectangle(cornerRadius: 10)
-                .fill(Color(nsColor: .controlBackgroundColor))
+            RoundedRectangle(cornerRadius: 12)
+                .fill(viewModel.health ? Color.green.opacity(0.06) : Color.red.opacity(0.06))
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 10)
-                .stroke(viewModel.health ? Color.green.opacity(0.3) : Color.red.opacity(0.3), lineWidth: 1)
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(viewModel.health ? Color.green.opacity(0.25) : Color.red.opacity(0.25), lineWidth: 1)
         )
+        .shadow(color: .black.opacity(0.04), radius: 4, x: 0, y: 2)
     }
 
     // MARK: - Stats Cards
 
     private var statsCards: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 14) {
             statCard(
                 title: loc("dashboard.providerCount"),
                 value: "\(viewModel.providerCount)",
                 icon: "server.rack",
-                color: .blue
+                accentColor: .blue
             )
             statCard(
                 title: loc("dashboard.modelCount"),
                 value: "\(viewModel.modelCount)",
                 icon: "cube",
-                color: .purple
+                accentColor: .green
             )
             statCard(
                 title: loc("dashboard.adapterCount"),
                 value: "\(viewModel.adapterCount)",
                 icon: "arrow.triangle.branch",
-                color: .orange
+                accentColor: .orange
             )
         }
     }
 
-    private func statCard(title: String, value: String, icon: String, color: Color) -> some View {
-        VStack(spacing: 8) {
+    private func statCard(title: String, value: String, icon: String, accentColor: Color) -> some View {
+        VStack(spacing: 10) {
             Image(systemName: icon)
-                .font(.title2)
-                .foregroundColor(color)
+                .font(.title3)
+                .foregroundColor(accentColor)
             Text(value)
                 .font(.largeTitle)
                 .fontWeight(.bold)
                 .fontDesign(.rounded)
+                .monospacedDigit()
             Text(title)
                 .font(.caption)
                 .foregroundColor(.secondary)
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 20)
+        .padding(.vertical, 22)
         .background(
-            RoundedRectangle(cornerRadius: 10)
+            RoundedRectangle(cornerRadius: 12)
                 .fill(Color(nsColor: .controlBackgroundColor))
         )
+        .overlay(alignment: .top) {
+            Rectangle()
+                .fill(accentColor)
+                .frame(height: 3)
+                .clipShape(UnevenRoundedRectangle(topLeadingRadius: 12, topTrailingRadius: 12))
+        }
+        .shadow(color: .black.opacity(0.04), radius: 4, x: 0, y: 2)
     }
 
     // MARK: - Token Usage Section
 
     private var tokenUsageSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text(loc("dashboard.tokenUsage"))
-                .font(.headline)
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Image(systemName: "chart.bar.fill")
+                    .foregroundColor(.blue)
+                Text(loc("dashboard.tokenUsage"))
+                    .font(.headline)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+
+            Divider()
 
             if let today = viewModel.tokenStats?.today {
                 let input = today.input_tokens
@@ -129,7 +150,7 @@ struct DashboardView: View {
                 LazyVGrid(columns: [
                     GridItem(.flexible()),
                     GridItem(.flexible())
-                ], spacing: 12) {
+                ], spacing: 1) {
                     tokenCard(
                         title: loc("dashboard.requests"),
                         value: "\(today.request_count)",
@@ -159,9 +180,14 @@ struct DashboardView: View {
                 Text(loc("dashboard.empty"))
                     .foregroundColor(.secondary)
                     .frame(maxWidth: .infinity, alignment: .center)
-                    .padding(.vertical, 20)
+                    .padding(.vertical, 30)
             }
         }
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(Color(nsColor: .controlBackgroundColor))
+        )
+        .shadow(color: .black.opacity(0.04), radius: 4, x: 0, y: 2)
     }
 
     private func tokenCard(title: String, value: String, desc: String, color: Color) -> some View {
@@ -173,6 +199,7 @@ struct DashboardView: View {
                 .font(.title2)
                 .fontWeight(.bold)
                 .fontDesign(.rounded)
+                .monospacedDigit()
                 .foregroundColor(color)
             if !desc.isEmpty {
                 Text(desc)
@@ -181,10 +208,6 @@ struct DashboardView: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(12)
-        .background(
-            RoundedRectangle(cornerRadius: 8)
-                .fill(Color(nsColor: .controlBackgroundColor))
-        )
+        .padding(14)
     }
 }
