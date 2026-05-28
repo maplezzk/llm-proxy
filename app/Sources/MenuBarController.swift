@@ -17,6 +17,7 @@ class MenuBarController: NSObject {
     private var isDownloadingUpdate = false
     private var downloadProgress: Double = 0
     private var downloadCompletedURL: URL?
+    private var consoleWindowController: ConsoleWindowController?
 
     init(statusItem: NSStatusItem) {
         self.statusItem = statusItem
@@ -88,6 +89,21 @@ class MenuBarController: NSObject {
     @MainActor
     func rebuildMenu() {
         let menu = NSMenu()
+
+        // Dashboard 预览行
+        let consoleItem = NSMenuItem()
+        let runningIcon = serviceRunning ? "🟢 " : "🔴 "
+        let consoleText = "\(runningIcon)\(loc("console.openConsole"))"
+        let attrConsole = NSMutableAttributedString(string: consoleText)
+        attrConsole.addAttribute(.font, value: NSFont.systemFont(ofSize: 13, weight: .medium), range: NSRange(location: 0, length: attrConsole.length))
+        consoleItem.attributedTitle = attrConsole
+        consoleItem.target = self
+        consoleItem.action = #selector(openConsole)
+        if #available(macOS 11.0, *) {
+            consoleItem.image = NSImage(systemSymbolName: "rectangle.split.2x1", accessibilityDescription: loc("console.openConsole"))
+        }
+        menu.addItem(consoleItem)
+        menu.addItem(.separator())
 
         // 状态行
         let statusMenuItem = NSMenuItem()
@@ -373,6 +389,12 @@ class MenuBarController: NSObject {
         Task { @MainActor in
             await refresh()
         }
+    }
+
+    @MainActor @objc func openConsole() {
+        let controller = ConsoleWindowController()
+        consoleWindowController = controller
+        controller.show()
     }
 
     @MainActor @objc func changeLogLevel(_ sender: NSMenuItem) {

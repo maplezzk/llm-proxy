@@ -48,3 +48,13 @@
 "action.customPort" = "Custom…";
 "action.portTitle" = "Set Port";
 "action.portPrompt" = "Enter port number (1-65535):";
+
+// Console
+"console.title" = "llm-proxy Console";
+"console.comingSoon" = "Coming Soon";
+"console.openConsole" = "Open Console";
+"nav.dashboard" = "Dashboard";
+"nav.providers" = "Providers";
+"nav.adapters" = "Adapters";
+"nav.logs" = "Logs";
+"nav.capture" = "Capture";

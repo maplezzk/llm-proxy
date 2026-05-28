@@ -48,3 +48,13 @@
 "action.customPort" = "自定义…";
 "action.portTitle" = "设置端口";
 "action.portPrompt" = "输入端口号 (1-65535):";
+
+// Console
+"console.title" = "llm-proxy 控制台";
+"console.comingSoon" = "即将推出";
+"console.openConsole" = "打开控制台";
+"nav.dashboard" = "仪表盘";
+"nav.providers" = "供应商";
+"nav.adapters" = "适配器";
+"nav.logs" = "日志";
+"nav.capture" = "抓包";
