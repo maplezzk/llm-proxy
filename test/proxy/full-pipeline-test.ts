@@ -109,12 +109,36 @@ describe('全链路端到端', () => {
       assert.ok(String(systemMsg.content).includes('Codex'), '有 Codex 相关内容')
     })
 
-    it('previous_response_id 不丢失（但不会传给出 Chat 上游）', async () => {
-      // CCX 也在响应中回显 previous_response_id
-      const result = await transformInboundRequest('openai-responses', openaiRoute, CODEX_REQUEST)
-      // Chat API 不接收 previous_response_id，所以转换后不应有
-      assert.strictEqual(result.body.previous_response_id, undefined)
-      // 但原始请求中有，应该在后续响应回显中用到
+    it('namespace 工具展平为 function 工具（CCX namespaceToolsToOpenAI）', async () => {
+      const requestWithNamespace = {
+        ...CODEX_REQUEST,
+        tools: [
+          ...CODEX_REQUEST.tools,
+          {
+            type: 'namespace',
+            name: 'mcp__computer_use__',
+            tools: [
+              { type: 'function', name: 'get_app_state', parameters: { type: 'object', properties: { app: { type: 'string' } }, required: ['app'] } },
+              { type: 'function', name: 'click', parameters: { type: 'object', properties: { app: { type: 'string' }, x: { type: 'number' }, y: { type: 'number' } }, required: ['app'] } },
+            ],
+          },
+        ],
+      }
+
+      const result = await transformInboundRequest('openai-responses', openaiRoute, requestWithNamespace)
+      const tools = result.body.tools as Array<Record<string, unknown>> | undefined
+      
+      assert.ok(tools, '应该有 tools')
+      const toolNames = tools.map((t: any) => t.function?.name ?? t.name)
+      
+      console.log('  namespace 展平后的 tools:', toolNames)
+
+      // namespace 工具应展平，MCP probe 工具应剥离
+      assert.ok(toolNames.includes('mcp__computer_use__get_app_state'), 'get_app_state 应展平保留')
+      assert.ok(toolNames.includes('mcp__computer_use__click'), 'click 应展平保留')
+      assert.ok(toolNames.includes('get_weather'), '用户工具应保留')
+      assert.ok(!toolNames.includes('list_mcp_resources'), 'list_mcp_resources 应剥离')
+      assert.ok(!toolNames.includes('exec_command'), 'exec_command 应剥离')
     })
   })
 
