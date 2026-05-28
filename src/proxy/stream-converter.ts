@@ -1157,14 +1157,18 @@ export async function convertOpenAIStreamToOpenAIResponses(
       respData.reasoning = { summary: [{ type: 'summary_text', text: thinkingText, index: 0 }] }
     }
     if (Object.keys(lastUsage).length > 0) {
-      respData.usage = { input_tokens: lastUsage.input_tokens ?? 0, output_tokens: lastUsage.output_tokens ?? 0, total_tokens: ((lastUsage.input_tokens as number) ?? 0) + ((lastUsage.output_tokens as number) ?? 0) }
+      const input = ((lastUsage.input_tokens ?? lastUsage.prompt_tokens) as number) ?? 0
+      const output = ((lastUsage.output_tokens ?? lastUsage.completion_tokens) as number) ?? 0
+      respData.usage = { input_tokens: input, output_tokens: output, total_tokens: input + output }
     }
     writeRaw('event: response.completed\ndata: ' + JSON.stringify({ type: 'response.completed', response: respData }) + '\n\n')
   }
   res.end()
 
   if (Object.keys(lastUsage).length > 0) {
-    return { input_tokens: (lastUsage.input_tokens ?? 0) as number, output_tokens: (lastUsage.output_tokens ?? 0) as number }
+    const input = ((lastUsage.input_tokens ?? lastUsage.prompt_tokens) as number) ?? 0
+    const output = ((lastUsage.output_tokens ?? lastUsage.completion_tokens) as number) ?? 0
+    return { input_tokens: input, output_tokens: output }
   }
   return null
 }
