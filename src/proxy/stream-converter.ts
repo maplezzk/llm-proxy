@@ -948,6 +948,7 @@ export async function convertOpenAIStreamToOpenAIResponses(
   let currentRespId = ''
   let currentMsgId = ''
   let messageStarted = false
+  let streamCompleted = false    // tracks if finish_reason already emitted close events
   let currentBlockType = 'text'
   let currentBlockIndex = 0
   let fnCallId = ''
@@ -1145,6 +1146,7 @@ export async function convertOpenAIStreamToOpenAIResponses(
         outputItems.unshift({
           type: 'message', id: currentMsgId, status: 'completed', role: 'assistant', content: msgContent,
         })
+        streamCompleted = true
         continue
       }
     }
@@ -1152,15 +1154,17 @@ export async function convertOpenAIStreamToOpenAIResponses(
 
   // Emit completed if not already
   if (messageStarted) {
-    if (outputItems.length === 0) {
-      const msgContent: unknown[] = []
-      if (textContent) {
-        msgContent.push({ type: 'output_text', text: textContent, annotations: [] })
+    if (!streamCompleted) {
+      if (outputItems.length === 0) {
+        const msgContent: unknown[] = []
+        if (textContent) {
+          msgContent.push({ type: 'output_text', text: textContent, annotations: [] })
+        }
+        writeRaw(`event: response.output_item.done\ndata: {"type":"response.output_item.done","output_index":0,"item":{"id":"${currentMsgId}","type":"message","status":"completed","role":"assistant","content":${JSON.stringify(msgContent)}}}\n\n`)
+        outputItems.unshift({ type: 'message', id: currentMsgId, status: 'completed', role: 'assistant', content: msgContent })
       }
-      writeRaw(`event: response.output_item.done\ndata: {"type":"response.output_item.done","output_index":0,"item":{"id":"${currentMsgId}","type":"message","status":"completed","role":"assistant","content":${JSON.stringify(msgContent)}}}\n\n`)
-      outputItems.unshift({ type: 'message', id: currentMsgId, status: 'completed', role: 'assistant', content: msgContent })
+      writeRaw(`event: response.output_text.done\ndata: {"type":"response.output_text.done","output_index":0,"content_index":0,"text":${JSON.stringify(textContent)}}\n\n`)
     }
-    writeRaw(`event: response.output_text.done\ndata: {"type":"response.output_text.done","output_index":0,"content_index":0,"text":${JSON.stringify(textContent)}}\n\n`)
     const respData: Record<string, unknown> = { id: currentRespId, object: 'response', created_at: Math.floor(Date.now() / 1000), status: 'completed', output: outputItems.length > 0 ? outputItems : [] }
     // Chat reasoning_content → 顶层 reasoning.summary
     if (thinkingText) {
