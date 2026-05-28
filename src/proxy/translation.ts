@@ -110,13 +110,6 @@ function convertToolsToAnthropic(tools: unknown[]): unknown[] | undefined {
       continue
     }
 
-    // Codex-internal function tools → skip (these trigger MCP calls on the Codex side)
-    // list_mcp_resources: when called, Codex tries to call resources/list on MCP servers
-    const name = item.name as string ?? ''
-    if (['list_mcp_resources', 'list_mcp_notes', 'exec_command', 'exec'].includes(name)) {
-      continue
-    }
-
     // OpenAI namespace tools → skip (Anthropic has no equivalent)
     // CCX approach: strip namespace tools and remap via CodexToolContext on response
     if (type === 'namespace') {
@@ -176,14 +169,6 @@ function convertToolsToOpenAI(tools: unknown[]): unknown[] | undefined {
     // OpenAI Chat only supports type: "function" — namespace/custom/web_search/computer_use are Responses-only
     if (['namespace', 'custom', 'web_search', 'web_search_preview', 'computer_use', 'computer_use_preview',
           'local_shell', 'code_interpreter', 'file_search'].includes(type)) {
-      continue
-    }
-
-    // Codex-internal function tools → skip (these trigger MCP calls on the Codex side)
-    const codexName = String(item.name ?? '')
-    const codexFnName = String((item.function as Record<string, unknown> | undefined)?.name ?? '')
-    if (['list_mcp_resources', 'list_mcp_notes', 'exec_command', 'exec'].includes(codexName) ||
-        ['list_mcp_resources', 'list_mcp_notes', 'exec_command', 'exec'].includes(codexFnName)) {
       continue
     }
 
@@ -955,17 +940,6 @@ export async function transformInboundRequest(
       ? extractFullOpenAI(body)
       : extractFullAnthropic(body)
 
-  // Aggressively strip Codex-internal tools BEFORE any builder function sees them
-  if (params.tools) {
-    params.tools = (params.tools as unknown[]).filter((t) => {
-      if (typeof t === 'string') return !['list_mcp_resources', 'list_mcp_notes', 'exec_command', 'exec'].includes(t)
-      const item = t as Record<string, unknown>
-      const itemName = String(item.name ?? (item.function as Record<string, unknown> | undefined)?.name ?? '')
-      return !['list_mcp_resources', 'list_mcp_notes', 'exec_command', 'exec'].includes(itemName)
-    })
-    if (params.tools.length === 0) delete params.tools
-  }
-
   params.model = route.modelId
   // max_tokens: 0 → undefined（不传，让 builder 走默认值）, 应用路由级默认值
   if (params.max_tokens === 0) params.max_tokens = undefined
@@ -1337,16 +1311,14 @@ export function convertAnthropicResponseToOpenAIResponses(anthropicBody: Record<
           })
         } else {
           // Regular tool_use → function_call
-          // Don't decode namespace here — pass the raw name as-is.
-          // Namespace remapping is done by post-processing (remapNamespaceFunctionCalls)
-          // using a lookup table built from the original request's tools (CCX approach).
-          // This avoids ambiguous __ parsing (e.g. "mcp__vscode_mcp__execute_command").
+          // CCX always sets status: "completed" on function_call items
           output.push({
             type: 'function_call',
             id: `fc_${Date.now().toString(36)}_${(block.id as string) ?? ''}`,
             call_id: block.id as string,
             name,
             arguments: JSON.stringify(block.input ?? {}),
+            status: 'completed',
           })
         }
       }
@@ -1548,6 +1520,7 @@ export function convertOpenAIResponseToOpenAIResponses(chatBody: Record<string, 
         call_id: tc.id,
         name: (tc.function as Record<string, unknown>)?.name ?? '',
         arguments: (tc.function as Record<string, unknown>)?.arguments ?? '',
+        status: 'completed',
       })
     }
   }
