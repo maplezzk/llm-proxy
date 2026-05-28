@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.15.0](https://github.com/maplezzk/llm-proxy/compare/v0.14.1...v0.15.0) (2026-05-28)
+
+
+### Features
+
+* OpenAI Responses API 跨协议完整转换（支持 Codex computer-use + namespace 工具） ([#116](https://github.com/maplezzk/llm-proxy/issues/116)) ([76ce6d4](https://github.com/maplezzk/llm-proxy/commit/76ce6d4ba3c70ec453f4332dc9d69f6591b06191))
+
+
+### Bug Fixes
+
+* 修复供应商远程模型导入勾选bug + 适配器一键导入供应商全部模型 ([#119](https://github.com/maplezzk/llm-proxy/issues/119)) ([b8b5ec1](https://github.com/maplezzk/llm-proxy/commit/b8b5ec13ae00cceeb6288035c7202e55d7137daf))
+
 ## [0.14.1](https://github.com/maplezzk/llm-proxy/compare/v0.14.0...v0.14.1) (2026-05-24)
 
 
