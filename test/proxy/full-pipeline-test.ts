@@ -94,7 +94,8 @@ describe('全链路端到端', () => {
       assert.ok(!toolNames.includes('list_mcp_resources'), 'list_mcp_resources 应剥离')
       assert.ok(!toolNames.includes('list_mcp_resource_templates'), 'list_mcp_resource_templates 应剥离')
       assert.ok(!toolNames.includes('read_mcp_resource'), 'read_mcp_resource 应剥离')
-      assert.ok(!toolNames.includes('exec_command'), 'exec_command 应剥离')
+      // exec_command 是 Codex bash 执行工具，不应剥离
+      assert.ok(toolNames.includes('exec_command'), 'exec_command 应保留（Codex bash 工具）')
     })
 
     it('instructions → system message（CCX 行为）', async () => {
@@ -138,7 +139,7 @@ describe('全链路端到端', () => {
       assert.ok(toolNames.includes('mcp__computer_use__click'), 'click 应展平保留')
       assert.ok(toolNames.includes('get_weather'), '用户工具应保留')
       assert.ok(!toolNames.includes('list_mcp_resources'), 'list_mcp_resources 应剥离')
-      assert.ok(!toolNames.includes('exec_command'), 'exec_command 应剥离')
+      assert.ok(toolNames.includes('exec_command'), 'exec_command 应保留（Codex bash 工具）')
     })
   })
 
