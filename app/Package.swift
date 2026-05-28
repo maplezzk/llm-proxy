@@ -4,7 +4,7 @@ import PackageDescription
 let package = Package(
     name: "LLMProxy",
     defaultLocalization: "en",
-    platforms: [.macOS(.v13)],
+    platforms: [.macOS(.v14)],
     targets: [
         .executableTarget(
             name: "LLMProxy",

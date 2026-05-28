@@ -167,7 +167,8 @@ struct ProviderModelInput: Codable {
 }
 
 struct ThinkingInput: Codable {
-    let budget_tokens: Int
+    let budget_tokens: Int?
+    let reasoning_effort: String?
 }
 
 struct UpdateProviderBody: Codable {
@@ -200,11 +201,12 @@ struct PullModelsResponse: Codable {
 
 struct PullModelsData: Codable {
     let models: [PullModelItem]
+    let existing: [String]?
 }
 
 struct PullModelItem: Codable {
     let id: String
-    let existing: Bool
+    let description: String?
 }
 
 // MARK: - Legacy Models (保持兼容)

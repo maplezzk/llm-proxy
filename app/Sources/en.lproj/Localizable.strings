@@ -58,3 +58,150 @@
 "nav.adapters" = "Adapters";
 "nav.logs" = "Logs";
 "nav.capture" = "Capture";
+
+// Providers
+"providers.loading" = "Loading providers...";
+"providers.searchPlaceholder" = "Search providers...";
+"providers.addProvider" = "Add Provider";
+"providers.empty" = "No providers configured";
+"providers.emptyHint" = "Add your first LLM provider to get started";
+"providers.edit" = "Edit";
+"providers.testConnectivity" = "Test Connectivity";
+"providers.andMore" = "+%d more";
+"providers.testFailed" = "Test failed";
+"providers.created" = "Provider created successfully";
+"providers.updated" = "Provider updated successfully";
+"providers.deleted" = "Provider deleted";
+
+"providers.validation.name" = "Provider name is required";
+"providers.validation.models" = "At least one model is required";
+"providers.validation.apiKey" = "API Key is required for new providers";
+"providers.validation.providerName" = "Provider name is required to pull models";
+"providers.validation.noModels" = "Provider has no models to test";
+
+"providers.error.loadFailed" = "Failed to load providers: %@";
+
+"providers.delete.title" = "Delete Provider";
+"providers.delete.message" = "Are you sure you want to delete provider "%@"? This action cannot be undone.";
+"providers.delete.confirm" = "Delete";
+
+"providers.form.createTitle" = "New Provider";
+"providers.form.editTitle" = "Edit Provider";
+"providers.form.name" = "Name";
+"providers.form.type" = "Type";
+"providers.form.apiKey" = "API Key";
+"providers.form.apiKeyPlaceholderEdit" = "(unchanged)";
+"providers.form.apiBase" = "API Base URL";
+"providers.form.models" = "Models";
+"providers.form.addModel" = "Add Model";
+"providers.form.pullModels" = "Pull Models";
+"providers.form.modelIdPlaceholder" = "Model ID";
+"providers.form.budgetTokens" = "Budget Tokens";
+"providers.form.budgetTokensHelp" = "Thinking budget tokens for Anthropic models";
+"providers.form.reasoningNone" = "None";
+
+"providers.pullModels.title" = "Pull Models from API";
+"providers.pullModels.close" = "Close";
+"providers.pullModels.loading" = "Fetching model list...";
+"providers.pullModels.total" = "%d total";
+"providers.pullModels.existing" = "%d existing";
+"providers.pullModels.new" = "%d new";
+"providers.pullModels.empty" = "No models returned from API";
+"providers.pullModels.importAll" = "Import All";
+"providers.pullModels.imported" = "Imported %d model(s)";
+"providers.pullModels.importedWithSkip" = "Imported %d model(s), %d already existed";
+
+// Adapters
+"adapter.searchPlaceholder" = "Search adapters...";
+"adapter.newAdapter" = "New Adapter";
+"adapter.newTitle" = "Create Adapter";
+"adapter.editTitle" = "Edit Adapter";
+"adapter.name" = "Name";
+"adapter.namePlaceholder" = "Adapter name";
+"adapter.type" = "Type";
+"adapter.modelMappings" = "Model Mappings";
+"adapter.addMapping" = "Add Mapping";
+"adapter.sourceModelId" = "Source Model ID";
+"adapter.provider" = "Provider";
+"adapter.targetModelId" = "Target Model ID";
+"adapter.selectProvider" = "Select provider...";
+"adapter.selectModel" = "Select model...";
+"adapter.validationName" = "Name is required";
+"adapter.validationModels" = "At least one valid model mapping is required";
+"adapter.saveFailed" = "Failed to save adapter";
+"adapter.deleteFailed" = "Failed to delete adapter";
+"adapter.loadError" = "Failed to load adapters";
+"adapter.deleteConfirm" = "Are you sure you want to delete adapter \"%@\"?";
+"adapter.delete" = "Delete";
+"adapter.edit" = "Edit";
+"adapter.test" = "Test Connectivity";
+"adapter.testFailed" = "Connectivity test failed";
+"adapter.testResult" = "Test result for %@";
+"adapter.testStatus" = "Status:";
+"adapter.testOk" = "Reachable";
+"adapter.testFail" = "Unreachable";
+"adapter.testLatency" = "Latency:";
+"adapter.testDismiss" = "Dismiss";
+"adapter.empty" = "No adapters configured";
+"adapter.noResults" = "No matching adapters";
+"adapter.mappingCount" = "%d mapping(s)";
+
+// Capture tab
+"capture.toggle" = "Capture";
+"capture.start" = "Start Capture";
+"capture.stop" = "Stop Capture";
+"capture.endAndClear" = "End & Clear";
+"capture.sourceFilter" = "Source";
+"capture.allSources" = "All Sources";
+"capture.noData" = "No capture data";
+"capture.noSelection" = "Select an entry to view details";
+"capture.noContent" = "(no data)";
+"capture.clientSide" = "Client ↔ Proxy";
+"capture.upstreamSide" = "Proxy ↔ Upstream";
+"capture.error" = "Capture error";
+"capture.request" = "Request";
+"capture.response" = "Response";
+"capture.phase.requestIn" = "Client→Proxy Request";
+"capture.phase.requestOut" = "Proxy→Upstream Request";
+"capture.phase.responseIn" = "Upstream→Proxy Response";
+"capture.phase.responseOut" = "Proxy→Client Response";
+
+// Logs
+"logs.all" = "All";
+"logs.levelFilter" = "Level";
+"logs.typeFilter" = "Type";
+"logs.type.request" = "request";
+"logs.type.system" = "system";
+"logs.level.debug" = "debug";
+"logs.level.info" = "info";
+"logs.level.warn" = "warn";
+"logs.level.error" = "error";
+"logs.searchPlaceholder" = "Search logs...";
+"logs.showDetails" = "Details";
+"logs.hideDetails" = "Hide details";
+"logs.loadMore" = "Load older logs";
+"logs.empty" = "No log entries";
+"logs.loading" = "Loading logs...";
+"logs.error" = "Failed to load logs";
+"logs.retry" = "Retry";
+"logs.totalCount" = "%d entries";
+"logs.autoScroll.on" = "Auto-scroll: ON (click to disable)";
+"logs.autoScroll.off" = "Auto-scroll: OFF (click to enable)";
+
+// Dashboard
+"dashboard.serviceStatus" = "Service Status";
+"dashboard.online" = "Online";
+"dashboard.offline" = "Offline";
+"dashboard.providerCount" = "Providers";
+"dashboard.modelCount" = "Models";
+"dashboard.adapterCount" = "Adapters";
+"dashboard.tokenUsage" = "Token Usage";
+"dashboard.requests" = "Requests";
+"dashboard.inputTokens" = "Input Tokens";
+"dashboard.outputTokens" = "Output Tokens";
+"dashboard.totalTokens" = "Total Tokens";
+"dashboard.cacheHits" = "Cache Hits";
+"dashboard.cacheCreation" = "Cache Creation";
+"dashboard.hitRate" = "Hit Rate";
+"dashboard.empty" = "No data";
+"dashboard.loading" = "Loading...";
