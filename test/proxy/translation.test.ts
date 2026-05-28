@@ -851,7 +851,7 @@ describe('proxy/response-conversion', () => {
     assert.strictEqual(cc.status, 'completed')
   })
 
-  it('Anthropic tool_use (computer) click → OpenAI click action with coordinates', () => {
+  it('Anthropic tool_use (computer) click → computer_call with action', () => {
     const result = convertAnthropicResponseToOpenAIResponses({
       content: [
         { type: 'tool_use', id: 'toolu_2', name: 'computer', input: { action: 'click', coordinate: [500, 300] } },
@@ -860,14 +860,17 @@ describe('proxy/response-conversion', () => {
       usage: { input_tokens: 5, output_tokens: 3 },
     })
     const output = result.output as Array<Record<string, unknown>>
-    const cc = output[1]
+    // No message item (no text content), computer_call is first
+    assert.strictEqual(output.length, 1)
+    const cc = output[0]
+    assert.strictEqual(cc.type, 'computer_call')
     const action = cc.action as Record<string, unknown>
     assert.strictEqual(action.type, 'click')
     assert.strictEqual(action.x, 500)
     assert.strictEqual(action.y, 300)
   })
 
-  it('Anthropic tool_use (bash) → 不转为特殊 item（保持 function_call 格式）', () => {
+  it('Anthropic tool_use (bash) → 转为 function_call', () => {
     const result = convertAnthropicResponseToOpenAIResponses({
       content: [
         { type: 'tool_use', id: 'toolu_3', name: 'bash', input: { cmd: 'ls' } },
@@ -876,7 +879,9 @@ describe('proxy/response-conversion', () => {
       usage: { input_tokens: 5, output_tokens: 3 },
     })
     const output = result.output as Array<Record<string, unknown>>
-    const fc = output[1]
+    // No message item (no text content), function_call is first
+    assert.strictEqual(output.length, 1)
+    const fc = output[0]
     assert.strictEqual(fc.type, 'function_call')
     assert.strictEqual(fc.name, 'bash')
   })

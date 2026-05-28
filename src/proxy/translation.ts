@@ -110,6 +110,13 @@ function convertToolsToAnthropic(tools: unknown[]): unknown[] | undefined {
       continue
     }
 
+    // Codex-internal function tools → skip (these trigger MCP calls on the Codex side)
+    // list_mcp_resources: when called, Codex tries to call resources/list on MCP servers
+    const name = item.name as string ?? ''
+    if (['list_mcp_resources', 'list_mcp_notes', 'exec_command', 'exec'].includes(name)) {
+      continue
+    }
+
     // OpenAI namespace tools → skip (Anthropic has no equivalent)
     // CCX approach: strip namespace tools and remap via CodexToolContext on response
     if (type === 'namespace') {
@@ -1327,14 +1334,17 @@ export function convertAnthropicResponseToOpenAIResponses(anthropicBody: Record<
     }
   }
 
-  // Message output item goes first (before function_call items for correct ordering)
-  output.unshift({
-    type: 'message',
-    id: `msg_${Date.now().toString(36)}`,
-    status: stopReason === 'end_turn' ? 'completed' : stopReason === 'max_tokens' ? 'incomplete' : 'completed',
-    role: 'assistant',
-    content: outputMessageContent,
-  })
+  // Message output item goes first (before function_call/computer_call items)
+  // CCX compatibility: only add message item when there's actual content
+  if (outputMessageContent.length > 0) {
+    output.unshift({
+      type: 'message',
+      id: `msg_${Date.now().toString(36)}`,
+      status: stopReason === 'end_turn' ? 'completed' : stopReason === 'max_tokens' ? 'incomplete' : 'completed',
+      role: 'assistant',
+      content: outputMessageContent,
+    })
+  }
 
   return {
     id: `resp_${Date.now().toString(36)}`,
