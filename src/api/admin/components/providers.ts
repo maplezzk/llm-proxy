@@ -162,20 +162,25 @@ export function providersPage() {
         this.pullModal = { visible: true, models: [], existing: [], loading: false, error: res?.error || t('admin.providers.pullModelsError') }
         return
       }
-      this.pullModal = { visible: true, models: res.data.models || [], existing: res.data.existing || [], loading: false, error: '' }
+      const models = (res.data.models || []).map((m: any) => ({
+        ...m,
+        checked: !res.data.existing?.includes(m.id),
+      }))
+      this.pullModal = { visible: true, models, existing: res.data.existing || [], loading: false, error: '' }
     },
 
     importPullModels() {
       const existingIds = new Set(this.form.models.map((m: any) => m.id))
+      const selected = this.pullModal.models.filter((m: any) => m.checked)
       let added = 0
-      for (const m of this.pullModal.models) {
+      for (const m of selected) {
         if (!existingIds.has(m.id)) {
           this.form.models.push({ id: m.id })
           existingIds.add(m.id)
           added++
         }
       }
-      const total = this.pullModal.models.length
+      const total = selected.length
       const msg = total > added
         ? `${t('admin.providers.importedModels', { added })}${t('admin.providers.importedModelsSkip', { skipped: total - added })}`
         : t('admin.providers.importedModels', { added })
