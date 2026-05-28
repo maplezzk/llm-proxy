@@ -302,12 +302,12 @@ class APIClient {
         }
     }
 
-    func testAdapter(name: String) async throws -> TestModelResult {
+    func testAdapter(name: String, modelId: String) async throws -> TestModelResult {
         let url = URL(string: "\(baseURL)/admin/test-adapter")!
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.httpBody = try JSONSerialization.data(withJSONObject: ["adapter": name])
+        req.httpBody = try JSONSerialization.data(withJSONObject: ["adapterName": name, "modelId": modelId])
         let (data, resp) = try await URLSession.shared.data(for: req)
         guard let http = resp as? HTTPURLResponse, http.statusCode == 200 else {
             throw URLError(.badServerResponse)

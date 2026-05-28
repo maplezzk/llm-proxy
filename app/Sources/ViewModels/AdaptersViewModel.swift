@@ -132,6 +132,7 @@ final class AdaptersViewModel {
             }
             closeForm()
             await load()
+            NotificationCenter.default.post(name: .configDidChange, object: nil)
             return true
         } catch {
             self.error = loc("adapter.saveFailed")
@@ -145,6 +146,7 @@ final class AdaptersViewModel {
         do {
             try await client.deleteAdapter(name: name)
             await load()
+            NotificationCenter.default.post(name: .configDidChange, object: nil)
         } catch {
             self.error = loc("adapter.deleteFailed")
         }
@@ -152,13 +154,22 @@ final class AdaptersViewModel {
 
     // MARK: - Test
 
-    func testAdapter(_ name: String) async {
+    func testAdapter(_ adapter: Adapter) async {
+        guard let firstMapping = adapter.models.first else {
+            testResults[adapter.name] = TestModelResult(
+                reachable: false, latency: nil, model: nil,
+                error: "No model mapping", adapterUrl: nil, requestUrl: nil,
+                requestBody: nil, responseBody: nil, responseStatus: nil
+            )
+            return
+        }
+        let name = adapter.name
         testingAdapterName = name
         isTesting = true
         testResults.removeValue(forKey: name)
         error = nil
         do {
-            testResults[name] = try await client.testAdapter(name: name)
+            testResults[name] = try await client.testAdapter(name: name, modelId: firstMapping.sourceModelId)
         } catch {
             testResults[name] = TestModelResult(
                 reachable: false,

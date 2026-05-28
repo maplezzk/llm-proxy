@@ -189,6 +189,7 @@ final class ProvidersViewModel {
             }
             showForm = false
             await load()
+            NotificationCenter.default.post(name: .configDidChange, object: nil)
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -220,6 +221,7 @@ final class ProvidersViewModel {
             deleteTargetName = nil
             successMessage = loc("providers.deleted")
             await load()
+            NotificationCenter.default.post(name: .configDidChange, object: nil)
         } catch {
             errorMessage = error.localizedDescription
         }

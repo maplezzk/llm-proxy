@@ -56,11 +56,11 @@ final class DashboardViewModelTests: XCTestCase {
 
     func testComputedCountsFromConfig() {
         let vm = DashboardViewModel()
-        let provider1 = Provider(name: "p1", type: "openai", models: [
+        let provider1 = Provider(name: "p1", type: "openai", api_key: nil, api_base: nil, models: [
             ProviderModel(id: "m1"),
             ProviderModel(id: "m2")
         ])
-        let provider2 = Provider(name: "p2", type: "anthropic", models: [
+        let provider2 = Provider(name: "p2", type: "anthropic", api_key: nil, api_base: nil, models: [
             ProviderModel(id: "m3")
         ])
         let adapter1 = Adapter(name: "a1", type: "anthropic", baseUrl: nil, models: [])

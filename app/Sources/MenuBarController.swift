@@ -21,6 +21,12 @@ class MenuBarController: NSObject {
 
     init(statusItem: NSStatusItem) {
         self.statusItem = statusItem
+        super.init()
+        NotificationCenter.default.addObserver(forName: .configDidChange, object: nil, queue: .main) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                await self?.refresh()
+            }
+        }
     }
 
     func buildMenu() {

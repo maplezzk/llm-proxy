@@ -1,392 +1,242 @@
 import SwiftUI
 
-/// 独立测试面板 Sheet——从工具栏烧瓶按钮打开
+/// 独立测试面板 tab——支持 Provider 和 Adapter 两种测试模式
 struct TestPanelView: View {
-    // MARK: - Form State
+    @Environment(TestCoordinator.self) private var coordinator
 
-    @State private var providers: [Provider] = []
+    enum TestMode: String, CaseIterable { case provider, adapter }
+    @State private var mode: TestMode = .provider
+
+    // Provider 表单
     @State private var selectedProviderName = ""
     @State private var selectedModelId = ""
     @State private var selectedType = "openai"
     @State private var apiKey = ""
     @State private var apiBase = ""
+    @State private var providers: [Provider] = []
 
-    // MARK: - Loading & Result State
+    // Adapter 表单
+    @State private var adapters: [Adapter] = []
+    @State private var selectedAdapterName = ""
+    @State private var adapterModelId = ""
 
-    @State private var isLoadingProviders = false
+    // 通用
     @State private var isTesting = false
     @State private var testResult: TestModelResult?
     @State private var errorMessage: String?
-
-    // MARK: - Dependencies
+    @State private var isLoadingData = false
 
     private let api = APIClient()
-
-    // MARK: - Computed
-
-    private var selectedProvider: Provider? {
-        providers.first { $0.name == selectedProviderName }
-    }
-
-    private var providerModels: [ProviderModel] {
-        selectedProvider?.models ?? []
-    }
-
     private let types = ["openai", "anthropic", "openai-responses"]
 
-    // MARK: - Body
+    private var selectedProvider: Provider? { providers.first { $0.name == selectedProviderName } }
+    private var selectedAdapter: Adapter? { adapters.first { $0.name == selectedAdapterName } }
 
     var body: some View {
         VStack(spacing: 0) {
-            // 标题栏
+            // 标题
             header
-
             Divider()
 
-            // 表单 + 结果
             ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    formSection
+                VStack(alignment: .leading, spacing: 20) {
+                    modePicker
+
+                    if mode == .provider {
+                        providerForm
+                    } else {
+                        adapterForm
+                    }
+
                     sendButton
-                    if isTesting {
-                        testingIndicator
-                    }
-                    if let result = testResult {
-                        resultSection(result)
-                    }
-                    if let error = errorMessage {
-                        errorView(error)
-                    }
+
+                    if isTesting { ProgressView().padding(.horizontal) }
+
+                    if let result = testResult { resultView(result) }
+                    if let msg = errorMessage { Text(msg).foregroundColor(.red).font(.caption).padding(.horizontal) }
                 }
-                .padding(20)
+                .padding()
             }
         }
-        .frame(width: 520, height: 560)
-        .task { await loadProviders() }
+        .task { await loadData() }
+        .onAppear { consumePending() }
     }
-
-    // MARK: - Header
 
     private var header: some View {
         HStack {
-            Image(systemName: "flask")
-                .font(.title3)
-                .foregroundColor(.accentColor)
-            Text(loc("test.title"))
-                .font(.headline)
+            Label(loc("test.title"), systemImage: "flask")
+                .font(.title2)
+                .fontWeight(.semibold)
             Spacer()
         }
-        .padding(.horizontal, 20)
+        .padding(.horizontal)
         .padding(.vertical, 12)
     }
 
-    // MARK: - Form Section
+    private var modePicker: some View {
+        Picker("", selection: $mode) {
+            ForEach(TestMode.allCases, id: \.self) { m in
+                Text(m == .provider ? loc("nav.providers") : loc("nav.adapters")).tag(m)
+            }
+        }
+        .pickerStyle(.segmented)
+        .labelsHidden()
+    }
 
-    private var formSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            // Provider 选择器
-            VStack(alignment: .leading, spacing: 4) {
-                Text(loc("test.provider"))
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                if isLoadingProviders {
-                    HStack {
-                        ProgressView()
-                            .scaleEffect(0.6)
-                        Text(loc("providers.loading"))
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
-                } else {
-                    Picker(loc("test.selectProvider"), selection: $selectedProviderName) {
-                        Text(loc("test.selectProvider")).tag("")
-                        ForEach(providers, id: \.name) { provider in
-                            Text(provider.name).tag(provider.name)
-                        }
-                    }
-                    .pickerStyle(.menu)
-                    .onChange(of: selectedProviderName) {
-                        // 切换供应商时预填第一个模型
-                        if let provider = selectedProvider {
-                            selectedType = provider.type
-                            apiBase = ""
-                            apiKey = ""
-                            if let firstModel = provider.models.first {
-                                selectedModelId = firstModel.id
-                            }
-                        }
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
+    // MARK: - Provider Form
+
+    private var providerForm: some View {
+        Group {
+            Picker(loc("test.selectProvider"), selection: $selectedProviderName) {
+                Text(loc("test.selectProvider")).tag("")
+                ForEach(providers, id: \.name) { p in Text(p.name).tag(p.name) }
+            }
+            .onChange(of: selectedProviderName) { _, name in
+                if let p = selectedProvider {
+                    selectedType = p.type
+                    apiKey = p.api_key ?? ""
+                    apiBase = p.api_base ?? ""
+                    if let first = p.models.first { selectedModelId = first.id }
                 }
             }
 
-            // Model 输入（TextField + Picker）
-            VStack(alignment: .leading, spacing: 4) {
-                Text(loc("test.model"))
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                HStack(spacing: 8) {
-                    TextField("model-id", text: $selectedModelId)
-                        .textFieldStyle(.roundedBorder)
-                    if !providerModels.isEmpty {
-                        Picker("", selection: $selectedModelId) {
-                            Text(loc("test.model")).tag("")
-                            ForEach(providerModels, id: \.id) { model in
-                                Text(model.id).tag(model.id)
-                            }
-                        }
-                        .pickerStyle(.menu)
-                        .frame(width: 40)
-                        .labelsHidden()
-                    }
-                }
-            }
-
-            // Type 选择器
-            VStack(alignment: .leading, spacing: 4) {
-                Text(loc("test.type"))
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                Picker(loc("test.type"), selection: $selectedType) {
-                    ForEach(types, id: \.self) { type in
-                        Text(type).tag(type)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .frame(maxWidth: 300)
-            }
-
-            // API Key
-            VStack(alignment: .leading, spacing: 4) {
-                Text(loc("test.apiKey"))
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                SecureField("sk-...", text: $apiKey)
+            HStack {
+                TextField(loc("test.model"), text: $selectedModelId)
                     .textFieldStyle(.roundedBorder)
+                if !providerModels.isEmpty {
+                    Picker("", selection: $selectedModelId) {
+                        ForEach(providerModels, id: \.id) { m in Text(m.id).tag(m.id) }
+                    }
+                }
             }
 
-            // API Base
-            VStack(alignment: .leading, spacing: 4) {
-                Text(loc("test.apiBase"))
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                TextField("https://api.openai.com", text: $apiBase)
-                    .textFieldStyle(.roundedBorder)
+            Picker(loc("test.type"), selection: $selectedType) {
+                ForEach(types, id: \.self) { t in Text(t).tag(t) }
             }
+            .pickerStyle(.segmented)
+
+            SecureField(loc("test.apiKey"), text: $apiKey).textFieldStyle(.roundedBorder)
+            TextField(loc("test.apiBase"), text: $apiBase).textFieldStyle(.roundedBorder)
         }
     }
 
-    // MARK: - Send Button
+    private var providerModels: [ProviderModel] { selectedProvider?.models ?? [] }
+
+    // MARK: - Adapter Form
+
+    private var adapterForm: some View {
+        Group {
+            Picker(loc("test.selectProvider"), selection: $selectedAdapterName) {
+                Text(loc("test.selectProvider")).tag("")
+                ForEach(adapters, id: \.name) { a in Text(a.name).tag(a.name) }
+            }
+            .onChange(of: selectedAdapterName) { _, _ in
+                if let a = selectedAdapter, let first = a.models.first {
+                    adapterModelId = first.sourceModelId
+                }
+            }
+
+            TextField(loc("test.model"), text: $adapterModelId).textFieldStyle(.roundedBorder)
+        }
+    }
+
+    // MARK: - Send
 
     private var sendButton: some View {
-        Button(action: { Task { await sendTest() } }) {
-            if isTesting {
-                HStack(spacing: 6) {
-                    ProgressView()
-                        .scaleEffect(0.7)
-                        .frame(width: 14, height: 14)
-                    Text(loc("test.send"))
-                }
-            } else {
-                Label(loc("test.send"), systemImage: "paperplane.fill")
-            }
+        Button(action: { Task { await runTest() } }) {
+            Label(loc("test.send"), systemImage: "play.fill")
+                .frame(maxWidth: .infinity)
         }
         .buttonStyle(.borderedProminent)
-        .disabled(isTesting || selectedModelId.trimmingCharacters(in: .whitespaces).isEmpty)
+        .disabled(isTesting || (mode == .provider ? selectedModelId.isEmpty : adapterModelId.isEmpty))
     }
 
-    // MARK: - Testing Indicator
+    // MARK: - Run
 
-    private var testingIndicator: some View {
-        HStack(spacing: 8) {
-            ProgressView()
-                .scaleEffect(0.7)
-            Text(loc("providers.loading"))
-                .font(.caption)
-                .foregroundColor(.secondary)
-        }
-    }
-
-    // MARK: - Result Section
-
-    @ViewBuilder
-    private func resultSection(_ result: TestModelResult) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Divider()
-
-            Text(loc("test.result"))
-                .font(.headline)
-
-            // 连通状态
-            HStack(spacing: 8) {
-                if result.reachable {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundColor(.green)
-                    Text(loc("test.reachable"))
-                        .foregroundColor(.green)
-                        .fontWeight(.medium)
-                } else {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundColor(.red)
-                    Text(loc("test.unreachable"))
-                        .foregroundColor(.red)
-                        .fontWeight(.medium)
-                }
-            }
-
-            // 延迟
-            if let latency = result.latency {
-                HStack(spacing: 4) {
-                    Image(systemName: "stopwatch")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                    Text(loc("test.latency", latency))
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-            }
-
-            // 错误信息
-            if let error = result.error, !error.isEmpty {
-                HStack(spacing: 4) {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .font(.caption)
-                        .foregroundColor(.red)
-                    Text(error)
-                        .font(.caption)
-                        .foregroundColor(.red)
-                }
-            }
-
-            // 请求 URL
-            if let requestUrl = result.requestUrl, !requestUrl.isEmpty {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Request URL")
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
-                    Text(requestUrl)
-                        .font(.caption)
-                        .foregroundColor(.primary)
-                        .lineLimit(2)
-                }
-            }
-
-            // 响应状态码
-            if let status = result.responseStatus {
-                HStack(spacing: 4) {
-                    Text("Status:")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                    Text("\(status)")
-                        .font(.caption)
-                        .fontWeight(.medium)
-                        .foregroundColor(status >= 200 && status < 300 ? .green : .orange)
-                }
-            }
-
-            // 原始响应 JSON
-            if let responseBody = result.responseBody {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Response Body")
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
-                    ScrollView {
-                        Text(formatAnyCodable(responseBody))
-                            .font(.system(.caption, design: .monospaced))
-                            .foregroundColor(.primary)
-                            .textSelection(.enabled)
-                    }
-                    .frame(maxHeight: 180)
-                    .padding(8)
-                    .background(Color(nsColor: .textBackgroundColor))
-                    .cornerRadius(6)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 6)
-                            .stroke(Color.secondary.opacity(0.2))
-                    )
-                }
-            }
-        }
-    }
-
-    // MARK: - Error View
-
-    private func errorView(_ error: String) -> some View {
-        HStack(spacing: 6) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundColor(.red)
-            Text(error)
-                .font(.caption)
-                .foregroundColor(.red)
-        }
-        .padding(10)
-        .background(Color.red.opacity(0.08))
-        .cornerRadius(6)
-    }
-
-    // MARK: - Actions
-
-    private func loadProviders() async {
-        isLoadingProviders = true
+    private func runTest() async {
+        isTesting = true; testResult = nil; errorMessage = nil
         do {
-            let config = try await api.fetchConfig()
-            providers = config.data?.providers ?? []
-            if let first = providers.first {
-                selectedProviderName = first.name
-                selectedType = first.type
-                if let firstModel = first.models.first {
-                    selectedModelId = firstModel.id
-                }
+            if mode == .provider {
+                let type = selectedType
+                let key = apiKey.isEmpty ? (selectedProvider?.api_key ?? "") : apiKey
+                let base = apiBase.isEmpty ? (selectedProvider?.api_base ?? "") : apiBase
+                testResult = try await api.testProvider(modelId: selectedModelId, provider: selectedProviderName, apiKey: key, apiBase: base, type: type)
+            } else {
+                testResult = try await api.testAdapter(name: selectedAdapterName, modelId: adapterModelId)
             }
         } catch {
             errorMessage = error.localizedDescription
         }
-        isLoadingProviders = false
-    }
-
-    private func sendTest() async {
-        let modelId = selectedModelId.trimmingCharacters(in: .whitespaces)
-        guard !modelId.isEmpty else { return }
-
-        isTesting = true
-        testResult = nil
-        errorMessage = nil
-
-        do {
-            let result = try await api.testProvider(
-                modelId: modelId,
-                provider: selectedProviderName,
-                apiKey: apiKey,
-                apiBase: apiBase,
-                type: selectedType
-            )
-            testResult = result
-        } catch {
-            testResult = TestModelResult(
-                reachable: false,
-                latency: nil,
-                model: modelId,
-                error: error.localizedDescription,
-                adapterUrl: nil,
-                requestUrl: nil,
-                requestBody: nil,
-                responseBody: nil,
-                responseStatus: nil
-            )
-        }
         isTesting = false
     }
 
-    // MARK: - Helpers
+    // MARK: - Result
 
-    /// 将 AnyCodable 格式化为可读 JSON 字符串
-    private func formatAnyCodable(_ anyCodable: AnyCodable) -> String {
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        if let encoded = try? encoder.encode(AnyCodable(anyCodable.value)),
-           let jsonString = String(data: encoded, encoding: .utf8) {
-            return jsonString
+    private func resultView(_ result: TestModelResult) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label(loc("test.result"), systemImage: "list.clipboard").font(.headline)
+            Divider()
+
+            HStack {
+                Image(systemName: result.reachable ? "checkmark.circle.fill" : "xmark.circle.fill")
+                    .foregroundColor(result.reachable ? .green : .red)
+                Text(result.reachable ? loc("test.reachable") : loc("test.unreachable"))
+                if let lat = result.latency { Text("· \(lat)ms").foregroundColor(.secondary) }
+                Spacer()
+            }
+
+            if let reqUrl = result.requestUrl {
+                Text("Request: \(reqUrl)").font(.caption).foregroundColor(.secondary)
+            }
+            if let status = result.responseStatus {
+                Text("Status: \(status)").font(.caption).foregroundColor(.secondary)
+            }
+
+            if let body = result.responseBody {
+                Divider()
+                Text(responseJSON(from: body))
+                    .font(.system(.caption, design: .monospaced))
+                    .textSelection(.enabled)
+                    .padding(8)
+                    .background(Color.primary.opacity(0.04))
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+            }
         }
-        return "\(anyCodable.value)"
+        .padding()
+        .background(RoundedRectangle(cornerRadius: 8).fill(Color.primary.opacity(0.04)))
+    }
+
+    private func responseJSON(from body: AnyCodable) -> String {
+        guard let data = try? JSONSerialization.data(withJSONObject: body.value, options: [.prettyPrinted, .sortedKeys]),
+              let str = String(data: data, encoding: .utf8) else { return "\(body.value)" }
+        return str
+    }
+
+    // MARK: - Data Loading
+
+    private func loadData() async {
+        isLoadingData = true
+        do {
+            let config = try await api.fetchConfig()
+            providers = config.data?.providers ?? []
+            let adaptersResp = try await api.fetchAdapters()
+            adapters = adaptersResp.data?.adapters ?? []
+        } catch { /* ignore */ }
+        isLoadingData = false
+    }
+
+    private func consumePending() {
+        if let p = coordinator.consumeProviderPending() {
+            mode = .provider
+            selectedProviderName = p.name
+            selectedType = p.type
+            apiKey = p.apiKey
+            apiBase = p.apiBase
+            if let first = p.models.first { selectedModelId = first }
+        } else if let a = coordinator.consumeAdapterPending() {
+            mode = .adapter
+            selectedAdapterName = a.name
+            adapterModelId = a.modelId
+        }
     }
 }

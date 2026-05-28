@@ -259,6 +259,8 @@ struct ProviderModel: Codable {
 struct Provider: Codable {
     let name: String
     let type: String
+    let api_key: String?
+    let api_base: String?
     let models: [ProviderModel]
 }
 

@@ -2,6 +2,7 @@ import SwiftUI
 
 struct AdaptersView: View {
     @State private var viewModel = AdaptersViewModel()
+    @Environment(TestCoordinator.self) private var testCoordinator
     @State private var showDeleteAlert = false
     @State private var adapterToDelete: String?
 
@@ -122,22 +123,14 @@ struct AdaptersView: View {
 
             Spacer()
 
-            // 测试状态（行内）
-            testStatusView(adapter)
-
             // 操作按钮
             HStack(spacing: 4) {
-                // 测试按钮
+                // 测试按钮 → 跳转到测试 tab
                 Button {
-                    Task { await viewModel.testAdapter(adapter.name) }
+                    let firstModelId = adapter.models.first?.sourceModelId
+                    testCoordinator.requestAdapterTest(adapter: adapter, firstModelId: firstModelId)
                 } label: {
-                    if viewModel.isTesting && viewModel.testingAdapterName == adapter.name {
-                        ProgressView()
-                            .scaleEffect(0.6)
-                            .frame(width: 16, height: 16)
-                    } else {
-                        Image(systemName: "play.circle")
-                    }
+                    Image(systemName: "play.circle")
                 }
                 .buttonStyle(.borderless)
                 .help(loc("adapter.test"))
@@ -164,32 +157,6 @@ struct AdaptersView: View {
             }
         }
         .padding(.vertical, 4)
-    }
-
-    // MARK: - Test Status (inline)
-
-    @ViewBuilder
-    private func testStatusView(_ adapter: Adapter) -> some View {
-        if let result = viewModel.testResults[adapter.name] {
-            HStack(spacing: 4) {
-                if result.reachable, let latency = result.latency {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundColor(.green)
-                        .font(.caption)
-                    Text("\(latency)ms")
-                        .font(.caption)
-                        .foregroundColor(.green)
-                } else {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundColor(.red)
-                        .font(.caption)
-                    Text(result.error ?? loc("adapter.testFailed"))
-                        .font(.caption)
-                        .foregroundColor(.red)
-                        .lineLimit(1)
-                }
-            }
-        }
     }
 
     // MARK: - Helpers

@@ -3,7 +3,7 @@ import SwiftUI
 /// 控制台根视图——macOS 侧边栏导航
 struct ConsoleRootView: View {
     @State private var selectedTab: ConsoleTab = .dashboard
-    @State private var showTestPanel = false
+    @State private var testCoordinator = TestCoordinator()
 
     var body: some View {
         NavigationSplitView {
@@ -11,19 +11,11 @@ struct ConsoleRootView: View {
                 .navigationSplitViewColumnWidth(min: 160, ideal: 180, max: 220)
         } detail: {
             tabContent
-                .toolbar {
-                    ToolbarItem(placement: .primaryAction) {
-                        Button {
-                            showTestPanel = true
-                        } label: {
-                            Label(loc("test.title"), systemImage: "flask")
-                        }
-                        .help(loc("test.help"))
-                    }
-                }
         }
-        .sheet(isPresented: $showTestPanel) {
-            TestPanelView()
+        .navigationSplitViewStyle(.balanced)
+        .environment(testCoordinator)
+        .onChange(of: testCoordinator.shouldSwitchToTestTab) { _, newValue in
+            if newValue { selectedTab = .test }
         }
     }
 
@@ -63,6 +55,8 @@ struct ConsoleRootView: View {
             LogsView()
         case .capture:
             CaptureView()
+        case .test:
+            TestPanelView()
         }
     }
 }
@@ -75,6 +69,7 @@ enum ConsoleTab: String, CaseIterable {
     case adapters
     case logs
     case capture
+    case test
 
     var title: String {
         switch self {
@@ -83,6 +78,7 @@ enum ConsoleTab: String, CaseIterable {
         case .adapters: return loc("nav.adapters")
         case .logs: return loc("nav.logs")
         case .capture: return loc("nav.capture")
+        case .test: return loc("test.title")
         }
     }
 
@@ -93,6 +89,7 @@ enum ConsoleTab: String, CaseIterable {
         case .adapters: return "arrow.triangle.branch"
         case .logs: return "doc.text.magnifyingglass"
         case .capture: return "antenna.radiowaves.left.and.right"
+        case .test: return "flask"
         }
     }
 }

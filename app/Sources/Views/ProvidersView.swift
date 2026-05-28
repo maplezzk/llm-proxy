@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ProvidersView: View {
     @State private var viewModel = ProvidersViewModel()
+    @Environment(TestCoordinator.self) private var testCoordinator
 
     var body: some View {
         VStack(spacing: 0) {
@@ -96,24 +97,15 @@ struct ProvidersView: View {
 
             Spacer()
 
-            // 测试状态
-            testStatusView(provider)
-
             // 操作按钮组
             HStack(spacing: 4) {
-                // 测试按钮
-                Button(action: { Task { await viewModel.testProvider(provider) } }) {
-                    if viewModel.testingProviderNames.contains(provider.name) {
-                        ProgressView()
-                            .scaleEffect(0.6)
-                            .frame(width: 20, height: 20)
-                    } else {
-                        Image(systemName: "play.circle")
-                            .help(loc("providers.testConnectivity"))
-                    }
+                // 测试按钮 → 跳转到测试 tab
+                Button(action: { testCoordinator.requestProviderTest(provider: provider) }) {
+                    Image(systemName: "play.circle")
+                        .help(loc("providers.testConnectivity"))
                 }
                 .buttonStyle(.borderless)
-                .disabled(viewModel.testingProviderNames.contains(provider.name) || provider.models.isEmpty)
+                .disabled(provider.models.isEmpty)
 
                 // 编辑按钮
                 Button(action: { viewModel.openEditForm(provider) }) {
