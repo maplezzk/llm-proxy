@@ -940,6 +940,33 @@ export async function transformInboundRequest(
       ? extractFullOpenAI(body)
       : extractFullAnthropic(body)
 
+  // Strip Codex-internal tools that trigger MCP server calls.
+  // These tools (list_mcp_*, read_mcp_*, exec_command) are defined by Codex
+  // for Responses API's server-side MCP handling. When converting to Chat format,
+  // the upstream model can call them but can't execute them — Codex receives the
+  // function_call and falls back to calling local MCP servers, which fails.
+  //
+  // CCX's stripCodexClientOnlyTools drops by type only (does not filter by name),
+  // so it also passes these through. But in practice CCX users with Claude models
+  // may not trigger this because Claude is smarter about tool selection. For safety
+  // with models like DeepSeek, we strip these at the entry point before any builder sees them.
+  if (params.tools && inboundType === 'openai-responses') {
+    const mcpPrefixes = ['list_mcp_', 'read_mcp_', 'write_mcp_', 'subscribe_mcp_']
+    const codexTools = ['exec_command', 'exec']
+    params.tools = (params.tools as unknown[]).filter((t) => {
+      if (typeof t === 'string') return !codexTools.includes(t)
+      const item = t as Record<string, unknown>
+      // Check by tool name AND nested function name (Chat format)
+      const itemName = String(item.name ?? (item.function as Record<string, unknown> | undefined)?.name ?? '')
+      if (mcpPrefixes.some((p) => itemName.startsWith(p))) return false
+      if (codexTools.includes(itemName)) return false
+      return true
+    })
+    // Strip only by name — type-based stripping stays in convertToolsToOpenAI
+    // (computer_use_preview is valid for Anthropic path, dropped only for Chat path)
+    if (params.tools.length === 0) delete params.tools
+  }
+
   params.model = route.modelId
   // max_tokens: 0 → undefined（不传，让 builder 走默认值）, 应用路由级默认值
   if (params.max_tokens === 0) params.max_tokens = undefined
