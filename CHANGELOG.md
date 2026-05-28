@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.15.1](https://github.com/maplezzk/llm-proxy/compare/v0.15.0...v0.15.1) (2026-05-28)
+
+
+### Bug Fixes
+
+* 修复 Anthropic 协议上 namespace 工具丢失 + exec_command 误剥离 ([#120](https://github.com/maplezzk/llm-proxy/issues/120)) ([aa2247b](https://github.com/maplezzk/llm-proxy/commit/aa2247bed2f3a06684bcd9c65412567e1afda4ac))
+
 ## [0.15.0](https://github.com/maplezzk/llm-proxy/compare/v0.14.1...v0.15.0) (2026-05-28)
 
 
