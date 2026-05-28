@@ -303,13 +303,15 @@ export async function forwardRequest(
         if (req.inboundType === 'openai') {
           usage = await convertAnthropicStreamToOpenAI(reader, res, req.logger, req.capture, req.pairId)
         } else if (req.inboundType === 'openai-responses') {
-          usage = await convertAnthropicStreamToOpenAIResponses(reader, res, req.logger, req.capture, req.pairId)
+          const originalTools = req.originalBody?.tools as unknown[] | undefined
+          usage = await convertAnthropicStreamToOpenAIResponses(reader, res, req.logger, req.capture, req.pairId, originalTools)
         }
       } else if (req.upstreamType === 'openai') {
         if (req.inboundType === 'anthropic') {
           usage = await convertOpenAIStreamToAnthropic(reader, res, req.logger, req.capture, req.pairId)
         } else if (req.inboundType === 'openai-responses') {
-          usage = await convertOpenAIStreamToOpenAIResponses(reader, res, req.logger, req.capture, req.pairId)
+          const originalTools = req.originalBody?.tools as unknown[] | undefined
+          usage = await convertOpenAIStreamToOpenAIResponses(reader, res, req.logger, req.capture, req.pairId, originalTools)
         }
       } else { // openai-responses
         if (req.inboundType === 'anthropic') {

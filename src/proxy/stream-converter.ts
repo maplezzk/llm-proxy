@@ -2,7 +2,7 @@ import type { ServerResponse } from 'node:http'
 import type { Logger } from '../log/logger.js'
 import type { CaptureBuffer } from './capture.js'
 import { createHash } from 'node:crypto'
-import { convertActionToAnthropic, convertActionToOpenAI } from './translation.js'
+import { convertActionToAnthropic, convertActionToOpenAI, buildNamespaceToolContext, remapNamespaceFunctionCalls } from './translation.js'
 
 export interface StreamUsage {
   input_tokens: number
@@ -633,7 +633,8 @@ export async function convertAnthropicStreamToOpenAIResponses(
   res: ServerResponse,
   logger?: Logger,
   capture?: CaptureBuffer,
-  pairId?: number
+  pairId?: number,
+  originalTools?: unknown[]
 ): Promise<StreamUsage | null> {
   const decoder = new TextDecoder()
   const acc = newAccumulator()
@@ -922,7 +923,8 @@ export async function convertOpenAIStreamToOpenAIResponses(
   res: ServerResponse,
   logger?: Logger,
   capture?: CaptureBuffer,
-  pairId?: number
+  pairId?: number,
+  originalTools?: unknown[]
 ): Promise<StreamUsage | null> {
   const decoder = new TextDecoder()
   let buffer = ''
@@ -941,8 +943,19 @@ export async function convertOpenAIStreamToOpenAIResponses(
   let fnCallId = ''
   let fnCallName = ''
   let fnCallArgsAcc = ''        // accumulated args from deltas
+  let fnCallNamespace = ''
   let outputItems: Record<string, unknown>[] = [] // accumulated for response.completed
   let upstreamModel = ''         // store upstream model for response events
+
+  // Build namespace lookup table for post-processing (CCX compat)
+  const namespaceCtx = originalTools ? buildNamespaceToolContext(originalTools) : new Map()
+
+  // Helper to decode namespace from flat function name
+  const decodeNs = (flatName: string): { name: string; namespace?: string } => {
+    const spec = namespaceCtx.get(flatName)
+    if (spec) return { name: spec.name, namespace: spec.namespace }
+    return { name: flatName }
+  }
 
   const writeRaw = (data: string): void => {
     outLines.push(`[${ts()}] ${data}`)
@@ -1063,9 +1076,13 @@ export async function convertOpenAIStreamToOpenAIResponses(
           currentBlockType = 'tool_use'
           fnCallId = tc.id as string
           fnCallName = ((tc.function as Record<string, unknown>)?.name as string) ?? ''
+          const nsDecoded = decodeNs(fnCallName)
+          fnCallNamespace = nsDecoded.namespace ?? ''
+          fnCallName = nsDecoded.name  // Override with decoded name
+          const nsPart = fnCallNamespace ? `,"namespace":"${fnCallNamespace}"` : ''
           const fnArgs = ((tc.function as Record<string, unknown>)?.arguments as string) ?? ''
           fnCallArgsAcc = fnArgs  // Initialize accumulator with initial arguments
-          writeRaw(`event: response.output_item.added\ndata: {"type":"response.output_item.added","output_index":${currentBlockIndex},"item":{"type":"function_call","id":"fc_${fnCallId}","call_id":"${fnCallId}","name":"${fnCallName}","arguments":${JSON.stringify(fnArgs)}}}\n\n`)
+          writeRaw(`event: response.output_item.added\ndata: {"type":"response.output_item.added","output_index":${currentBlockIndex},"item":{"type":"function_call","id":"fc_${fnCallId}","call_id":"${fnCallId}","name":"${nsDecoded.name}","arguments":${JSON.stringify(fnArgs)}${nsPart}}}\n\n`)
         } else if (tc.function && (tc.function as Record<string, unknown>).arguments) {
           const partialArgs = (tc.function as Record<string, unknown>).arguments as string
           fnCallArgsAcc += partialArgs
@@ -1091,12 +1108,15 @@ export async function convertOpenAIStreamToOpenAIResponses(
         if (currentBlockType === 'tool_use') {
           writeRaw(`event: response.function_call_arguments.done\ndata: {"type":"response.function_call_arguments.done","output_index":${currentBlockIndex},"arguments":${JSON.stringify(fnCallArgsAcc)}}\n\n`)
           // Emit response.output_item.done for the function_call
-          writeRaw(`event: response.output_item.done\ndata: {"type":"response.output_item.done","output_index":${currentBlockIndex},"item":{"type":"function_call","id":"fc_${fnCallId}","call_id":"${fnCallId}","name":"${fnCallName}","arguments":${JSON.stringify(fnCallArgsAcc)},"status":"completed"}}\n\n`)
+          const nsPart = fnCallNamespace ? `,"namespace":"${fnCallNamespace}"` : ''
+          writeRaw(`event: response.output_item.done\ndata: {"type":"response.output_item.done","output_index":${currentBlockIndex},"item":{"type":"function_call","id":"fc_${fnCallId}","call_id":"${fnCallId}","name":"${fnCallName}","arguments":${JSON.stringify(fnCallArgsAcc)},"status":"completed"${nsPart}}}\n\n`)
           // Record for response.completed output
-          outputItems.push({
+          const fcOut: Record<string, unknown> = {
             type: 'function_call', id: `fc_${fnCallId}`, call_id: fnCallId,
             name: fnCallName, arguments: fnCallArgsAcc, status: 'completed',
-          })
+          }
+          if (fnCallNamespace) fcOut.namespace = fnCallNamespace
+          outputItems.push(fcOut)
         }
         // Emit response.output_item.done for the message
         const msgContent: unknown[] = []
