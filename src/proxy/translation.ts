@@ -755,12 +755,46 @@ function convertMessagesToOpenAI(messages: unknown[]): unknown[] {
           })
         }
         // Emit remaining user content if any
+        // Convert Anthropic image blocks → OpenAI image_url format
         if (otherBlocks.length > 0) {
-          const text = otherBlocks.map((b: any) => b.text ?? '').join('')
-          result.push({ role: 'user', content: text })
+          const parts = otherBlocks.map((b: any) => {
+            if (b.type === 'image' && b.source) {
+              const source = b.source as Record<string, unknown>
+              const url = source.url || source.data
+              return {
+                type: 'image_url',
+                image_url: { url: url as string, ...(source.media_type ? {} : {}) },
+              }
+            }
+            if (b.type === 'text') return { type: 'text', text: b.text }
+            return b
+          })
+          // If single text part, collapse to string
+          if (parts.length === 1 && (parts[0] as Record<string, unknown>).type === 'text') {
+            result.push({ role: 'user', content: (parts[0] as Record<string, unknown>).text })
+          } else {
+            result.push({ role: 'user', content: parts })
+          }
         }
         continue
       }
+    }
+    // Handle tool messages with array content (e.g., computer_call_output screenshots)
+    // Convert image blocks → text for models that don't support image_url in tool messages
+    if (m.role === 'tool' && Array.isArray(m.content)) {
+      const blocks = m.content as Array<Record<string, unknown>>
+      const textParts: string[] = []
+      for (const b of blocks) {
+        if (b.type === 'text') {
+          textParts.push(b.text as string)
+        } else if (b.type === 'image') {
+          const source = b.source as Record<string, unknown> | undefined
+          if (source?.url) textParts.push(`[image: ${source.url}]`)
+          else textParts.push('[image]')
+        }
+      }
+      result.push({ role: 'tool', tool_call_id: m.tool_call_id, content: textParts.join('\n') || '[output]' })
+      continue
     }
     // developer role → system (older Chat Completions APIs don't support "developer")
     if (m.role === 'developer') {
