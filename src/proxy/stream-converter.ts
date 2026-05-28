@@ -1034,6 +1034,12 @@ export async function convertOpenAIStreamToOpenAIResponses(
       rawLines.push(`[${ts()}] data: ${dataStr}`)
       totalChunks++
 
+      // kimi-k2.6 sends usage in a separate chunk with empty choices
+      // Capture usage before the choices check
+      if (parsed?.usage) {
+        lastUsage = parsed.usage as Record<string, unknown>
+      }
+
       const choices = parsed.choices as Array<Record<string, unknown>> | undefined
       if (!choices || choices.length === 0) continue
       const choice = choices[0]
@@ -1041,8 +1047,10 @@ export async function convertOpenAIStreamToOpenAIResponses(
       const finishReason = choice.finish_reason as string | undefined
       const chunkUsage = parsed.usage as Record<string, unknown> | undefined
 
-      // First message with role → init Responses stream
-      if (delta?.role === 'assistant' && !messageStarted) {
+      // First message with role or tool_calls → init Responses stream
+      // kimi-k2.6 etc may skip the role field and go straight to tool_calls
+      // DON'T continue — fall through so tool_calls/text in the same chunk are processed
+      if (!messageStarted && (delta?.role === 'assistant' || delta?.tool_calls)) {
         messageStarted = true
         currentRespId = respId()
         currentMsgId = msgId()
@@ -1055,7 +1063,7 @@ export async function convertOpenAIStreamToOpenAIResponses(
         writeRaw(`event: response.content_part.added\ndata: {"type":"response.content_part.added","output_index":0,"content_index":0,"part":{"type":"output_text","text":"","annotations":[]}}\n\n`)
         currentBlockIndex = 0
         currentBlockType = 'text'
-        continue
+        // fall through — tool_calls or text in the SAME chunk still need processing
       }
 
       if (!messageStarted) continue
