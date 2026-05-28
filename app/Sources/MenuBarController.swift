@@ -90,17 +90,16 @@ class MenuBarController: NSObject {
     func rebuildMenu() {
         let menu = NSMenu()
 
-        // Dashboard 预览行
+        // 控制台入口
         let consoleItem = NSMenuItem()
-        let runningIcon = serviceRunning ? "🟢 " : "🔴 "
-        let consoleText = "\(runningIcon)\(loc("console.openConsole"))"
+        let consoleText = loc("console.openConsole")
         let attrConsole = NSMutableAttributedString(string: consoleText)
         attrConsole.addAttribute(.font, value: NSFont.systemFont(ofSize: 13, weight: .medium), range: NSRange(location: 0, length: attrConsole.length))
         consoleItem.attributedTitle = attrConsole
         consoleItem.target = self
         consoleItem.action = #selector(openConsole)
         if #available(macOS 11.0, *) {
-            consoleItem.image = NSImage(systemSymbolName: "rectangle.split.2x1", accessibilityDescription: loc("console.openConsole"))
+            consoleItem.image = NSImage(systemSymbolName: "sidebar.left", accessibilityDescription: loc("console.openConsole"))
         }
         menu.addItem(consoleItem)
         menu.addItem(.separator())
