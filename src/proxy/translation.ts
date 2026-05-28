@@ -955,6 +955,17 @@ export async function transformInboundRequest(
       ? extractFullOpenAI(body)
       : extractFullAnthropic(body)
 
+  // Aggressively strip Codex-internal tools BEFORE any builder function sees them
+  if (params.tools) {
+    params.tools = (params.tools as unknown[]).filter((t) => {
+      if (typeof t === 'string') return !['list_mcp_resources', 'list_mcp_notes', 'exec_command', 'exec'].includes(t)
+      const item = t as Record<string, unknown>
+      const itemName = String(item.name ?? (item.function as Record<string, unknown> | undefined)?.name ?? '')
+      return !['list_mcp_resources', 'list_mcp_notes', 'exec_command', 'exec'].includes(itemName)
+    })
+    if (params.tools.length === 0) delete params.tools
+  }
+
   params.model = route.modelId
   // max_tokens: 0 → undefined（不传，让 builder 走默认值）, 应用路由级默认值
   if (params.max_tokens === 0) params.max_tokens = undefined
