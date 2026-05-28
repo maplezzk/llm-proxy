@@ -265,6 +265,26 @@ describe('proxy/stream-converter', () => {
       assert.ok(output.includes('"text":"Final answer"'), 'text content preserved')
       assert.ok(output.includes('event: message_stop'), '应有 message_stop')
     })
+
+    it('computer_call → tool_use (computer) with action conversion', async () => {
+      const { chunks, res } = makeResponse()
+      const reader = makeReader([
+        'event: response.output_item.added\ndata: {"type":"response.output_item.added","output_index":0,"item":{"type":"message","id":"msg_1","status":"in_progress","role":"assistant","content":[]}}\n\n',
+        'event: response.content_part.added\ndata: {"type":"response.content_part.added","output_index":0,"content_index":0,"part":{"type":"output_text","text":"","annotations":[]}}\n\n',
+        'event: response.output_text.delta\ndata: {"type":"response.output_text.delta","output_index":0,"content_index":0,"delta":"Taking screenshot"}\n\n',
+        'event: response.output_text.done\ndata: {"type":"response.output_text.done"}\n\n',
+        'event: response.output_item.added\ndata: {"type":"response.output_item.added","output_index":1,"item":{"type":"computer_call","id":"cc_1","call_id":"call_screenshot","action":{"type":"screenshot"},"pending_safety_checks":[],"status":"in_progress"}}\n\n',
+        'event: response.completed\ndata: {"type":"response.completed","response":{"id":"resp_1","status":"completed"}}\n\n',
+      ])
+      await convertOpenAIResponsesStreamToAnthropic(reader, res)
+      const output = chunks.join('')
+      // Verify computer_call → content_block_start (tool_use, computer)
+      assert.ok(output.includes('"name":"computer"'), '工具名为 computer')
+      assert.ok(output.includes('"action":"screenshot"'), 'action 应映射为 screenshot')
+      // Verify content_block_stop for computer tool_use is emitted
+      const stopEvents = [...output.matchAll(/content_block_stop/g)]
+      assert.ok(stopEvents.length >= 2, '应有至少 2 个 content_block_stop（text + computer tool_use）')
+    })
   })
 
   describe('Anthropic SSE → OpenAI Responses SSE', () => {
@@ -316,6 +336,30 @@ describe('proxy/stream-converter', () => {
       assert.ok(output.includes('"summary_text"'), '顶层 reasoning 应为 summary_text 格式')
       // Verify message content in response.completed does NOT contain reasoning block type
       // (output item's content should only have output_text, not reasoning)
+    })
+
+    it('tool_use (computer) → computer_call output_item', async () => {
+      const { chunks, res } = makeResponse()
+      const reader = makeReader([
+        'event: message_start\ndata: {"type":"message_start","message":{}}\n\n',
+        'event: content_block_start\ndata: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}\n\n',
+        'event: content_block_delta\ndata: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Clicking now"}}\n\n',
+        'event: content_block_stop\ndata: {"type":"content_block_stop","index":0}\n\n',
+        'event: content_block_start\ndata: {"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"toolu_1","name":"computer","input":{"action":"click","coordinate":[100,200]}}}\n\n',
+        'event: content_block_stop\ndata: {"type":"content_block_stop","index":1}\n\n',
+        'event: message_delta\ndata: {"type":"message_delta","delta":{"stop_reason":"tool_use","stop_sequence":null},"usage":{"input_tokens":10,"output_tokens":5}}\n\n',
+        'event: message_stop\ndata: {"type":"message_stop"}\n\n',
+      ])
+      await convertAnthropicStreamToOpenAIResponses(reader, res)
+      const output = chunks.join('')
+      // Verify computer_call output_item.added is emitted (not function_call)
+      assert.ok(output.includes('"type":"computer_call"'), 'should emit computer_call type')
+      assert.ok(!output.includes('"type":"function_call"'), 'should NOT emit function_call for computer tool')
+      // Verify the action is converted: click → {type: "click", x, y}
+      assert.ok(output.includes('"action"'), 'should have action field')
+      assert.ok(output.includes('"click"'), 'action should be click')
+      // Verify output_item.done is emitted
+      assert.ok(output.includes('event: response.completed'), 'should have response.completed')
     })
   })
 })

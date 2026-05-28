@@ -3,6 +3,61 @@ import type { Logger } from '../log/logger.js'
 import { createHash } from 'node:crypto'
 import { sanitizeApiBase } from '../lib/http-utils.js'
 
+// --- CodexToolContext (CCX-style lookup table for namespace/custom tool remapping) ---
+
+interface CodexToolFunctionSpec {
+  namespace: string
+  name: string
+}
+
+/**
+ * Build a lookup table of namespace function tools from the original request tools array.
+ * CCX's BuildCodexToolContext scans tools and records namespace children.
+ */
+export function buildNamespaceToolContext(tools: unknown[]): Map<string, CodexToolFunctionSpec> {
+  const ctx = new Map<string, CodexToolFunctionSpec>()
+  if (!Array.isArray(tools)) return ctx
+
+  for (const raw of tools) {
+    const t = raw as Record<string, unknown>
+    if (t.type === 'namespace') {
+      const namespaceName = t.name as string ?? ''
+      const children = t.tools as unknown[] | undefined
+      if (!namespaceName || !children) continue
+      for (const child of children) {
+        const childItem = child as Record<string, unknown>
+        if (childItem.type !== 'function') continue
+        const childName = childItem.name as string
+        if (!childName) continue
+        // CCX convention: namespace__name (namespace ends with __ → no extra separator)
+        const flatName = namespaceName.endsWith('__') ? `${namespaceName}${childName}` : `${namespaceName}__${childName}`
+        ctx.set(flatName, { namespace: namespaceName, name: childName })
+      }
+    }
+  }
+  return ctx
+}
+
+/**
+ * Remap namespace function calls in a response output array.
+ * CCX's RemapNamespaceFunctionCallsInResponse uses the context to add namespace field.
+ */
+export function remapNamespaceFunctionCalls(
+  output: Array<Record<string, unknown>>,
+  namespaceCtx: Map<string, CodexToolFunctionSpec>
+): void {
+  if (!namespaceCtx.size) return
+  for (const item of output) {
+    if (item.type !== 'function_call') continue
+    const name = item.name as string
+    if (!name) continue
+    const spec = namespaceCtx.get(name)
+    if (!spec) continue
+    item.name = spec.name
+    item.namespace = spec.namespace
+  }
+}
+
 // --- Helpers ---
 
 /** 从 thinking 内容生成确定性伪签名（与 stream-converter.ts 中的一致） */
@@ -33,72 +88,156 @@ function truncateBody(obj: Record<string, unknown>, maxLen = 500): Record<string
 
 function convertToolsToAnthropic(tools: unknown[]): unknown[] | undefined {
   if (!Array.isArray(tools)) return undefined
-  return tools
-    .filter((t: unknown) => {
-      // Filter out non-function tools (web_search, code_interpreter, etc.) -
-      // Anthropic API only supports standard tools
-      const item = t as Record<string, unknown>
-      return item.type === 'function' || (item.name && item.input_schema)
-    })
-    .map((t: unknown) => {
+  const result: unknown[] = []
+  for (const t of tools) {
     const item = t as Record<string, unknown>
+    const type = String(item.type ?? '')
+
+    // OpenAI Responses built-in: computer_use_preview → Anthropic computer_20251124
+    if (type.startsWith('computer_use_preview')) {
+      result.push({
+        type: 'computer_20251124',
+        name: 'computer',
+        display_width_px: (item.display_width ?? item.display_width_px) as number | undefined,
+        display_height_px: (item.display_height ?? item.display_height_px) as number | undefined,
+        display_number: item.display_number as number | undefined,
+      })
+      continue
+    }
+
+    // OpenAI built-in tools with no Anthropic equivalent → skip
+    if (['web_search_preview', 'web_search', 'code_interpreter', 'file_search'].includes(type)) {
+      continue
+    }
+
+    // OpenAI namespace tools → skip (Anthropic has no equivalent)
+    // CCX approach: strip namespace tools and remap via CodexToolContext on response
+    if (type === 'namespace') {
+      continue
+    }
+
     // OpenAI Chat format: { type: "function", function: { name, description, parameters } }
-    if (item.type === 'function' && item.function) {
+    if (type === 'function' && item.function) {
       const fn = item.function as Record<string, unknown>
-      return {
+      result.push({
         name: fn.name ?? '',
         description: (fn.description as string) || undefined,
         input_schema: fn.parameters ?? {},
-      }
+      })
+      continue
     }
+
     // OpenAI Responses flat format: { type: "function", name, description, parameters } (no "function" wrapper)
-    if (item.type === 'function' && item.name) {
-      return {
+    if (type === 'function' && item.name) {
+      result.push({
         name: item.name ?? '',
         description: (item.description as string) || undefined,
         input_schema: (item.parameters as Record<string, unknown>) ?? {},
-      }
+      })
+      continue
     }
-    // Already Anthropic format or unknown
-    return item
-  })
+
+    // Already Anthropic format: { name, input_schema }
+    if (item.name && item.input_schema) {
+      result.push(item)
+      continue
+    }
+  }
+  return result.length > 0 ? result : undefined
 }
 
 function convertToolsToOpenAI(tools: unknown[]): unknown[] | undefined {
   if (!Array.isArray(tools)) return undefined
-  return tools
-    .filter((t: unknown) => {
-      // Filter out non-function tools (web_search, code_interpreter, etc.) -
-      // Chat Completions API only supports type: "function"
-      const item = t as Record<string, unknown>
-      return item.type === 'function' || (item.name && item.input_schema)
-    })
-    .map((t: unknown) => {
+  const result: unknown[] = []
+  for (const t of tools) {
     const item = t as Record<string, unknown>
+    const type = String(item.type ?? '')
+
+    // Anthropic built-in: computer_2025* (versioned type) → OpenAI computer_use_preview
+    // Must be checked BEFORE the strip below (computer_use_preview keywords overlap)
+    if (type.startsWith('computer_20')) {
+      result.push({
+        type: 'computer_use_preview',
+        display_width: (item.display_width_px ?? item.display_width) as number | undefined,
+        display_height: (item.display_height_px ?? item.display_height) as number | undefined,
+        display_number: item.display_number as number | undefined,
+      })
+      continue
+    }
+
+    // CCX stripCodexClientOnlyTools: drop non-function tool types (except namespace)
+    // Namespace tools are flattened below (CCX's namespaceToolsToOpenAI)
+    if (['custom', 'web_search', 'web_search_preview', 'computer_use', 'computer_use_preview',
+          'local_shell', 'code_interpreter', 'file_search'].includes(type)) {
+      continue
+    }
+
+    // CCX namespaceToolsToOpenAI: flatten namespace tools to OpenAI function tools
+    // e.g. namespace "mcp__computer_use__" with child "get_app_state" → tool "mcp__computer_use__get_app_state"
+    if (type === 'namespace') {
+      const nsName = item.name as string ?? ''
+      const nsDesc = item.description as string ?? ''
+      const children = item.tools as unknown[] | undefined
+      if (nsName && children) {
+        for (const child of children) {
+          const childItem = child as Record<string, unknown>
+          if (childItem.type !== 'function') continue
+          const childName = childItem.name as string
+          if (!childName) continue
+          const childFn = childItem.function as Record<string, unknown> | undefined
+          const childDesc = (childFn?.description as string) ?? (childItem.description as string) ?? ''
+          const childParams = (childFn?.parameters ?? childItem.parameters) as Record<string, unknown> ?? {}
+          // CCX flattenNamespaceToolName: namespace ends with __ → no extra separator
+          const flatName = nsName.endsWith('__') ? `${nsName}${childName}` : `${nsName}__${childName}`
+          // CCX combineNamespaceDescription
+          const combinedDesc = nsDesc && childDesc ? `${nsDesc}\n\n${childDesc}` : (nsDesc || childDesc || undefined)
+          result.push({
+            type: 'function',
+            function: {
+              name: flatName,
+              description: combinedDesc,
+              parameters: childParams,
+            },
+          })
+        }
+      }
+      continue
+    }
+
     // Anthropic format: { name, description, input_schema }
     if (item.name && item.input_schema) {
-      return {
+      result.push({
         type: 'function',
         function: {
           name: item.name,
           description: (item.description as string) || undefined,
           parameters: item.input_schema,
         },
-      }
+      })
+      continue
     }
+
     // OpenAI Responses flat format: { type: "function", name, parameters } → wrap in "function" for Chat Completions
-    if (item.type === 'function' && item.name && !item.function) {
-      return {
+    if (type === 'function' && item.name && !item.function) {
+      result.push({
         type: 'function',
         function: {
           name: item.name ?? '',
           description: (item.description as string) || undefined,
           parameters: (item.parameters as Record<string, unknown>) ?? {},
         },
-      }
+      })
+      continue
     }
-    return item
-  })
+
+    // Already valid Chat format (type: "function" with nested "function") → keep
+    if (type === 'function' && item.function) {
+      result.push(item)
+      continue
+    }
+    // Unknown tool type → skip (OpenAI Chat only accepts type: "function")
+  }
+  return result.length > 0 ? result : undefined
 }
 
 function convertToolChoiceToAnthropic(toolChoice: unknown): unknown {
@@ -207,35 +346,79 @@ function convertResponsesInputToMessages(input: unknown[]): unknown[] {
       }
       messages.push({ role: it.role, content: normalizedContent })
     } else if (it.type === 'function_call') {
-      // { type: "function_call", call_id, name, arguments }
+      // { type: "function_call", call_id, name, arguments, namespace? }
+      // Encode namespace in function name using `__` prefix convention (CCX-compatible)
+      let fnName = it.name as string ?? ''
+      const namespace = it.namespace as string | undefined
+      if (namespace) {
+        // CCX convention: if namespace ends with __, don't add separator
+        fnName = namespace.endsWith('__') ? `${namespace}${fnName}` : `${namespace}__${fnName}`
+      }
+
       // 检查上一条消息是否是 assistant 消息，如果是则合并 tool_calls，避免两条连续 assistant 消息
       const lastMsg = messages.length > 0 ? messages[messages.length - 1] as Record<string, unknown> : null
+      const tcEntry: Record<string, unknown> = {
+        id: it.call_id ?? it.id,
+        type: 'function',
+        function: { name: fnName, arguments: it.arguments ?? '' },
+      }
+
       if (lastMsg && lastMsg.role === 'assistant') {
         if (!lastMsg.tool_calls) lastMsg.tool_calls = []
-        ;(lastMsg.tool_calls as unknown[]).push({
-          id: it.call_id ?? it.id,
-          type: 'function',
-          function: { name: it.name ?? '', arguments: it.arguments ?? '' },
-        })
+        ;(lastMsg.tool_calls as unknown[]).push(tcEntry)
         // 确保 content 不为 undefined（OpenAI 要求 tool_calls 时 content 为 null）
         if (lastMsg.content === undefined) lastMsg.content = null
       } else {
         messages.push({
           role: 'assistant',
           content: null,
-          tool_calls: [{
-            id: it.call_id ?? it.id,
-            type: 'function',
-            function: { name: it.name ?? '', arguments: it.arguments ?? '' },
-          }],
+          tool_calls: [tcEntry],
         })
       }
+    } else if (it.type === 'reasoning') {
+      // { type: "reasoning", summary, content } → skip (not a message type in Chat format)
+      continue
     } else if (it.type === 'function_call_output') {
-      // { type: "function_call_output", call_id, output }
+      // { type: "function_call_output", call_id, output: string | array of content blocks }
+      let outputContent = it.output ?? ''
+      // Normalize Responses content blocks to Anthropic-compatible format
+      if (Array.isArray(outputContent)) {
+        outputContent = (outputContent as Array<Record<string, unknown>>).map((block) => {
+          if (block.type === 'input_text') {
+            return { type: 'text', text: block.text }
+          }
+          if (block.type === 'output_text') {
+            return { type: 'text', text: block.text }
+          }
+          if (block.type === 'input_image') {
+            const imageUrl = block.image_url as string | undefined
+            if (imageUrl) {
+              return { type: 'image', source: { type: 'url', url: imageUrl } }
+            }
+            return { type: 'text', text: '[image]' }
+          }
+          return block
+        })
+      }
       messages.push({
         role: 'tool',
         tool_call_id: it.call_id,
-        content: it.output ?? '',
+        content: outputContent,
+      })
+    } else if (it.type === 'computer_call_output') {
+      // { type: "computer_call_output", call_id, output: { type: "computer_screenshot", image_url } }
+      const output = it.output as Record<string, unknown> | undefined
+      const imageUrl = output?.image_url as string | undefined
+      const fileId = output?.file_id as string | undefined
+      const content = imageUrl
+        ? [{ type: 'image', source: { type: 'url', url: imageUrl } }]
+        : fileId
+          ? [{ type: 'text', text: '[screenshot from file_id]' }]
+          : ''
+      messages.push({
+        role: 'tool',
+        tool_call_id: it.call_id,
+        content,
       })
     } else if (it.type === 'item_reference') {
       // Skip item references (they reference previous response items, not applicable to stateless chat)
@@ -283,8 +466,69 @@ function convertMessagesToResponsesInput(messages: unknown[]): unknown[] {
       // system is handled via instructions field, but if it appears in messages we include it
       input.push({ type: 'message', role: 'system', content: m.content })
     } else {
-      // user, developer, etc.
-      input.push({ type: 'message', role: m.role ?? 'user', content: m.content })
+      // Check for Anthropic tool_result blocks in user message content array
+      const content = m.content
+      if (m.role === 'user' && Array.isArray(content)) {
+        const blocks = content as Array<Record<string, unknown>>
+        const toolResults = blocks.filter((b) => b.type === 'tool_result')
+        const otherBlocks = blocks.filter((b) => b.type !== 'tool_result')
+
+        // Emit computer_call_output for tool_results with image content
+        for (const tr of toolResults) {
+          const trContent = tr.content
+          let imageUrl: string | undefined
+          let fileId: string | undefined
+          if (Array.isArray(trContent)) {
+            const imgBlock = (trContent as Array<Record<string, unknown>>).find(
+              (b) => b.type === 'image'
+            )
+            if (imgBlock) {
+              const src = imgBlock.source as Record<string, unknown> | undefined
+              if (src?.type === 'url') {
+                imageUrl = src.url as string
+              } else {
+                fileId = imgBlock.file_id as string | undefined
+              }
+            }
+          }
+          if (imageUrl) {
+            input.push({
+              type: 'computer_call_output',
+              call_id: tr.tool_use_id as string,
+              output: { type: 'computer_screenshot', image_url: imageUrl },
+            })
+          } else if (fileId) {
+            input.push({
+              type: 'computer_call_output',
+              call_id: tr.tool_use_id as string,
+              output: { type: 'computer_screenshot', file_id: fileId },
+            })
+          } else {
+            // tool_result without image → function_call_output
+            input.push({
+              type: 'function_call_output',
+              call_id: tr.tool_use_id as string,
+              output: typeof trContent === 'string' ? trContent : JSON.stringify(trContent),
+            })
+          }
+        }
+
+        // Emit remaining non-tool_result blocks as message items
+        if (otherBlocks.length > 0) {
+          const textBlocks = otherBlocks.filter((b) => b.type === 'text' || b.type === 'input_text')
+          const text = textBlocks.map((b) => b.text ?? '').join('')
+          if (text || otherBlocks.length !== textBlocks.length) {
+            input.push({
+              type: 'message',
+              role: m.role ?? 'user',
+              content: otherBlocks,
+            })
+          }
+        }
+      } else {
+        // user, developer, etc. (non-Anthropic format)
+        input.push({ type: 'message', role: m.role ?? 'user', content: m.content })
+      }
     }
   }
   return input
@@ -388,7 +632,9 @@ function convertMessagesToAnthropic(messages: unknown[]): unknown[] {
         toolResults.push({
           type: 'tool_result',
           tool_use_id: cur.tool_call_id,
-          content: typeof cur.content === 'string' ? cur.content : JSON.stringify(cur.content),
+          content: typeof cur.content === 'string' || Array.isArray(cur.content)
+            ? cur.content
+            : JSON.stringify(cur.content),
         })
         i++
       }
@@ -509,12 +755,46 @@ function convertMessagesToOpenAI(messages: unknown[]): unknown[] {
           })
         }
         // Emit remaining user content if any
+        // Convert Anthropic image blocks → OpenAI image_url format
         if (otherBlocks.length > 0) {
-          const text = otherBlocks.map((b: any) => b.text ?? '').join('')
-          result.push({ role: 'user', content: text })
+          const parts = otherBlocks.map((b: any) => {
+            if (b.type === 'image' && b.source) {
+              const source = b.source as Record<string, unknown>
+              const url = source.url || source.data
+              return {
+                type: 'image_url',
+                image_url: { url: url as string, ...(source.media_type ? {} : {}) },
+              }
+            }
+            if (b.type === 'text') return { type: 'text', text: b.text }
+            return b
+          })
+          // If single text part, collapse to string
+          if (parts.length === 1 && (parts[0] as Record<string, unknown>).type === 'text') {
+            result.push({ role: 'user', content: (parts[0] as Record<string, unknown>).text })
+          } else {
+            result.push({ role: 'user', content: parts })
+          }
         }
         continue
       }
+    }
+    // Handle tool messages with array content (e.g., computer_call_output screenshots)
+    // Convert image blocks → text for models that don't support image_url in tool messages
+    if (m.role === 'tool' && Array.isArray(m.content)) {
+      const blocks = m.content as Array<Record<string, unknown>>
+      const textParts: string[] = []
+      for (const b of blocks) {
+        if (b.type === 'text') {
+          textParts.push(b.text as string)
+        } else if (b.type === 'image') {
+          const source = b.source as Record<string, unknown> | undefined
+          if (source?.url) textParts.push(`[image: ${source.url}]`)
+          else textParts.push('[image]')
+        }
+      }
+      result.push({ role: 'tool', tool_call_id: m.tool_call_id, content: textParts.join('\n') || '[output]' })
+      continue
     }
     // developer role → system (older Chat Completions APIs don't support "developer")
     if (m.role === 'developer') {
@@ -726,6 +1006,30 @@ export async function transformInboundRequest(
       ? extractFullOpenAI(body)
       : extractFullAnthropic(body)
 
+  // Strip Codex-internal MCP probe tools and exec_command BEFORE any builder sees them.
+  // These tools trigger MCP server calls (resources/list, resources/read, etc.) when
+  // returned as function_calls. They are generated by Codex for Responses API's server-side
+  // MCP handling and don't work with non-Responses upstreams.
+  //
+  // NOTE: namespace tools (mcp__computer_use__ etc.) are NOT stripped here.
+  // They are flattened to function tools in convertToolsToOpenAI (like CCX's namespaceToolsToOpenAI).
+  if (params.tools && inboundType === 'openai-responses') {
+    const mcpPrefixes = ['list_mcp_', 'read_mcp_', 'write_mcp_', 'subscribe_mcp_']
+    const codexTools = ['exec_command', 'exec']
+    params.tools = (params.tools as unknown[]).filter((t) => {
+      if (typeof t === 'string') return !codexTools.includes(t)
+      const item = t as Record<string, unknown>
+      // Check by tool name AND nested function name (Chat format)
+      const itemName = String(item.name ?? (item.function as Record<string, unknown> | undefined)?.name ?? '')
+      if (mcpPrefixes.some((p) => itemName.startsWith(p))) return false
+      if (codexTools.includes(itemName)) return false
+      return true
+    })
+    // Strip only by name — type-based stripping stays in convertToolsToOpenAI
+    // (computer_use_preview is valid for Anthropic path, dropped only for Chat path)
+    if (params.tools.length === 0) delete params.tools
+  }
+
   params.model = route.modelId
   // max_tokens: 0 → undefined（不传，让 builder 走默认值）, 应用路由级默认值
   if (params.max_tokens === 0) params.max_tokens = undefined
@@ -856,6 +1160,102 @@ function injectThinkingConfig(
   }
 }
 
+// --- Action mapping helpers (Computer Use) ---
+
+/** OpenAI ComputerAction → Anthropic tool_use input */
+export function convertActionToAnthropic(action: Record<string, unknown>): Record<string, unknown> {
+  const type = action.type as string
+  const result: Record<string, unknown> = { action: type }
+  switch (type) {
+    case 'click':
+    case 'double_click':
+    case 'drag':
+      result.coordinate = [action.x as number, action.y as number]
+      break
+    case 'move':
+      result.action = 'mouse_move'
+      result.coordinate = [action.x as number, action.y as number]
+      break
+    case 'keypress':
+      result.action = 'key'
+      const keys = action.keys as string[] | undefined
+      result.text = keys ? keys.join('') : ''
+      break
+    case 'scroll':
+      result.coordinate = [action.x as number, action.y as number]
+      result.scroll_x = action.scroll_x as number | undefined
+      result.scroll_y = action.scroll_y as number | undefined
+      break
+    case 'type':
+      result.text = (action.text as string) ?? ''
+      break
+    case 'wait':
+      result.action = 'wait'
+      result.duration = (action.ms as number) ?? (action.duration as number) ?? 0
+      break
+    case 'screenshot':
+      break
+    default:
+      // Pass through unknown actions as-is
+      Object.assign(result, action)
+  }
+  return result
+}
+
+/** Anthropic tool_use input → OpenAI ComputerAction */
+export function convertActionToOpenAI(input: Record<string, unknown>): Record<string, unknown> {
+  const action = input.action as string
+  const coord = input.coordinate as [number, number] | undefined
+  const result: Record<string, unknown> = {}
+  switch (action) {
+    case 'click':
+    case 'double_click':
+    case 'drag':
+      result.type = action
+      if (coord) {
+        result.x = coord[0]
+        result.y = coord[1]
+      }
+      break
+    case 'mouse_move':
+      result.type = 'move'
+      if (coord) {
+        result.x = coord[0]
+        result.y = coord[1]
+      }
+      break
+    case 'key':
+      result.type = 'keypress'
+      result.keys = [(input.text as string) ?? '']
+      break
+    case 'scroll':
+      result.type = 'scroll'
+      if (coord) {
+        result.x = coord[0]
+        result.y = coord[1]
+      }
+      result.scroll_x = input.scroll_x as number | undefined
+      result.scroll_y = input.scroll_y as number | undefined
+      break
+    case 'type':
+      result.type = 'type'
+      result.text = (input.text as string) ?? ''
+      break
+    case 'wait':
+      result.type = 'wait'
+      result.ms = (input.duration as number) ?? 0
+      break
+    case 'screenshot':
+      result.type = 'screenshot'
+      break
+    default:
+      // Pass through unknown actions as-is
+      result.type = action
+      Object.assign(result, input)
+  }
+  return result
+}
+
 // --- OpenAI Responses ↔ Anthropic response conversion ---
 
 function mapResponsesStopReason(stop: string, hasToolCalls: boolean): string {
@@ -908,6 +1308,28 @@ export function convertOpenAIResponsesToAnthropic(responsesBody: Record<string, 
           input,
         })
         stopReason = 'tool_use'
+      } else if (item.type === 'computer_call') {
+        // OpenAI computer_call → Anthropic tool_use with name "computer"
+        const action = item.action as Record<string, unknown> | undefined
+        content.push({
+          type: 'tool_use',
+          id: item.call_id ?? item.id,
+          name: 'computer',
+          input: action ? convertActionToAnthropic(action) : {},
+        })
+        stopReason = 'tool_use'
+      } else if (['web_search_call', 'code_interpreter_call', 'file_search_call'].includes(item.type as string)) {
+        // 忽略无 Anthropic 对应物的内置工具输出
+        continue
+      } else if (item.type === 'reasoning') {
+        // Standalone reasoning output item → thinking block
+        const summary = item.summary as Array<Record<string, unknown>> | undefined
+        if (summary) {
+          const reasonText = summary.map((s) => s.text ?? '').join('')
+          if (reasonText) {
+            content.push({ type: 'thinking', thinking: reasonText, signature: '' })
+          }
+        }
       }
     }
   }
@@ -947,25 +1369,45 @@ export function convertAnthropicResponseToOpenAIResponses(anthropicBody: Record<
         // 收集 thinking 文本，稍后放到顶层的 reasoning.summary
         thinkingText += (block.thinking as string) ?? ''
       } else if (block.type === 'tool_use') {
-        output.push({
-          type: 'function_call',
-          id: `fc_${Date.now().toString(36)}_${(block.id as string) ?? ''}`,
-          call_id: block.id as string,
-          name: block.name as string ?? '',
-          arguments: JSON.stringify(block.input ?? {}),
-        })
+        const name = block.name as string ?? ''
+        if (name === 'computer') {
+          // Computer use tool → computer_call output item
+          const input = block.input as Record<string, unknown> ?? {}
+          output.push({
+            type: 'computer_call',
+            id: `cc_${Date.now().toString(36)}_${(block.id as string) ?? ''}`,
+            call_id: block.id as string,
+            action: convertActionToOpenAI(input),
+            pending_safety_checks: [],
+            status: 'completed',
+          })
+        } else {
+          // Regular tool_use → function_call
+          // CCX always sets status: "completed" on function_call items
+          output.push({
+            type: 'function_call',
+            id: `fc_${Date.now().toString(36)}_${(block.id as string) ?? ''}`,
+            call_id: block.id as string,
+            name,
+            arguments: JSON.stringify(block.input ?? {}),
+            status: 'completed',
+          })
+        }
       }
     }
   }
 
-  // Message output item goes first (before function_call items for correct ordering)
-  output.unshift({
-    type: 'message',
-    id: `msg_${Date.now().toString(36)}`,
-    status: stopReason === 'end_turn' ? 'completed' : stopReason === 'max_tokens' ? 'incomplete' : 'completed',
-    role: 'assistant',
-    content: outputMessageContent,
-  })
+  // Message output item goes first (before function_call/computer_call items)
+  // CCX compatibility: only add message item when there's actual content
+  if (outputMessageContent.length > 0) {
+    output.unshift({
+      type: 'message',
+      id: `msg_${Date.now().toString(36)}`,
+      status: stopReason === 'end_turn' ? 'completed' : stopReason === 'max_tokens' ? 'incomplete' : 'completed',
+      role: 'assistant',
+      content: outputMessageContent,
+    })
+  }
 
   return {
     id: `resp_${Date.now().toString(36)}`,
@@ -1150,6 +1592,7 @@ export function convertOpenAIResponseToOpenAIResponses(chatBody: Record<string, 
         call_id: tc.id,
         name: (tc.function as Record<string, unknown>)?.name ?? '',
         arguments: (tc.function as Record<string, unknown>)?.arguments ?? '',
+        status: 'completed',
       })
     }
   }
@@ -1217,6 +1660,20 @@ export function convertOpenAIResponsesResponseToOpenAI(responsesBody: Record<str
             arguments: item.arguments ?? '',
           },
         })
+      } else if (item.type === 'computer_call') {
+        // Computer call → Chat tool_calls (lossy conversion: serialize action as arguments)
+        const action = item.action as Record<string, unknown> | undefined
+        toolCalls.push({
+          id: item.call_id ?? item.id,
+          type: 'function',
+          function: {
+            name: 'computer',
+            arguments: JSON.stringify(action ?? {}),
+          },
+        })
+      } else if (['web_search_call', 'code_interpreter_call', 'file_search_call'].includes(item.type as string)) {
+        // 无 Chat 对应物 → 跳过
+        continue
       }
     }
   }
