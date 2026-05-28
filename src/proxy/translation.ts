@@ -1311,24 +1311,17 @@ export function convertAnthropicResponseToOpenAIResponses(anthropicBody: Record<
           })
         } else {
           // Regular tool_use → function_call
-          // Decode namespace from function name (CCX convention: namespace__name)
-          // Use lastIndexOf to handle namespaces ending with __ (e.g. "mcp__computer_use__get_app_state")
-          let fnName = name
-          let fnNamespace: string | undefined
-          const sepIdx = name.lastIndexOf('__')
-          if (sepIdx > 0) {
-            fnNamespace = name.substring(0, sepIdx)
-            fnName = name.substring(sepIdx + 2)
-          }
-          const fcOut: Record<string, unknown> = {
+          // Don't decode namespace here — pass the raw name as-is.
+          // Namespace remapping is done by post-processing (remapNamespaceFunctionCalls)
+          // using a lookup table built from the original request's tools (CCX approach).
+          // This avoids ambiguous __ parsing (e.g. "mcp__vscode_mcp__execute_command").
+          output.push({
             type: 'function_call',
             id: `fc_${Date.now().toString(36)}_${(block.id as string) ?? ''}`,
             call_id: block.id as string,
-            name: fnName,
+            name,
             arguments: JSON.stringify(block.input ?? {}),
-          }
-          if (fnNamespace) fcOut.namespace = fnNamespace
-          output.push(fcOut)
+          })
         }
       }
     }

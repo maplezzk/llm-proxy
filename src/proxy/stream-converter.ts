@@ -721,11 +721,9 @@ export async function convertAnthropicStreamToOpenAIResponses(
         fnCallId = (cblock.id as string) ?? ''
         fnCallName = (cblock.name as string) ?? ''
         fnCallArgsAcc = ''
-        // Decode namespace from function name (CCX convention: namespace__name)
-        // Use lastIndexOf to handle namespaces ending with __ (e.g. "mcp__computer_use__get_app_state")
-        const sepIdx = fnCallName.lastIndexOf('__')
-        fnCallNamespace = sepIdx > 0 ? fnCallName.substring(0, sepIdx) : ''
-        if (fnCallNamespace) fnCallName = fnCallName.substring(sepIdx + 2)
+        // Don't decode namespace here — pass the raw name as-is.
+        // Namespace remapping is done by post-processing (remapNamespaceFunctionCalls).
+        fnCallNamespace = ''
 
         if (fnCallName === 'computer') {
           // Computer tool_use → computer_call output item (action complete at start)

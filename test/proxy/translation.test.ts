@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert'
-import { transformInboundRequest, convertOpenAIResponseToAnthropic, convertAnthropicResponseToOpenAI, convertOpenAIResponsesToAnthropic, convertAnthropicResponseToOpenAIResponses, convertOpenAIResponsesResponseToOpenAI } from '../../src/proxy/translation.js'
+import { transformInboundRequest, convertOpenAIResponseToAnthropic, convertAnthropicResponseToOpenAI, convertOpenAIResponsesToAnthropic, convertAnthropicResponseToOpenAIResponses, convertOpenAIResponsesResponseToOpenAI, buildNamespaceToolContext, remapNamespaceFunctionCalls } from '../../src/proxy/translation.js'
 
 const anthropicRoute = {
   providerName: 'anthropic-main',
@@ -1275,6 +1275,151 @@ describe('proxy/response-conversion', () => {
         true,
         '跨协议 stream:true 应保持 true',
       )
+    })
+  })
+
+  describe('Namespace 工具后处理 (CCX 兼容)', () => {
+    it('buildNamespaceToolContext: 从 namespace 工具构建查找表', () => {
+      const tools = [{
+        type: 'namespace',
+        name: 'mcp__vscode_mcp__',
+        tools: [{
+          type: 'function',
+          name: 'execute_command',
+          parameters: { type: 'object', properties: {} },
+        }],
+      }]
+
+      const ctx = buildNamespaceToolContext(tools)
+      assert.strictEqual(ctx.size, 1)
+
+      const spec = ctx.get('mcp__vscode_mcp__execute_command')
+      assert.ok(spec, '应找到展平后的工具名')
+      assert.strictEqual(spec.namespace, 'mcp__vscode_mcp__')
+      assert.strictEqual(spec.name, 'execute_command')
+    })
+
+    it('buildNamespaceToolContext: namespace 以 __ 结尾时不加额外分隔符', () => {
+      const tools = [{
+        type: 'namespace',
+        name: 'mcp__',
+        tools: [{
+          type: 'function',
+          name: 'foo',
+          parameters: { type: 'object', properties: {} },
+        }],
+      }]
+
+      const ctx = buildNamespaceToolContext(tools)
+      assert.strictEqual(ctx.size, 1)
+      assert.ok(ctx.has('mcp__foo'), '展平后应为 mcp__foo 而非 mcp____foo')
+    })
+
+    it('remapNamespaceFunctionCalls: 匹配时加回 namespace', () => {
+      const ctx = new Map([
+        ['mcp__vscode_mcp__execute_command', { namespace: 'mcp__vscode_mcp__', name: 'execute_command' }],
+      ])
+
+      const output: Record<string, unknown>[] = [{
+        type: 'function_call',
+        call_id: 'call_1',
+        name: 'mcp__vscode_mcp__execute_command',
+        arguments: '{"command":"test"}',
+      }]
+
+      remapNamespaceFunctionCalls(output, ctx)
+
+      assert.strictEqual(output[0].name as string, 'execute_command')
+      assert.strictEqual(output[0].namespace as string, 'mcp__vscode_mcp__')
+      assert.strictEqual(output[0].arguments as string, '{"command":"test"}')
+    })
+
+    it('remapNamespaceFunctionCalls: 不匹配的工具名不受影响', () => {
+      const ctx = new Map([
+        ['mcp__vscode_mcp__execute_command', { namespace: 'mcp__vscode_mcp__', name: 'execute_command' }],
+      ])
+
+      const output: Record<string, unknown>[] = [{
+        type: 'function_call',
+        call_id: 'call_2',
+        name: 'do_something',
+        arguments: '{}',
+      }]
+
+      remapNamespaceFunctionCalls(output, ctx)
+
+      assert.strictEqual(output[0].name as string, 'do_something')
+      assert.strictEqual(output[0].namespace as string, undefined)
+    })
+
+    it('remapNamespaceFunctionCalls: 空上下文不修改输出', () => {
+      const ctx = new Map()
+
+      const output: Record<string, unknown>[] = [{
+        type: 'function_call',
+        call_id: 'call_3',
+        name: 'foo',
+        arguments: '{}',
+      }]
+
+      const original = JSON.stringify(output)
+      remapNamespaceFunctionCalls(output, ctx)
+      assert.strictEqual(JSON.stringify(output), original)
+    })
+
+    it('remapNamespaceFunctionCalls: computer_call 类型不受影响', () => {
+      const ctx = new Map([
+        ['mcp__vscode_mcp__execute_command', { namespace: 'mcp__vscode_mcp__', name: 'execute_command' }],
+      ])
+
+      const output: Record<string, unknown>[] = [{
+        type: 'computer_call',
+        call_id: 'cc_1',
+        action: { type: 'screenshot' },
+        status: 'completed',
+      }]
+
+      const original = JSON.stringify(output)
+      remapNamespaceFunctionCalls(output, ctx)
+      assert.strictEqual(JSON.stringify(output), original)
+    })
+
+    it('Anthropic → Responses: function_call 经后处理加回 namespace', () => {
+      // 模拟 Anthropic 响应中包含一个经 __ 编码的 tool_use
+      const anthropicBody = {
+        id: 'msg_123',
+        type: 'message',
+        role: 'assistant',
+        content: [
+          { type: 'tool_use', id: 'toolu_1', name: 'mcp__vscode_mcp__execute_command', input: { command: 'test' } },
+        ],
+        model: 'claude-sonnet-4',
+        stop_reason: 'tool_use',
+        stop_sequence: null,
+        usage: { input_tokens: 10, output_tokens: 5 },
+      }
+
+      const result = convertAnthropicResponseToOpenAIResponses(anthropicBody)
+
+      // 基础转换：tool_use → function_call，名称保留原样（含 namespace 前缀）
+      const output = result.output as Array<Record<string, unknown>>
+      const fcItem = output.find((i) => i.type === 'function_call') as Record<string, unknown> | undefined
+      assert.ok(fcItem, '应有 function_call 输出项')
+
+      // 基础转换不解码 __，保持原始名字
+      assert.strictEqual(fcItem.name as string, 'mcp__vscode_mcp__execute_command')
+
+      // 后处理 (remapNamespaceFunctionCalls) 查表解开
+      const originalTools = [{
+        type: 'namespace',
+        name: 'mcp__vscode_mcp__',
+        tools: [{ type: 'function', name: 'execute_command' }],
+      }]
+      const namespaceCtx = buildNamespaceToolContext(originalTools)
+      remapNamespaceFunctionCalls(output, namespaceCtx)
+
+      assert.strictEqual(fcItem.name as string, 'execute_command')
+      assert.strictEqual(fcItem.namespace as string, 'mcp__vscode_mcp__')
     })
   })
 })
