@@ -160,7 +160,8 @@ function convertToolsToOpenAI(tools: unknown[]): unknown[] | undefined {
     const item = t as Record<string, unknown>
     const type = String(item.type ?? '')
 
-    // Anthropic built-in: computer_2025* (versioned type) → OpenAI Responses computer_use_preview
+    // Anthropic built-in: computer_2025* (versioned type) → OpenAI computer_use_preview
+    // Must be checked BEFORE the strip below (computer_use_preview keywords overlap)
     if (type.startsWith('computer_20')) {
       result.push({
         type: 'computer_use_preview',
@@ -171,11 +172,18 @@ function convertToolsToOpenAI(tools: unknown[]): unknown[] | undefined {
       continue
     }
 
-    // Anthropic built-in tools with no OpenAI equivalent → skip
-    if (type.startsWith('bash_20') || item.name === 'bash') {
+    // CCX stripCodexClientOnlyTools: drop all non-function tool types
+    // OpenAI Chat only supports type: "function" — namespace/custom/web_search/computer_use are Responses-only
+    if (['namespace', 'custom', 'web_search', 'web_search_preview', 'computer_use', 'computer_use_preview',
+          'local_shell', 'code_interpreter', 'file_search'].includes(type)) {
       continue
     }
-    if (type.startsWith('text_editor_20') || item.name === 'str_replace_based_edit_tool') {
+
+    // Codex-internal function tools → skip (these trigger MCP calls on the Codex side)
+    const codexName = String(item.name ?? '')
+    const codexFnName = String((item.function as Record<string, unknown> | undefined)?.name ?? '')
+    if (['list_mcp_resources', 'list_mcp_notes', 'exec_command', 'exec'].includes(codexName) ||
+        ['list_mcp_resources', 'list_mcp_notes', 'exec_command', 'exec'].includes(codexFnName)) {
       continue
     }
 
