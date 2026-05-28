@@ -110,9 +110,36 @@ function convertToolsToAnthropic(tools: unknown[]): unknown[] | undefined {
       continue
     }
 
-    // OpenAI namespace tools → skip (Anthropic has no equivalent)
-    // CCX approach: strip namespace tools and remap via CodexToolContext on response
+    // OpenAI namespace tools → flatten to individual Anthropic tools
+    // (same approach as convertToolsToOpenAI, using Anthropic tool format)
     if (type === 'namespace') {
+      const nsName = item.name as string ?? ''
+      const children = item.tools as Array<Record<string, unknown>> | undefined
+      if (children) {
+        for (const child of children) {
+          const childType = child.type as string ?? ''
+          const childName = (child.name ?? (child.function as Record<string, unknown> | undefined)?.name) as string ?? ''
+          if (!childName) continue
+          // CCX convention: namespace ends with __, so direct concatenation
+          const flatName = nsName.endsWith('__') ? `${nsName}${childName}` : `${nsName}__${childName}`
+          if (childType === 'function') {
+            const fn = child.function as Record<string, unknown> | undefined
+            const params = fn?.parameters ?? child.parameters ?? {}
+            result.push({
+              name: flatName,
+              description: ((fn?.description ?? child.description ?? '') as string) || undefined,
+              input_schema: params as Record<string, unknown>,
+            })
+          } else {
+            // Non-function child tools: use child data directly
+            result.push({
+              name: flatName,
+              description: (child.description as string) || undefined,
+              input_schema: (child.input_schema ?? child.parameters ?? {}) as Record<string, unknown>,
+            })
+          }
+        }
+      }
       continue
     }
 
