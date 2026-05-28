@@ -3,6 +3,61 @@ import type { Logger } from '../log/logger.js'
 import { createHash } from 'node:crypto'
 import { sanitizeApiBase } from '../lib/http-utils.js'
 
+// --- CodexToolContext (CCX-style lookup table for namespace/custom tool remapping) ---
+
+interface CodexToolFunctionSpec {
+  namespace: string
+  name: string
+}
+
+/**
+ * Build a lookup table of namespace function tools from the original request tools array.
+ * CCX's BuildCodexToolContext scans tools and records namespace children.
+ */
+export function buildNamespaceToolContext(tools: unknown[]): Map<string, CodexToolFunctionSpec> {
+  const ctx = new Map<string, CodexToolFunctionSpec>()
+  if (!Array.isArray(tools)) return ctx
+
+  for (const raw of tools) {
+    const t = raw as Record<string, unknown>
+    if (t.type === 'namespace') {
+      const namespaceName = t.name as string ?? ''
+      const children = t.tools as unknown[] | undefined
+      if (!namespaceName || !children) continue
+      for (const child of children) {
+        const childItem = child as Record<string, unknown>
+        if (childItem.type !== 'function') continue
+        const childName = childItem.name as string
+        if (!childName) continue
+        // CCX convention: namespace__name (namespace ends with __ → no extra separator)
+        const flatName = namespaceName.endsWith('__') ? `${namespaceName}${childName}` : `${namespaceName}__${childName}`
+        ctx.set(flatName, { namespace: namespaceName, name: childName })
+      }
+    }
+  }
+  return ctx
+}
+
+/**
+ * Remap namespace function calls in a response output array.
+ * CCX's RemapNamespaceFunctionCallsInResponse uses the context to add namespace field.
+ */
+export function remapNamespaceFunctionCalls(
+  output: Array<Record<string, unknown>>,
+  namespaceCtx: Map<string, CodexToolFunctionSpec>
+): void {
+  if (!namespaceCtx.size) return
+  for (const item of output) {
+    if (item.type !== 'function_call') continue
+    const name = item.name as string
+    if (!name) continue
+    const spec = namespaceCtx.get(name)
+    if (!spec) continue
+    item.name = spec.name
+    item.namespace = spec.namespace
+  }
+}
+
 // --- Helpers ---
 
 /** 从 thinking 内容生成确定性伪签名（与 stream-converter.ts 中的一致） */
@@ -55,28 +110,9 @@ function convertToolsToAnthropic(tools: unknown[]): unknown[] | undefined {
       continue
     }
 
-    // OpenAI namespace tools → flatten: extract child function tools with double-underscore prefix
-    // e.g. namespace "mcp__computer_use__" with child "get_app_state" → tool name "mcp__computer_use____get_app_state"
+    // OpenAI namespace tools → skip (Anthropic has no equivalent)
+    // CCX approach: strip namespace tools and remap via CodexToolContext on response
     if (type === 'namespace') {
-      const namespaceName = item.name as string ?? ''
-      const children = item.tools as unknown[] | undefined
-      if (namespaceName && children) {
-        for (const child of children) {
-          const childItem = child as Record<string, unknown>
-          if (childItem.type !== 'function') continue
-          const childName = childItem.name as string
-          if (!childName) continue
-          const flatName = `${namespaceName}__${childName}`
-          const childFn = childItem.function as Record<string, unknown> | undefined
-          const childDesc = (childFn?.description as string) ?? (childItem.description as string) ?? undefined
-          const childParams = (childFn?.parameters ?? childItem.parameters) as Record<string, unknown> ?? {}
-          result.push({
-            name: flatName,
-            description: childDesc,
-            input_schema: childParams,
-          })
-        }
-      }
       continue
     }
 

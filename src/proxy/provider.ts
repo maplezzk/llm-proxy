@@ -1,7 +1,7 @@
 import type { ServerResponse } from 'node:http'
 import { maskUrl, maskHeaders } from '../lib/http-utils.js'
 import { convertAnthropicStreamToOpenAI, convertOpenAIStreamToAnthropic, convertOpenAIResponsesStreamToAnthropic, convertAnthropicStreamToOpenAIResponses, convertOpenAIStreamToOpenAIResponses, convertOpenAIResponsesStreamToOpenAI, type StreamUsage } from './stream-converter.js'
-import { convertOpenAIResponseToAnthropic, convertAnthropicResponseToOpenAI, convertOpenAIResponsesToAnthropic, convertAnthropicResponseToOpenAIResponses, convertOpenAIResponseToOpenAIResponses, convertOpenAIResponsesResponseToOpenAI } from './translation.js'
+import { convertOpenAIResponseToAnthropic, convertAnthropicResponseToOpenAI, convertOpenAIResponsesToAnthropic, convertAnthropicResponseToOpenAIResponses, convertOpenAIResponseToOpenAIResponses, convertOpenAIResponsesResponseToOpenAI, buildNamespaceToolContext, remapNamespaceFunctionCalls } from './translation.js'
 import type { Logger } from '../log/logger.js'
 import type { TokenTracker } from '../status/token-tracker.js'
 
@@ -12,6 +12,7 @@ interface ProviderRequest {
   method: string
   headers: Record<string, string>
   body: Record<string, unknown>
+  originalBody?: Record<string, unknown>  // Original request body for response post-processing
   crossProtocol: boolean
   inboundType: 'anthropic' | 'openai' | 'openai-responses'
   upstreamType: 'anthropic' | 'openai' | 'openai-responses'
@@ -253,6 +254,20 @@ export async function forwardRequest(
             ? convertOpenAIResponsesResponseToOpenAI(parsed ?? {})
             : convertOpenAIResponsesToAnthropic(parsed ?? {})
         }
+        // Post-process: CCX-style namespace remapping (Response → Anthropic only)
+        if (req.originalBody && req.inboundType === 'openai-responses') {
+          const rawTools = req.originalBody.tools as unknown[] | undefined
+          if (rawTools) {
+            const namespaceCtx = buildNamespaceToolContext(rawTools)
+            if (namespaceCtx.size > 0) {
+              const output = converted.output as Array<Record<string, unknown>> | undefined
+              if (output) {
+                remapNamespaceFunctionCalls(output, namespaceCtx)
+              }
+            }
+          }
+        }
+
         outBody = converted
         req.logger?.log('request', `非流式跨协议转换: ${req.inboundType} ← ${parsed?.model ?? '?'}`, {
           outBody: truncateObj(converted),
