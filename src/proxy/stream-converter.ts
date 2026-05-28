@@ -655,6 +655,15 @@ export async function convertAnthropicStreamToOpenAIResponses(
   let thinkingStarted = false
   let rawLines: string[] = []
   let outLines: string[] = []
+
+  // Build namespace lookup table (CCX compat)
+  const namespaceCtx = originalTools ? buildNamespaceToolContext(originalTools) : new Map()
+  const decodeNs = (flatName: string): { name: string; namespace?: string } => {
+    const spec = namespaceCtx.get(flatName)
+    if (spec) return { name: spec.name, namespace: spec.namespace }
+    return { name: flatName }
+  }
+
   let anthropicUsage: Record<string, unknown> = {}
   // 用于 output_item.done 和 response.completed 中的 output 数组
   let respToolCallOutputs: Record<string, unknown>[] = []
@@ -724,11 +733,12 @@ export async function convertAnthropicStreamToOpenAIResponses(
         fnCallId = (cblock.id as string) ?? ''
         fnCallName = (cblock.name as string) ?? ''
         fnCallArgsAcc = ''
-        // Don't decode namespace here — pass the raw name as-is.
-        // Namespace remapping is done by post-processing (remapNamespaceFunctionCalls).
-        fnCallNamespace = ''
+        // Decode namespace from flat function name (CCX compat)
+        const nsDecoded = decodeNs(fnCallName)
+        fnCallNamespace = nsDecoded.namespace ?? ''
+        fnCallName = nsDecoded.name
 
-        if (fnCallName === 'computer') {
+        if (fnCallName === 'computer' && !fnCallNamespace) {
           // Computer tool_use → computer_call output item (action complete at start)
           const input = cblock.input as Record<string, unknown> | undefined
           const action = convertActionToOpenAI(input ?? {})
@@ -775,7 +785,7 @@ export async function convertAnthropicStreamToOpenAIResponses(
       } else if (currentBlockType === 'text') {
         writeRaw(`event: response.output_text.done\ndata: {"type":"response.output_text.done","output_index":0,"content_index":0,"text":${JSON.stringify(acc.content)}}\n\n`)
       } else if (currentBlockType === 'tool_use') {
-        if (fnCallName === 'computer') {
+        if (fnCallName === 'computer' && !fnCallNamespace) {
           const action = fnCallComputerAction ?? {}
           const actionStr = JSON.stringify(action)
           writeRaw(`event: response.output_item.done\ndata: {"type":"response.output_item.done","output_index":${currentBlockIndex},"item":{"type":"computer_call","id":"cc_${fnCallId}","call_id":"${fnCallId}","action":${actionStr},"pending_safety_checks":[],"status":"completed"}}\n\n`)
