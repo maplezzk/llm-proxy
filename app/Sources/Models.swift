@@ -187,9 +187,15 @@ struct TestModelResponse: Codable {
 }
 
 struct TestModelResult: Codable {
-    let ok: Bool
-    let latency_ms: Int?
+    let reachable: Bool
+    let latency: Int?
+    let model: String?
     let error: String?
+    let adapterUrl: String?
+    let requestUrl: String?
+    let requestBody: AnyCodable?
+    let responseBody: AnyCodable?
+    let responseStatus: Int?
 }
 
 // MARK: - Pull Models

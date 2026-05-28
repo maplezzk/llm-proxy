@@ -183,7 +183,7 @@ struct AdaptersView: View {
             HStack {
                 Text(loc("adapter.testStatus"))
                 Spacer()
-                if result.ok {
+                if result.reachable {
                     Label(loc("adapter.testOk"), systemImage: "checkmark.circle.fill")
                         .foregroundColor(.green)
                 } else {
@@ -192,7 +192,7 @@ struct AdaptersView: View {
                 }
             }
 
-            if let latency = result.latency_ms {
+            if let latency = result.latency {
                 HStack {
                     Text(loc("adapter.testLatency"))
                     Spacer()

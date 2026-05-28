@@ -221,13 +221,13 @@ final class ModelsTests: XCTestCase {
 
     func testTestModelResultDecoding() throws {
         let json = """
-        {"success": true, "data": {"ok": true, "latency_ms": 250, "error": null}}
+        {"success": true, "data": {"reachable": true, "latency": 250, "model": "test", "error": null, "adapterUrl": null, "requestUrl": null, "requestBody": null, "responseBody": null, "responseStatus": 200}}
         """
         let data = json.data(using: .utf8)!
         let resp = try JSONDecoder().decode(TestModelResponse.self, from: data)
 
-        XCTAssertTrue(resp.data?.ok == true)
-        XCTAssertEqual(resp.data?.latency_ms, 250)
+        XCTAssertTrue(resp.data?.reachable == true)
+        XCTAssertEqual(resp.data?.latency, 250)
         XCTAssertNil(resp.data?.error)
     }
 }

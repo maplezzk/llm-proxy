@@ -139,7 +139,7 @@ struct ProvidersView: View {
     private func providerStatusIcon(_ provider: ProviderDetail) -> some View {
         if let result = viewModel.testResults[provider.name] {
             Circle()
-                .fill(result.ok ? Color.green : Color.red)
+                .fill(result.reachable ? Color.green : Color.red)
                 .frame(width: 8, height: 8)
         } else {
             Circle()
@@ -154,7 +154,7 @@ struct ProvidersView: View {
     private func testStatusView(_ provider: ProviderDetail) -> some View {
         if let result = viewModel.testResults[provider.name] {
             HStack(spacing: 4) {
-                if result.ok, let latency = result.latency_ms {
+                if result.reachable, let latency = result.latency {
                     Image(systemName: "checkmark.circle.fill")
                         .foregroundColor(.green)
                         .font(.caption)

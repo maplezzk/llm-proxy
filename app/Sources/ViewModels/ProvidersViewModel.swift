@@ -300,7 +300,7 @@ final class ProvidersViewModel {
             )
             testResults[providerName] = result
         } catch {
-            testResults[providerName] = TestModelResult(ok: false, latency_ms: nil, error: error.localizedDescription)
+            testResults[providerName] = TestModelResult(reachable: false, latency: nil, model: nil, error: error.localizedDescription, adapterUrl: nil, requestUrl: nil, requestBody: nil, responseBody: nil, responseStatus: nil)
         }
         testingProviderNames.remove(providerName)
     }

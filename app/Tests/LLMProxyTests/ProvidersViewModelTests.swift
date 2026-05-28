@@ -379,11 +379,11 @@ final class ProvidersViewModelTests: XCTestCase {
 
     func testTestModelResultDecoding() throws {
         let json = """
-        {"ok": true, "latency_ms": 150, "error": null}
+        {"reachable": true, "latency": 150, "model": "test", "error": null, "adapterUrl": null, "requestUrl": null, "requestBody": null, "responseBody": null, "responseStatus": 200}
         """.data(using: .utf8)!
         let result = try JSONDecoder().decode(TestModelResult.self, from: json)
-        XCTAssertTrue(result.ok)
-        XCTAssertEqual(result.latency_ms, 150)
+        XCTAssertTrue(result.reachable)
+        XCTAssertEqual(result.latency, 150)
         XCTAssertNil(result.error)
     }
 
