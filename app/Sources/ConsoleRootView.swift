@@ -22,15 +22,6 @@ struct ConsoleRootView: View {
 
     private var sidebar: some View {
         List(selection: $selectedTab) {
-            // 标题——在 List 内部，不会越界遮盖 detail
-            Text(loc("console.title"))
-                .font(.headline)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 10)
-            
-            Divider()
-                .padding(.horizontal, 8)
-            
             ForEach(ConsoleTab.allCases, id: \.self) { tab in
                 Label(tab.title, systemImage: tab.iconName)
                     .tag(tab)

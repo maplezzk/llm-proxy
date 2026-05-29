@@ -104,7 +104,7 @@ struct LogsView: View {
                 Divider()
                     .frame(height: 14)
 
-                Text(loc("action.logLevel"))
+                Text(loc("action.logLevel", viewModel.logLevel.uppercased()))
                     .font(.caption)
                     .foregroundColor(.secondary)
                 Picker("", selection: Binding(
@@ -361,7 +361,7 @@ struct LogsView: View {
             Spacer()
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, 8)
+        .padding(.vertical, 10)
     }
 
     // MARK: - Empty / Loading / Error States
