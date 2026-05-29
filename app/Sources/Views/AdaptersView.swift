@@ -5,6 +5,7 @@ struct AdaptersView: View {
     @Environment(TestCoordinator.self) private var testCoordinator
     @State private var showDeleteAlert = false
     @State private var adapterToDelete: String?
+    @State private var port: Int = APIClient.storedPort()
 
     var body: some View {
         VStack(spacing: 0) {
@@ -119,6 +120,13 @@ struct AdaptersView: View {
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
+
+                // 虚拟端点 URL
+                Text(adapterURL(adapter))
+                    .font(.caption.monospaced())
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
             }
 
             Spacer()
@@ -160,6 +168,17 @@ struct AdaptersView: View {
     }
 
     // MARK: - Helpers
+
+    private func adapterURL(_ adapter: Adapter) -> String {
+        let endpoint: String = {
+            switch adapter.type {
+            case "anthropic": return "messages"
+            case "openai-responses": return "responses"
+            default: return "chat/completions"
+            }
+        }()
+        return "http://127.0.0.1:\(port)/\(adapter.name)/v1/\(endpoint)"
+    }
 
     private func typeIcon(for type: String) -> String {
         switch type {
