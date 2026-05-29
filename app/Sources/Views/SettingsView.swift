@@ -65,6 +65,7 @@ struct SettingsView: View {
                         .labelsHidden()
                         .onChange(of: selectedLang) { _, newLang in
                             switchLang(newLang)
+                            NotificationCenter.default.post(name: .configDidChange, object: nil)
                         }
                     }
 
