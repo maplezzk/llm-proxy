@@ -42,9 +42,10 @@ struct LogsView: View {
                 Text(loc("logs.level.warn")).tag("warn")
                 Text(loc("logs.level.error")).tag("error")
             }
-            .pickerStyle(.segmented)
+            .pickerStyle(.menu)
+                .frame(width: 90)
 
-            // 类型过滤 - segmented style
+            // 类型过滤 - menu style
             Picker(loc("logs.typeFilter"), selection: Binding(
                 get: { viewModel.typeFilter ?? "all" },
                 set: { newVal in
@@ -57,7 +58,8 @@ struct LogsView: View {
                 Text(loc("logs.type.request")).tag("request")
                 Text(loc("logs.type.system")).tag("system")
             }
-            .pickerStyle(.segmented)
+            .pickerStyle(.menu)
+                .frame(width: 80)
 
             Spacer()
 
