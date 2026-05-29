@@ -175,7 +175,7 @@ describe('integration', { timeout: 15000 }, () => {
     const resp = await fetch(`http://127.0.0.1:${PROXY_PORT}/v1/chat/completions`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: 'gpt-4o-test', messages: [{ role: 'user', content: 'hi' }] }),
+      body: JSON.stringify({ model: 'gpt-4o-test', messages: [{ role: 'user', content: 'hi' }], stream: false }),
     })
     const data = await resp.json()
     assert.strictEqual(data.object, 'chat.completion')
@@ -200,7 +200,7 @@ describe('integration', { timeout: 15000 }, () => {
     const resp = await fetch(`http://127.0.0.1:${PROXY_PORT}/v1/messages`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: 'gpt-4o-test', max_tokens: 512, messages: [{ role: 'user', content: 'hi' }] }),
+      body: JSON.stringify({ model: 'gpt-4o-test', max_tokens: 512, messages: [{ role: 'user', content: 'hi' }], stream: false }),
     })
     const data = await resp.json()
     assert.strictEqual(data.type, 'message')
@@ -253,7 +253,7 @@ describe('integration', { timeout: 15000 }, () => {
     const resp = await fetch(`http://127.0.0.1:${PROXY_PORT}/my-tool/v1/chat/completions`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: 'gpt-test', messages: [{ role: 'user', content: 'hi' }] }),
+      body: JSON.stringify({ model: 'gpt-test', messages: [{ role: 'user', content: 'hi' }], stream: false }),
     })
     const data = await resp.json()
     assert.strictEqual(data.object, 'chat.completion')
@@ -287,7 +287,7 @@ describe('integration', { timeout: 15000 }, () => {
     const resp = await fetch(`http://127.0.0.1:${PROXY_PORT}/v1/responses`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: 'gpt-4o-resp', input: 'hi', instructions: 'Be helpful.' }),
+      body: JSON.stringify({ model: 'gpt-4o-resp', input: 'hi', instructions: 'Be helpful.', stream: false }),
     })
     const data = await resp.json()
     // 验证返回 Responses 格式
@@ -326,7 +326,7 @@ describe('integration', { timeout: 15000 }, () => {
     const resp = await fetch(`http://127.0.0.1:${PROXY_PORT}/v1/responses`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: 'claude-test', input: 'hi' }),
+      body: JSON.stringify({ model: 'claude-test', input: 'hi', stream: false }),
     })
     const data = await resp.json()
     // 跨协议：Responses 入站 → Anthropic 上游 → 响应转换为 Responses 格式
@@ -378,7 +378,7 @@ describe('integration', { timeout: 15000 }, () => {
     const resp = await fetch(`http://127.0.0.1:${PROXY_PORT}/resp-adapter/v1/responses`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: 'resp-test', input: 'hi' }),
+      body: JSON.stringify({ model: 'resp-test', input: 'hi', stream: false }),
     })
     const data = await resp.json()
     assert.strictEqual(data.object, 'response')

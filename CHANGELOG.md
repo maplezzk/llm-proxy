@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.15.1](https://github.com/maplezzk/llm-proxy/compare/v0.15.0...v0.15.1) (2026-05-28)
+
+
+### Bug Fixes
+
+* 修复 Anthropic 协议上 namespace 工具丢失 + exec_command 误剥离 ([#120](https://github.com/maplezzk/llm-proxy/issues/120)) ([aa2247b](https://github.com/maplezzk/llm-proxy/commit/aa2247bed2f3a06684bcd9c65412567e1afda4ac))
+
+## [0.15.0](https://github.com/maplezzk/llm-proxy/compare/v0.14.1...v0.15.0) (2026-05-28)
+
+
+### Features
+
+* OpenAI Responses API 跨协议完整转换（支持 Codex computer-use + namespace 工具） ([#116](https://github.com/maplezzk/llm-proxy/issues/116)) ([76ce6d4](https://github.com/maplezzk/llm-proxy/commit/76ce6d4ba3c70ec453f4332dc9d69f6591b06191))
+
+
+### Bug Fixes
+
+* 修复供应商远程模型导入勾选bug + 适配器一键导入供应商全部模型 ([#119](https://github.com/maplezzk/llm-proxy/issues/119)) ([b8b5ec1](https://github.com/maplezzk/llm-proxy/commit/b8b5ec13ae00cceeb6288035c7202e55d7137daf))
+
+## [0.14.1](https://github.com/maplezzk/llm-proxy/compare/v0.14.0...v0.14.1) (2026-05-24)
+
+
+### Bug Fixes
+
+* stream 默认流式 + 清除 thinking 占位文案 + reasoning_signature 移入 finish chunk ([#114](https://github.com/maplezzk/llm-proxy/issues/114)) ([b1a59fd](https://github.com/maplezzk/llm-proxy/commit/b1a59fd8c3aceafea87d94bfb5ecdd66b50dea9a))
+
 ## [0.14.0](https://github.com/maplezzk/llm-proxy/compare/v0.13.1...v0.14.0) (2026-05-21)
 
 

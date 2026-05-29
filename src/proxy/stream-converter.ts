@@ -2,6 +2,7 @@ import type { ServerResponse } from 'node:http'
 import type { Logger } from '../log/logger.js'
 import type { CaptureBuffer } from './capture.js'
 import { createHash } from 'node:crypto'
+import { convertActionToAnthropic, convertActionToOpenAI, buildNamespaceToolContext, remapNamespaceFunctionCalls } from './translation.js'
 
 export interface StreamUsage {
   input_tokens: number
@@ -142,7 +143,11 @@ export async function convertAnthropicStreamToOpenAI(
         if (stopReason) {
           const finishMap: Record<string, string> = { end_turn: 'stop', max_tokens: 'length', tool_use: 'tool_calls' }
           const finish = finishMap[stopReason] ?? stopReason
-          const chunk: Record<string, unknown> = { choices: [{ delta: {}, finish_reason: finish, index: 0 }] }
+          const delta: Record<string, unknown> = {}
+          if (acc.thinkingSignature) {
+            delta.reasoning_signature = acc.thinkingSignature
+          }
+          const chunk: Record<string, unknown> = { choices: [{ delta, finish_reason: finish, index: 0 }] }
           if (Object.keys(anthropicUsage).length > 0) {
             // Anthropic input_tokens = 计费 token（不含缓存命中），
             // OpenAI prompt_tokens = 总输入 token（含缓存命中）
@@ -178,9 +183,6 @@ export async function convertAnthropicStreamToOpenAI(
     }
   }
 
-  if (acc.thinkingSignature) {
-    write({ choices: [{ delta: { reasoning_signature: acc.thinkingSignature }, index: 0 }] })
-  }
   res.write('data: [DONE]\n\n')
   res.end()
 
@@ -458,6 +460,18 @@ export async function convertOpenAIResponsesStreamToAnthropic(
             type: 'content_block_start', index: currentBlockIndex,
             content_block: { type: 'tool_use', id: item.call_id, name: item.name, input: {} },
           })
+        } else if (item?.type === 'computer_call') {
+          currentBlockIndex++
+          currentBlockType = 'tool_use'
+          responsesHasToolCalls = true
+          const action = item.action as Record<string, unknown> | undefined
+          const anthropicInput = convertActionToAnthropic(action ?? {})
+          writeEvent('content_block_start', {
+            type: 'content_block_start', index: currentBlockIndex,
+            content_block: { type: 'tool_use', id: item.call_id, name: 'computer', input: anthropicInput },
+          })
+          // computer_call has no delta events — action is complete at start
+          writeEvent('content_block_stop', { type: 'content_block_stop', index: currentBlockIndex })
         }
         continue
       }
@@ -620,7 +634,8 @@ export async function convertAnthropicStreamToOpenAIResponses(
   res: ServerResponse,
   logger?: Logger,
   capture?: CaptureBuffer,
-  pairId?: number
+  pairId?: number,
+  originalTools?: unknown[]
 ): Promise<StreamUsage | null> {
   const decoder = new TextDecoder()
   const acc = newAccumulator()
@@ -631,6 +646,8 @@ export async function convertAnthropicStreamToOpenAIResponses(
   let fnCallId = ''
   let fnCallName = ''
   let fnCallArgsAcc = ''
+  let fnCallNamespace = ''
+  let fnCallComputerAction: Record<string, unknown> | null = null
   let currentRespId = ''
   let currentMsgId = ''
   let completed = false
@@ -639,6 +656,15 @@ export async function convertAnthropicStreamToOpenAIResponses(
   let thinkingStarted = false
   let rawLines: string[] = []
   let outLines: string[] = []
+
+  // Build namespace lookup table (CCX compat)
+  const namespaceCtx = originalTools ? buildNamespaceToolContext(originalTools) : new Map()
+  const decodeNs = (flatName: string): { name: string; namespace?: string } => {
+    const spec = namespaceCtx.get(flatName)
+    if (spec) return { name: spec.name, namespace: spec.namespace }
+    return { name: flatName }
+  }
+
   let anthropicUsage: Record<string, unknown> = {}
   // 用于 output_item.done 和 response.completed 中的 output 数组
   let respToolCallOutputs: Record<string, unknown>[] = []
@@ -682,8 +708,10 @@ export async function convertAnthropicStreamToOpenAIResponses(
       if (msgUsage) anthropicUsage = msgUsage
       currentRespId = respId()
       currentMsgId = msgId()
-      writeRaw(`event: response.created\ndata: {"type":"response.created","response":{"id":"${currentRespId}","object":"response","status":"in_progress","output":[]}}\n\n`)
-      writeRaw(`event: response.in_progress\ndata: {"type":"response.in_progress","response":{"id":"${currentRespId}","object":"response","status":"in_progress","output":[]}}\n\n`)
+      const createdAt = Math.floor(Date.now() / 1000)
+      const model = message?.model ?? ''
+      writeRaw(`event: response.created\ndata: {"type":"response.created","response":{"id":"${currentRespId}","object":"response","created_at":${createdAt},"model":"${model}","status":"in_progress","output":[]}}\n\n`)
+      writeRaw(`event: response.in_progress\ndata: {"type":"response.in_progress","response":{"id":"${currentRespId}","object":"response","created_at":${createdAt},"model":"${model}","status":"in_progress","output":[]}}\n\n`)
       writeRaw(`event: response.output_item.added\ndata: {"type":"response.output_item.added","output_index":0,"item":{"type":"message","id":"${currentMsgId}","status":"in_progress","role":"assistant","content":[]}}\n\n`)
       writeRaw(`event: response.content_part.added\ndata: {"type":"response.content_part.added","output_index":0,"content_index":0,"part":{"type":"output_text","text":"","annotations":[]}}\n\n`)
       currentBlockIndex = 0
@@ -706,7 +734,23 @@ export async function convertAnthropicStreamToOpenAIResponses(
         fnCallId = (cblock.id as string) ?? ''
         fnCallName = (cblock.name as string) ?? ''
         fnCallArgsAcc = ''
-        writeRaw(`event: response.output_item.added\ndata: {"type":"response.output_item.added","output_index":${currentBlockIndex},"item":{"type":"function_call","id":"fc_${fnCallId}","call_id":"${fnCallId}","name":"${fnCallName}","arguments":""}}\n\n`)
+        // Decode namespace from flat function name (CCX compat)
+        const nsDecoded = decodeNs(fnCallName)
+        fnCallNamespace = nsDecoded.namespace ?? ''
+        fnCallName = nsDecoded.name
+
+        if (fnCallName === 'computer' && !fnCallNamespace) {
+          // Computer tool_use → computer_call output item (action complete at start)
+          const input = cblock.input as Record<string, unknown> | undefined
+          const action = convertActionToOpenAI(input ?? {})
+          fnCallComputerAction = action  // preserve for output_item.done
+          const actionStr = JSON.stringify(action)
+          writeRaw(`event: response.output_item.added\ndata: {"type":"response.output_item.added","output_index":${currentBlockIndex},"item":{"type":"computer_call","id":"cc_${fnCallId}","call_id":"${fnCallId}","action":${actionStr},"pending_safety_checks":[],"status":"in_progress"}}\n\n`)
+        } else {
+          // Regular tool_use → function_call
+          const nsPart = fnCallNamespace ? `,"namespace":"${fnCallNamespace}"` : ''
+          writeRaw(`event: response.output_item.added\ndata: {"type":"response.output_item.added","output_index":${currentBlockIndex},"item":{"type":"function_call","id":"fc_${fnCallId}","call_id":"${fnCallId}","name":"${fnCallName}","arguments":""${nsPart}}}\n\n`)
+        }
       }
       return false
     }
@@ -742,16 +786,33 @@ export async function convertAnthropicStreamToOpenAIResponses(
       } else if (currentBlockType === 'text') {
         writeRaw(`event: response.output_text.done\ndata: {"type":"response.output_text.done","output_index":0,"content_index":0,"text":${JSON.stringify(acc.content)}}\n\n`)
       } else if (currentBlockType === 'tool_use') {
-        writeRaw(`event: response.function_call_arguments.done\ndata: {"type":"response.function_call_arguments.done","output_index":${currentBlockIndex},"arguments":${JSON.stringify(fnCallArgsAcc)}}\n\n`)
-        writeRaw(`event: response.output_item.done\ndata: {"type":"response.output_item.done","output_index":${currentBlockIndex},"item":{"type":"function_call","id":"fc_${fnCallId}","call_id":"${fnCallId}","name":"${fnCallName}","arguments":${JSON.stringify(fnCallArgsAcc)},"status":"completed"}}\n\n`)
-        respToolCallOutputs.push({
-          type: 'function_call',
-          id: `fc_${fnCallId}`,
-          call_id: fnCallId,
-          name: fnCallName,
-          arguments: fnCallArgsAcc,
-          status: 'completed',
-        })
+        if (fnCallName === 'computer' && !fnCallNamespace) {
+          const action = fnCallComputerAction ?? {}
+          const actionStr = JSON.stringify(action)
+          writeRaw(`event: response.output_item.done\ndata: {"type":"response.output_item.done","output_index":${currentBlockIndex},"item":{"type":"computer_call","id":"cc_${fnCallId}","call_id":"${fnCallId}","action":${actionStr},"pending_safety_checks":[],"status":"completed"}}\n\n`)
+          respToolCallOutputs.push({
+            type: 'computer_call',
+            id: `cc_${fnCallId}`,
+            call_id: fnCallId,
+            action: action,
+            pending_safety_checks: [],
+            status: 'completed',
+          })
+        } else {
+          const nsPart = fnCallNamespace ? `,"namespace":"${fnCallNamespace}"` : ''
+          writeRaw(`event: response.function_call_arguments.done\ndata: {"type":"response.function_call_arguments.done","output_index":${currentBlockIndex},"arguments":${JSON.stringify(fnCallArgsAcc)}}\n\n`)
+          writeRaw(`event: response.output_item.done\ndata: {"type":"response.output_item.done","output_index":${currentBlockIndex},"item":{"type":"function_call","id":"fc_${fnCallId}","call_id":"${fnCallId}","name":"${fnCallName}","arguments":${JSON.stringify(fnCallArgsAcc)},"status":"completed"${nsPart}}}\n\n`)
+          const fcOut: Record<string, unknown> = {
+            type: 'function_call',
+            id: `fc_${fnCallId}`,
+            call_id: fnCallId,
+            name: fnCallName,
+            arguments: fnCallArgsAcc,
+            status: 'completed',
+          }
+          if (fnCallNamespace) fcOut.namespace = fnCallNamespace
+          respToolCallOutputs.push(fcOut)
+        }
       }
       return false
     }
@@ -777,7 +838,7 @@ export async function convertAnthropicStreamToOpenAIResponses(
       for (const fc of respToolCallOutputs) {
         output.push(fc)
       }
-      const respData: Record<string, unknown> = { id: currentRespId, object: 'response', status: 'completed', output }
+      const respData: Record<string, unknown> = { id: currentRespId, object: 'response', created_at: Math.floor(Date.now() / 1000), status: 'completed', output }
       // Anthropic thinking → 顶层 reasoning.summary
       if (thinkingText) {
         respData.reasoning = { summary: [{ type: 'summary_text', text: thinkingText, index: 0 }] }
@@ -846,7 +907,7 @@ export async function convertAnthropicStreamToOpenAIResponses(
       for (const fc of respToolCallOutputs) {
         output.push(fc)
       }
-      const respData: Record<string, unknown> = { id: currentRespId, object: 'response', status: 'completed', output }
+      const respData: Record<string, unknown> = { id: currentRespId, object: 'response', created_at: Math.floor(Date.now() / 1000), status: 'completed', output }
       // Anthropic thinking → 顶层 reasoning.summary
       if (thinkingText) {
         respData.reasoning = { summary: [{ type: 'summary_text', text: thinkingText, index: 0 }] }
@@ -873,7 +934,8 @@ export async function convertOpenAIStreamToOpenAIResponses(
   res: ServerResponse,
   logger?: Logger,
   capture?: CaptureBuffer,
-  pairId?: number
+  pairId?: number,
+  originalTools?: unknown[]
 ): Promise<StreamUsage | null> {
   const decoder = new TextDecoder()
   let buffer = ''
@@ -887,12 +949,25 @@ export async function convertOpenAIStreamToOpenAIResponses(
   let currentRespId = ''
   let currentMsgId = ''
   let messageStarted = false
+  let streamCompleted = false    // tracks if finish_reason already emitted close events
   let currentBlockType = 'text'
   let currentBlockIndex = 0
   let fnCallId = ''
   let fnCallName = ''
   let fnCallArgsAcc = ''        // accumulated args from deltas
+  let fnCallNamespace = ''
   let outputItems: Record<string, unknown>[] = [] // accumulated for response.completed
+  let upstreamModel = ''         // store upstream model for response events
+
+  // Build namespace lookup table for post-processing (CCX compat)
+  const namespaceCtx = originalTools ? buildNamespaceToolContext(originalTools) : new Map()
+
+  // Helper to decode namespace from flat function name
+  const decodeNs = (flatName: string): { name: string; namespace?: string } => {
+    const spec = namespaceCtx.get(flatName)
+    if (spec) return { name: spec.name, namespace: spec.namespace }
+    return { name: flatName }
+  }
 
   const writeRaw = (data: string): void => {
     outLines.push(`[${ts()}] ${data}`)
@@ -924,8 +999,15 @@ export async function convertOpenAIStreamToOpenAIResponses(
         if (messageStarted && currentBlockType === 'text') {
           writeRaw(`event: response.output_text.done\ndata: {"type":"response.output_text.done","output_index":0,"content_index":0,"text":${JSON.stringify(textContent)}}\n\n`)
         }
-        // Emit completed with top-level reasoning
-        const respData: Record<string, unknown> = { id: currentRespId, object: 'response', status: 'completed', output: outputItems.length > 0 ? outputItems : [] }
+        // Emit completed with model, created_at, top-level reasoning
+        const respData: Record<string, unknown> = {
+          id: currentRespId,
+          object: 'response',
+          created_at: Math.floor(Date.now() / 1000),
+          status: 'completed',
+          model: upstreamModel,
+          output: outputItems.length > 0 ? outputItems : [],
+        }
         // Chat reasoning_content → 顶层 reasoning.summary
         if (thinkingText) {
           respData.reasoning = { summary: [{ type: 'summary_text', text: thinkingText, index: 0 }] }
@@ -964,6 +1046,12 @@ export async function convertOpenAIStreamToOpenAIResponses(
       rawLines.push(`[${ts()}] data: ${dataStr}`)
       totalChunks++
 
+      // kimi-k2.6 sends usage in a separate chunk with empty choices
+      // Capture usage before the choices check
+      if (parsed?.usage) {
+        lastUsage = parsed.usage as Record<string, unknown>
+      }
+
       const choices = parsed.choices as Array<Record<string, unknown>> | undefined
       if (!choices || choices.length === 0) continue
       const choice = choices[0]
@@ -971,18 +1059,23 @@ export async function convertOpenAIStreamToOpenAIResponses(
       const finishReason = choice.finish_reason as string | undefined
       const chunkUsage = parsed.usage as Record<string, unknown> | undefined
 
-      // First message with role → init Responses stream
-      if (delta?.role === 'assistant' && !messageStarted) {
+      // First message with role or tool_calls → init Responses stream
+      // kimi-k2.6 etc may skip the role field and go straight to tool_calls
+      // DON'T continue — fall through so tool_calls/text in the same chunk are processed
+      if (!messageStarted && (delta?.role === 'assistant' || delta?.tool_calls)) {
         messageStarted = true
         currentRespId = respId()
         currentMsgId = msgId()
-        writeRaw(`event: response.created\ndata: {"type":"response.created","response":{"id":"${currentRespId}","object":"response","status":"in_progress","output":[]}}\n\n`)
-        writeRaw(`event: response.in_progress\ndata: {"type":"response.in_progress","response":{"id":"${currentRespId}","object":"response","status":"in_progress","output":[]}}\n\n`)
+        const createdAt = Math.floor(Date.now() / 1000)
+        upstreamModel = (parsed?.model as string) ?? ''
+        const model = upstreamModel
+        writeRaw(`event: response.created\ndata: {"type":"response.created","response":{"id":"${currentRespId}","object":"response","created_at":${createdAt},"model":"${model}","status":"in_progress","output":[]}}\n\n`)
+        writeRaw(`event: response.in_progress\ndata: {"type":"response.in_progress","response":{"id":"${currentRespId}","object":"response","created_at":${createdAt},"model":"${model}","status":"in_progress","output":[]}}\n\n`)
         writeRaw(`event: response.output_item.added\ndata: {"type":"response.output_item.added","output_index":0,"item":{"type":"message","id":"${currentMsgId}","status":"in_progress","role":"assistant","content":[]}}\n\n`)
         writeRaw(`event: response.content_part.added\ndata: {"type":"response.content_part.added","output_index":0,"content_index":0,"part":{"type":"output_text","text":"","annotations":[]}}\n\n`)
         currentBlockIndex = 0
         currentBlockType = 'text'
-        continue
+        // fall through — tool_calls or text in the SAME chunk still need processing
       }
 
       if (!messageStarted) continue
@@ -1003,9 +1096,13 @@ export async function convertOpenAIStreamToOpenAIResponses(
           currentBlockType = 'tool_use'
           fnCallId = tc.id as string
           fnCallName = ((tc.function as Record<string, unknown>)?.name as string) ?? ''
+          const nsDecoded = decodeNs(fnCallName)
+          fnCallNamespace = nsDecoded.namespace ?? ''
+          fnCallName = nsDecoded.name  // Override with decoded name
+          const nsPart = fnCallNamespace ? `,"namespace":"${fnCallNamespace}"` : ''
           const fnArgs = ((tc.function as Record<string, unknown>)?.arguments as string) ?? ''
           fnCallArgsAcc = fnArgs  // Initialize accumulator with initial arguments
-          writeRaw(`event: response.output_item.added\ndata: {"type":"response.output_item.added","output_index":${currentBlockIndex},"item":{"type":"function_call","id":"fc_${fnCallId}","call_id":"${fnCallId}","name":"${fnCallName}","arguments":${JSON.stringify(fnArgs)}}}\n\n`)
+          writeRaw(`event: response.output_item.added\ndata: {"type":"response.output_item.added","output_index":${currentBlockIndex},"item":{"type":"function_call","id":"fc_${fnCallId}","call_id":"${fnCallId}","name":"${nsDecoded.name}","arguments":${JSON.stringify(fnArgs)}${nsPart}}}\n\n`)
         } else if (tc.function && (tc.function as Record<string, unknown>).arguments) {
           const partialArgs = (tc.function as Record<string, unknown>).arguments as string
           fnCallArgsAcc += partialArgs
@@ -1031,12 +1128,15 @@ export async function convertOpenAIStreamToOpenAIResponses(
         if (currentBlockType === 'tool_use') {
           writeRaw(`event: response.function_call_arguments.done\ndata: {"type":"response.function_call_arguments.done","output_index":${currentBlockIndex},"arguments":${JSON.stringify(fnCallArgsAcc)}}\n\n`)
           // Emit response.output_item.done for the function_call
-          writeRaw(`event: response.output_item.done\ndata: {"type":"response.output_item.done","output_index":${currentBlockIndex},"item":{"type":"function_call","id":"fc_${fnCallId}","call_id":"${fnCallId}","name":"${fnCallName}","arguments":${JSON.stringify(fnCallArgsAcc)},"status":"completed"}}\n\n`)
+          const nsPart = fnCallNamespace ? `,"namespace":"${fnCallNamespace}"` : ''
+          writeRaw(`event: response.output_item.done\ndata: {"type":"response.output_item.done","output_index":${currentBlockIndex},"item":{"type":"function_call","id":"fc_${fnCallId}","call_id":"${fnCallId}","name":"${fnCallName}","arguments":${JSON.stringify(fnCallArgsAcc)},"status":"completed"${nsPart}}}\n\n`)
           // Record for response.completed output
-          outputItems.push({
+          const fcOut: Record<string, unknown> = {
             type: 'function_call', id: `fc_${fnCallId}`, call_id: fnCallId,
             name: fnCallName, arguments: fnCallArgsAcc, status: 'completed',
-          })
+          }
+          if (fnCallNamespace) fcOut.namespace = fnCallNamespace
+          outputItems.push(fcOut)
         }
         // Emit response.output_item.done for the message
         const msgContent: unknown[] = []
@@ -1047,6 +1147,7 @@ export async function convertOpenAIStreamToOpenAIResponses(
         outputItems.unshift({
           type: 'message', id: currentMsgId, status: 'completed', role: 'assistant', content: msgContent,
         })
+        streamCompleted = true
         continue
       }
     }
@@ -1054,29 +1155,35 @@ export async function convertOpenAIStreamToOpenAIResponses(
 
   // Emit completed if not already
   if (messageStarted) {
-    if (outputItems.length === 0) {
-      const msgContent: unknown[] = []
-      if (textContent) {
-        msgContent.push({ type: 'output_text', text: textContent, annotations: [] })
+    if (!streamCompleted) {
+      if (outputItems.length === 0) {
+        const msgContent: unknown[] = []
+        if (textContent) {
+          msgContent.push({ type: 'output_text', text: textContent, annotations: [] })
+        }
+        writeRaw(`event: response.output_item.done\ndata: {"type":"response.output_item.done","output_index":0,"item":{"id":"${currentMsgId}","type":"message","status":"completed","role":"assistant","content":${JSON.stringify(msgContent)}}}\n\n`)
+        outputItems.unshift({ type: 'message', id: currentMsgId, status: 'completed', role: 'assistant', content: msgContent })
       }
-      writeRaw(`event: response.output_item.done\ndata: {"type":"response.output_item.done","output_index":0,"item":{"id":"${currentMsgId}","type":"message","status":"completed","role":"assistant","content":${JSON.stringify(msgContent)}}}\n\n`)
-      outputItems.unshift({ type: 'message', id: currentMsgId, status: 'completed', role: 'assistant', content: msgContent })
+      writeRaw(`event: response.output_text.done\ndata: {"type":"response.output_text.done","output_index":0,"content_index":0,"text":${JSON.stringify(textContent)}}\n\n`)
     }
-    writeRaw(`event: response.output_text.done\ndata: {"type":"response.output_text.done","output_index":0,"content_index":0,"text":${JSON.stringify(textContent)}}\n\n`)
-    const respData: Record<string, unknown> = { id: currentRespId, object: 'response', status: 'completed', output: outputItems.length > 0 ? outputItems : [] }
+    const respData: Record<string, unknown> = { id: currentRespId, object: 'response', created_at: Math.floor(Date.now() / 1000), status: 'completed', output: outputItems.length > 0 ? outputItems : [] }
     // Chat reasoning_content → 顶层 reasoning.summary
     if (thinkingText) {
       respData.reasoning = { summary: [{ type: 'summary_text', text: thinkingText, index: 0 }] }
     }
     if (Object.keys(lastUsage).length > 0) {
-      respData.usage = { input_tokens: lastUsage.input_tokens ?? 0, output_tokens: lastUsage.output_tokens ?? 0, total_tokens: ((lastUsage.input_tokens as number) ?? 0) + ((lastUsage.output_tokens as number) ?? 0) }
+      const input = ((lastUsage.input_tokens ?? lastUsage.prompt_tokens) as number) ?? 0
+      const output = ((lastUsage.output_tokens ?? lastUsage.completion_tokens) as number) ?? 0
+      respData.usage = { input_tokens: input, output_tokens: output, total_tokens: input + output }
     }
     writeRaw('event: response.completed\ndata: ' + JSON.stringify({ type: 'response.completed', response: respData }) + '\n\n')
   }
   res.end()
 
   if (Object.keys(lastUsage).length > 0) {
-    return { input_tokens: (lastUsage.input_tokens ?? 0) as number, output_tokens: (lastUsage.output_tokens ?? 0) as number }
+    const input = ((lastUsage.input_tokens ?? lastUsage.prompt_tokens) as number) ?? 0
+    const output = ((lastUsage.output_tokens ?? lastUsage.completion_tokens) as number) ?? 0
+    return { input_tokens: input, output_tokens: output }
   }
   return null
 }
@@ -1145,6 +1252,15 @@ export async function convertOpenAIResponsesStreamToOpenAI(
             firstFnCallOutputIndex = (parsed?.output_index as number) ?? 1
           }
           write({ choices: [{ delta: { tool_calls: [{ index: currentFnCallIndex, id: item?.call_id ?? item?.id, type: 'function', function: { name: item?.name ?? '', arguments: (item?.arguments as string) ?? '' } }] }, index: 0 }] })
+        } else if (item?.type === 'computer_call') {
+          // Computer call → Chat tool_calls (lossy: serialize action as arguments)
+          const action = item.action as Record<string, unknown> | undefined
+          currentFnCallIndex = ((parsed?.output_index as number) ?? 1) - 1
+          if (!hasFunctionCalls) {
+            hasFunctionCalls = true
+            firstFnCallOutputIndex = (parsed?.output_index as number) ?? 1
+          }
+          write({ choices: [{ delta: { tool_calls: [{ index: currentFnCallIndex, id: item?.call_id ?? item?.id, type: 'function', function: { name: 'computer', arguments: JSON.stringify(action ?? {}) } }] }, index: 0 }] })
         }
         continue
       }

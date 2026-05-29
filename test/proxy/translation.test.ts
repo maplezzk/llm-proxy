@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert'
-import { transformInboundRequest, convertOpenAIResponseToAnthropic, convertAnthropicResponseToOpenAI, convertOpenAIResponsesToAnthropic, convertAnthropicResponseToOpenAIResponses } from '../../src/proxy/translation.js'
+import { transformInboundRequest, convertOpenAIResponseToAnthropic, convertAnthropicResponseToOpenAI, convertOpenAIResponsesToAnthropic, convertAnthropicResponseToOpenAIResponses, convertOpenAIResponsesResponseToOpenAI, buildNamespaceToolContext, remapNamespaceFunctionCalls } from '../../src/proxy/translation.js'
 
 const anthropicRoute = {
   providerName: 'anthropic-main',
@@ -44,6 +44,24 @@ describe('proxy/translation', () => {
       assert.strictEqual(result.crossProtocol, false)
       assert.strictEqual(result.body.model, 'gpt-4o')
       assert.strictEqual(result.headers['Authorization'], 'Bearer sk-openai-1')
+    })
+
+    it('Anthropic → Anthropic 同协议：built-in tools 透传', async () => {
+      const result = await transformInboundRequest('anthropic', anthropicRoute, {
+        model: 'claude-sonnet',
+        messages: [{ role: 'user', content: 'control computer' }],
+        tools: [
+          { type: 'computer_20251124', name: 'computer', display_width_px: 1024, display_height_px: 768 },
+          { type: 'bash_20250124', name: 'bash' },
+        ],
+      })
+      const tools = result.body.tools as Array<Record<string, unknown>>
+      assert.ok(tools, 'built-in tools 应被透传')
+      const computerTool = tools.find((t) => t.name === 'computer')
+      assert.ok(computerTool, 'computer tool 应被保留')
+      assert.strictEqual((computerTool as Record<string, unknown>).type, 'computer_20251124')
+      const bashTool = tools.find((t) => t.name === 'bash')
+      assert.ok(bashTool, 'bash tool 应被保留')
     })
   })
 
@@ -150,6 +168,89 @@ describe('proxy/translation', () => {
       assert.strictEqual(tools[0].name, 'get_weather')
       assert.strictEqual(result.body.tool_choice.type, 'any')
     })
+
+    it('built-in tool: computer_use_preview → Anthropic computer_20251124', async () => {
+      const result = await transformInboundRequest('openai-responses', anthropicRoute, {
+        model: 'claude-sonnet',
+        input: 'control the computer',
+        tools: [{
+          type: 'computer_use_preview',
+          display_width: 1024,
+          display_height: 768,
+        }],
+      })
+      const tools = result.body.tools as Array<Record<string, unknown>>
+      assert.ok(tools, 'computer_use_preview 不应被过滤')
+      assert.strictEqual(tools.length, 1)
+      assert.strictEqual(tools[0].type, 'computer_20251124')
+      assert.strictEqual(tools[0].name, 'computer')
+      assert.strictEqual(tools[0].display_width_px, 1024)
+      assert.strictEqual(tools[0].display_height_px, 768)
+    })
+
+    it('built-in tool: web_search_preview / code_interpreter / file_search → 被过滤（无 Anthropic 等效工具）', async () => {
+      const result = await transformInboundRequest('openai-responses', anthropicRoute, {
+        model: 'claude-sonnet',
+        input: 'search something',
+        tools: [
+          { type: 'function', function: { name: 'get_weather', description: 'Get weather', parameters: { type: 'object', properties: { loc: { type: 'string' } } } } },
+          { type: 'web_search_preview' },
+          { type: 'code_interpreter' },
+          { type: 'file_search' },
+        ],
+      })
+      const tools = result.body.tools as Array<Record<string, unknown>>
+      assert.ok(tools, 'function tool 仍然保留')
+      assert.strictEqual(tools.length, 1)
+      assert.strictEqual(tools[0].name, 'get_weather')
+    })
+
+    it('built-in tool: 混合 function + computer_use_preview', async () => {
+      const result = await transformInboundRequest('openai-responses', anthropicRoute, {
+        model: 'claude-sonnet',
+        input: 'use the computer',
+        tools: [
+          { type: 'function', function: { name: 'get_weather', description: 'Get weather', parameters: {} } },
+          { type: 'computer_use_preview', display_width: 1920, display_height: 1080 },
+        ],
+      })
+      const tools = result.body.tools as Array<Record<string, unknown>>
+      assert.strictEqual(tools.length, 2)
+      // function tool preserved
+      assert.strictEqual(tools[0].name, 'get_weather')
+      // computer tool mapped
+      assert.strictEqual(tools[1].type, 'computer_20251124')
+      assert.strictEqual(tools[1].name, 'computer')
+    })
+
+    it('computer_call_output input → Anthropic tool_result with image', async () => {
+      const result = await transformInboundRequest('openai-responses', anthropicRoute, {
+        model: 'claude-sonnet',
+        input: [
+          { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'what do you see?' }] },
+          {
+            type: 'computer_call_output',
+            call_id: 'call_123',
+            output: { type: 'computer_screenshot', image_url: 'https://example.com/screen.png' },
+          },
+        ],
+        tools: [{ type: 'computer_use_preview' }],
+      })
+      const msgs = result.body.messages as Array<Record<string, unknown>>
+      // First message: user text
+      assert.strictEqual(msgs[0].role, 'user')
+      assert.strictEqual(msgs[0].content, 'what do you see?')
+      // Second message: tool_result with image (tool role → combined into user message with tool_results)
+      assert.strictEqual(msgs[1].role, 'user')
+      const content = msgs[1].content as Array<Record<string, unknown>>
+      assert.strictEqual(content[0].type, 'tool_result')
+      assert.strictEqual(content[0].tool_use_id, 'call_123')
+      const trContent = content[0].content as Array<Record<string, unknown>>
+      assert.strictEqual(trContent[0].type, 'image')
+      const source = trContent[0].source as Record<string, unknown>
+      assert.strictEqual(source.type, 'url')
+      assert.strictEqual(source.url, 'https://example.com/screen.png')
+    })
   })
 
   describe('同协议转发 — OpenAI Responses → OpenAI Responses', () => {
@@ -178,6 +279,71 @@ describe('proxy/translation', () => {
       assert.strictEqual(result.body.temperature, 0.5)
       assert.strictEqual(result.body.stream, true)
       assert.strictEqual(result.headers['Authorization'], 'Bearer sk-resp-1')
+    })
+
+    it('Responses → Responses 同协议：built-in tools 透传', async () => {
+      const result = await transformInboundRequest('openai-responses', responsesRoute, {
+        model: 'gpt-4o',
+        input: 'control computer',
+        tools: [
+          { type: 'computer_use_preview', display_width: 1024, display_height: 768 },
+          { type: 'web_search_preview' },
+        ],
+      })
+      const tools = result.body.tools as Array<Record<string, unknown>>
+      assert.ok(tools, 'built-in tools 应被透传')
+      const cuTool = tools.find((t) => t.type === 'computer_use_preview')
+      assert.ok(cuTool, 'computer_use_preview 应被保留')
+      const wsTool = tools.find((t) => t.type === 'web_search_preview')
+      assert.ok(wsTool, 'web_search_preview 应被保留')
+    })
+  })
+
+  describe('跨协议翻译 — Anthropic → OpenAI Responses', () => {
+    const responsesRoute = {
+      providerName: 'responses-main',
+      providerType: 'openai-responses' as const,
+      apiKey: 'sk-resp-1',
+      apiBase: 'https://api.openai.com',
+      modelId: 'gpt-4o',
+    }
+
+    it('user message 带 tool_result（含 image）→ computer_call_output', async () => {
+      const result = await transformInboundRequest('anthropic', responsesRoute, {
+        model: 'claude-sonnet',
+        messages: [
+          { role: 'user', content: 'what do you see?' },
+          {
+            role: 'assistant',
+            content: [
+              { type: 'text', text: 'Let me look' },
+              { type: 'tool_use', id: 'toolu_1', name: 'computer', input: { action: 'screenshot' } },
+            ],
+          },
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'tool_result',
+                tool_use_id: 'toolu_1',
+                content: [
+                  { type: 'text', text: 'Screenshot taken' },
+                  { type: 'image', source: { type: 'url', url: 'https://example.com/desktop.png' } },
+                ],
+              },
+            ],
+          },
+        ],
+      })
+      const input = result.body.input as Array<Record<string, unknown>>
+      assert.ok(input, 'input should exist')
+      // Find computer_call_output items
+      const cco = input.filter((item) => item.type === 'computer_call_output')
+      assert.strictEqual(cco.length, 1, '应有 1 个 computer_call_output')
+      assert.strictEqual(cco[0].call_id, 'toolu_1')
+      const output = cco[0].output as Record<string, unknown>
+      assert.strictEqual(output.type, 'computer_screenshot')
+      assert.strictEqual(output.image_url, 'https://example.com/desktop.png')
     })
   })
 
@@ -233,6 +399,42 @@ describe('proxy/translation', () => {
       assert.strictEqual(fn.description, 'Get weather')
       assert.ok(fn.parameters)
       assert.deepStrictEqual(result.body.tool_choice, { type: 'function', function: { name: 'get_weather' } })
+    })
+
+    it('built-in tool: computer_20251124 → OpenAI computer_use_preview', async () => {
+      const result = await transformInboundRequest('anthropic', openaiRoute, {
+        model: 'gpt-4o',
+        messages: [{ role: 'user', content: 'control computer' }],
+        tools: [{
+          type: 'computer_20251124',
+          name: 'computer',
+          display_width_px: 1024,
+          display_height_px: 768,
+          display_number: 1,
+        }],
+      })
+      const tools = result.body.tools as Array<Record<string, unknown>>
+      assert.ok(tools, 'computer_20251124 不应被过滤')
+      assert.strictEqual(tools.length, 1)
+      assert.strictEqual(tools[0].type, 'computer_use_preview')
+    })
+
+    it('built-in tool: bash + text_editor → 被过滤（无 OpenAI 等效工具）', async () => {
+      const result = await transformInboundRequest('anthropic', openaiRoute, {
+        model: 'gpt-4o',
+        messages: [{ role: 'user', content: 'run command' }],
+        tools: [
+          { name: 'get_weather', description: 'Get weather', input_schema: { type: 'object', properties: {} } },
+          { type: 'bash_20250124', name: 'bash' },
+          { type: 'text_editor_20250728', name: 'str_replace_based_edit_tool' },
+        ],
+      })
+      const tools = result.body.tools as Array<Record<string, unknown>>
+      assert.ok(tools, 'function tool 仍然保留')
+      assert.strictEqual(tools.length, 1)
+      assert.strictEqual(tools[0].type, 'function')
+      const fn = tools[0].function as Record<string, unknown>
+      assert.strictEqual(fn.name, 'get_weather')
     })
 
     it('Anthropic assistant thinking + text 内容块 → OpenAI reasoning_content + content 字符串', async () => {
@@ -554,6 +756,55 @@ describe('proxy/response-conversion', () => {
     assert.strictEqual(result.stop_reason, 'tool_use')
   })
 
+  it('OpenAI Responses computer_call → Anthropic tool_use (computer)', () => {
+    const result = convertOpenAIResponsesToAnthropic({
+      output: [{
+        type: 'computer_call',
+        id: 'cc_1',
+        call_id: 'call_screenshot',
+        action: { type: 'screenshot' },
+        pending_safety_checks: [],
+        status: 'completed',
+      }],
+    })
+    const content = result.content as Array<Record<string, unknown>>
+    assert.strictEqual(content[0].type, 'tool_use')
+    assert.strictEqual(content[0].name, 'computer')
+    const input = content[0].input as Record<string, unknown>
+    assert.strictEqual(input.action, 'screenshot')
+    assert.strictEqual(result.stop_reason, 'tool_use')
+  })
+
+  it('OpenAI Responses click action → Anthropic coordinate', () => {
+    const result = convertOpenAIResponsesToAnthropic({
+      output: [{
+        type: 'computer_call',
+        call_id: 'call_click',
+        action: { type: 'click', x: 100, y: 200 },
+        status: 'completed',
+      }],
+    })
+    const content = result.content as Array<Record<string, unknown>>
+    const input = content[0].input as Record<string, unknown>
+    assert.strictEqual(input.action, 'click')
+    assert.deepStrictEqual(input.coordinate, [100, 200])
+  })
+
+  it('OpenAI Responses keypress → Anthropic key + text', () => {
+    const result = convertOpenAIResponsesToAnthropic({
+      output: [{
+        type: 'computer_call',
+        call_id: 'call_key',
+        action: { type: 'keypress', keys: ['ctrl', 'c'] },
+        status: 'completed',
+      }],
+    })
+    const content = result.content as Array<Record<string, unknown>>
+    const input = content[0].input as Record<string, unknown>
+    assert.strictEqual(input.action, 'key')
+    assert.strictEqual(input.text, 'ctrlc')
+  })
+
   it('Anthropic 响应 → OpenAI Responses 格式', () => {
     const result = convertAnthropicResponseToOpenAIResponses({
       id: 'msg_xyz',
@@ -576,6 +827,82 @@ describe('proxy/response-conversion', () => {
     assert.strictEqual(msgContent[0].text, 'Hi there!')
     assert.strictEqual(result.usage.input_tokens, 10)
     assert.strictEqual(result.usage.output_tokens, 5)
+  })
+
+  it('Anthropic tool_use (computer) → OpenAI Responses computer_call', () => {
+    const result = convertAnthropicResponseToOpenAIResponses({
+      content: [
+        { type: 'text', text: 'Taking screenshot' },
+        { type: 'tool_use', id: 'toolu_1', name: 'computer', input: { action: 'screenshot' } },
+      ],
+      stop_reason: 'tool_use',
+      usage: { input_tokens: 10, output_tokens: 5 },
+    })
+    const output = result.output as Array<Record<string, unknown>>
+    // First item should be message
+    assert.strictEqual(output[0].type, 'message')
+    // Second item should be computer_call
+    const cc = output[1]
+    assert.strictEqual(cc.type, 'computer_call')
+    assert.strictEqual(cc.call_id, 'toolu_1')
+    const action = cc.action as Record<string, unknown>
+    assert.strictEqual(action.type, 'screenshot')
+    assert.deepStrictEqual(cc.pending_safety_checks, [])
+    assert.strictEqual(cc.status, 'completed')
+  })
+
+  it('Anthropic tool_use (computer) click → computer_call with action', () => {
+    const result = convertAnthropicResponseToOpenAIResponses({
+      content: [
+        { type: 'tool_use', id: 'toolu_2', name: 'computer', input: { action: 'click', coordinate: [500, 300] } },
+      ],
+      stop_reason: 'tool_use',
+      usage: { input_tokens: 5, output_tokens: 3 },
+    })
+    const output = result.output as Array<Record<string, unknown>>
+    // No message item (no text content), computer_call is first
+    assert.strictEqual(output.length, 1)
+    const cc = output[0]
+    assert.strictEqual(cc.type, 'computer_call')
+    const action = cc.action as Record<string, unknown>
+    assert.strictEqual(action.type, 'click')
+    assert.strictEqual(action.x, 500)
+    assert.strictEqual(action.y, 300)
+  })
+
+  it('Anthropic tool_use (bash) → 转为 function_call', () => {
+    const result = convertAnthropicResponseToOpenAIResponses({
+      content: [
+        { type: 'tool_use', id: 'toolu_3', name: 'bash', input: { cmd: 'ls' } },
+      ],
+      stop_reason: 'tool_use',
+      usage: { input_tokens: 5, output_tokens: 3 },
+    })
+    const output = result.output as Array<Record<string, unknown>>
+    // No message item (no text content), function_call is first
+    assert.strictEqual(output.length, 1)
+    const fc = output[0]
+    assert.strictEqual(fc.type, 'function_call')
+    assert.strictEqual(fc.name, 'bash')
+  })
+
+  it('OpenAI Responses computer_call → Chat tool_calls (lossy)', () => {
+    const result = convertOpenAIResponsesResponseToOpenAI({
+      output: [{
+        type: 'computer_call',
+        id: 'cc_1',
+        call_id: 'call_click',
+        action: { type: 'click', x: 100, y: 200 },
+        status: 'completed',
+      }],
+      status: 'completed',
+    })
+    const tcs = (result.choices[0].message as Record<string, unknown>).tool_calls as Array<Record<string, unknown>>
+    assert.ok(tcs, 'computer_call → Chat tool_calls')
+    assert.strictEqual(tcs.length, 1)
+    assert.strictEqual(tcs[0].function.name, 'computer')
+    const args = JSON.parse(tcs[0].function.arguments as string)
+    assert.strictEqual(args.type, 'click')
   })
 
   it('OpenAI reasoning_content → Anthropic thinking 块', () => {
@@ -755,7 +1082,7 @@ describe('proxy/response-conversion', () => {
       const asst3 = msgs[6] as Record<string, unknown>
       const c3 = asst3.content as Array<Record<string, unknown>>
       assert.strictEqual(c3[0].type, 'thinking', '首块应为 thinking')
-      assert.strictEqual(c3[0].thinking, '让我调用 bash 工具', '应有描述性占位')
+      assert.strictEqual(c3[0].thinking, '', '占位 thinking 应为空字符串')
       assert.strictEqual(c3[1].type, 'tool_use')
     })
 
@@ -815,7 +1142,7 @@ describe('proxy/response-conversion', () => {
       const asst2 = msgs.filter((m: Record<string, unknown>) => m.role === 'assistant')[1]
       const content2 = asst2.content as Array<Record<string, unknown>>
       assert.strictEqual(content2[0].type, 'thinking', '工具调用 assistant 首块应为 thinking')
-      assert.strictEqual(content2[0].thinking, '让我调用 bash 工具', '应有描述性占位')
+      assert.strictEqual(content2[0].thinking, '', '占位 thinking 应为空字符串')
       assert.strictEqual(content2[1].type, 'tool_use', '第二块为 tool_use')
     })
 
@@ -861,7 +1188,7 @@ describe('proxy/response-conversion', () => {
   })
 
   describe('stream 默认值 fallback', () => {
-    it('同协议 Anthropic→Anthropic: 未传 stream → 设为 false', async () => {
+    it('同协议 Anthropic→Anthropic: 未传 stream → 设为 true', async () => {
       const result = await transformInboundRequest('anthropic', anthropicRoute, {
         model: 'claude-sonnet-4',
         messages: [{ role: 'user', content: 'hi' }],
@@ -870,8 +1197,8 @@ describe('proxy/response-conversion', () => {
       assert.strictEqual(result.crossProtocol, false)
       assert.strictEqual(
         (result.body as Record<string, unknown>).stream,
-        false,
-        '未传 stream 时应默认 false',
+        true,
+        '未传 stream 时应默认 true',
       )
     })
 
@@ -901,7 +1228,7 @@ describe('proxy/response-conversion', () => {
       )
     })
 
-    it('跨协议 OpenAI Chat→Anthropic: 未传 stream → 设为 false', async () => {
+    it('跨协议 OpenAI Chat→Anthropic: 未传 stream → 设为 true', async () => {
       const result = await transformInboundRequest('openai', anthropicRoute, {
         model: 'claude-sonnet-4',
         messages: [{ role: 'user', content: 'hi' }],
@@ -910,8 +1237,8 @@ describe('proxy/response-conversion', () => {
       assert.strictEqual(result.crossProtocol, true)
       assert.strictEqual(
         (result.body as Record<string, unknown>).stream,
-        false,
-        '跨协议未传 stream 时应默认 false',
+        true,
+        '跨协议未传 stream 时应默认 true',
       )
     })
 
@@ -928,7 +1255,7 @@ describe('proxy/response-conversion', () => {
       )
     })
 
-    it('跨协议 Anthropic→OpenAI: 未传 stream → 设为 false', async () => {
+    it('跨协议 Anthropic→OpenAI: 未传 stream → 设为 true', async () => {
       const result = await transformInboundRequest('anthropic', openaiRoute, {
         model: 'claude-sonnet-4',
         messages: [{ role: 'user', content: 'hi' }],
@@ -937,8 +1264,8 @@ describe('proxy/response-conversion', () => {
       assert.strictEqual(result.crossProtocol, true)
       assert.strictEqual(
         (result.body as Record<string, unknown>).stream,
-        false,
-        '跨协议未传 stream 时应默认 false',
+        true,
+        '跨协议未传 stream 时应默认 true',
       )
     })
 
@@ -953,6 +1280,151 @@ describe('proxy/response-conversion', () => {
         true,
         '跨协议 stream:true 应保持 true',
       )
+    })
+  })
+
+  describe('Namespace 工具后处理 (CCX 兼容)', () => {
+    it('buildNamespaceToolContext: 从 namespace 工具构建查找表', () => {
+      const tools = [{
+        type: 'namespace',
+        name: 'mcp__vscode_mcp__',
+        tools: [{
+          type: 'function',
+          name: 'execute_command',
+          parameters: { type: 'object', properties: {} },
+        }],
+      }]
+
+      const ctx = buildNamespaceToolContext(tools)
+      assert.strictEqual(ctx.size, 1)
+
+      const spec = ctx.get('mcp__vscode_mcp__execute_command')
+      assert.ok(spec, '应找到展平后的工具名')
+      assert.strictEqual(spec.namespace, 'mcp__vscode_mcp__')
+      assert.strictEqual(spec.name, 'execute_command')
+    })
+
+    it('buildNamespaceToolContext: namespace 以 __ 结尾时不加额外分隔符', () => {
+      const tools = [{
+        type: 'namespace',
+        name: 'mcp__',
+        tools: [{
+          type: 'function',
+          name: 'foo',
+          parameters: { type: 'object', properties: {} },
+        }],
+      }]
+
+      const ctx = buildNamespaceToolContext(tools)
+      assert.strictEqual(ctx.size, 1)
+      assert.ok(ctx.has('mcp__foo'), '展平后应为 mcp__foo 而非 mcp____foo')
+    })
+
+    it('remapNamespaceFunctionCalls: 匹配时加回 namespace', () => {
+      const ctx = new Map([
+        ['mcp__vscode_mcp__execute_command', { namespace: 'mcp__vscode_mcp__', name: 'execute_command' }],
+      ])
+
+      const output: Record<string, unknown>[] = [{
+        type: 'function_call',
+        call_id: 'call_1',
+        name: 'mcp__vscode_mcp__execute_command',
+        arguments: '{"command":"test"}',
+      }]
+
+      remapNamespaceFunctionCalls(output, ctx)
+
+      assert.strictEqual(output[0].name as string, 'execute_command')
+      assert.strictEqual(output[0].namespace as string, 'mcp__vscode_mcp__')
+      assert.strictEqual(output[0].arguments as string, '{"command":"test"}')
+    })
+
+    it('remapNamespaceFunctionCalls: 不匹配的工具名不受影响', () => {
+      const ctx = new Map([
+        ['mcp__vscode_mcp__execute_command', { namespace: 'mcp__vscode_mcp__', name: 'execute_command' }],
+      ])
+
+      const output: Record<string, unknown>[] = [{
+        type: 'function_call',
+        call_id: 'call_2',
+        name: 'do_something',
+        arguments: '{}',
+      }]
+
+      remapNamespaceFunctionCalls(output, ctx)
+
+      assert.strictEqual(output[0].name as string, 'do_something')
+      assert.strictEqual(output[0].namespace as string, undefined)
+    })
+
+    it('remapNamespaceFunctionCalls: 空上下文不修改输出', () => {
+      const ctx = new Map()
+
+      const output: Record<string, unknown>[] = [{
+        type: 'function_call',
+        call_id: 'call_3',
+        name: 'foo',
+        arguments: '{}',
+      }]
+
+      const original = JSON.stringify(output)
+      remapNamespaceFunctionCalls(output, ctx)
+      assert.strictEqual(JSON.stringify(output), original)
+    })
+
+    it('remapNamespaceFunctionCalls: computer_call 类型不受影响', () => {
+      const ctx = new Map([
+        ['mcp__vscode_mcp__execute_command', { namespace: 'mcp__vscode_mcp__', name: 'execute_command' }],
+      ])
+
+      const output: Record<string, unknown>[] = [{
+        type: 'computer_call',
+        call_id: 'cc_1',
+        action: { type: 'screenshot' },
+        status: 'completed',
+      }]
+
+      const original = JSON.stringify(output)
+      remapNamespaceFunctionCalls(output, ctx)
+      assert.strictEqual(JSON.stringify(output), original)
+    })
+
+    it('Anthropic → Responses: function_call 经后处理加回 namespace', () => {
+      // 模拟 Anthropic 响应中包含一个经 __ 编码的 tool_use
+      const anthropicBody = {
+        id: 'msg_123',
+        type: 'message',
+        role: 'assistant',
+        content: [
+          { type: 'tool_use', id: 'toolu_1', name: 'mcp__vscode_mcp__execute_command', input: { command: 'test' } },
+        ],
+        model: 'claude-sonnet-4',
+        stop_reason: 'tool_use',
+        stop_sequence: null,
+        usage: { input_tokens: 10, output_tokens: 5 },
+      }
+
+      const result = convertAnthropicResponseToOpenAIResponses(anthropicBody)
+
+      // 基础转换：tool_use → function_call，名称保留原样（含 namespace 前缀）
+      const output = result.output as Array<Record<string, unknown>>
+      const fcItem = output.find((i) => i.type === 'function_call') as Record<string, unknown> | undefined
+      assert.ok(fcItem, '应有 function_call 输出项')
+
+      // 基础转换不解码 __，保持原始名字
+      assert.strictEqual(fcItem.name as string, 'mcp__vscode_mcp__execute_command')
+
+      // 后处理 (remapNamespaceFunctionCalls) 查表解开
+      const originalTools = [{
+        type: 'namespace',
+        name: 'mcp__vscode_mcp__',
+        tools: [{ type: 'function', name: 'execute_command' }],
+      }]
+      const namespaceCtx = buildNamespaceToolContext(originalTools)
+      remapNamespaceFunctionCalls(output, namespaceCtx)
+
+      assert.strictEqual(fcItem.name as string, 'execute_command')
+      assert.strictEqual(fcItem.namespace as string, 'mcp__vscode_mcp__')
     })
   })
 })

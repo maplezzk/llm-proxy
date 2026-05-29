@@ -140,6 +140,7 @@ export async function forwardPipeline(
         method: 'POST',
         headers: upstream.headers,
         body: upstream.body,
+        originalBody: body,  // Pass original request for namespace response remapping
         crossProtocol: upstream.crossProtocol,
         inboundType,
         upstreamType: route.providerType,
