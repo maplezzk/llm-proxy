@@ -885,8 +885,7 @@ tbody tr:hover td { background: #f8f9fb; }
 <!-- Confirm Dialog -->
 <div class="confirm-overlay" x-data
      :class="{ open: $store.app.showConfirm }"
-     x-cloak
-     style="display:none">
+     x-cloak>
   <div class="confirm-box">
     <p x-text="$store.app.confirmMessage"></p>
     <div class="btn-row">
