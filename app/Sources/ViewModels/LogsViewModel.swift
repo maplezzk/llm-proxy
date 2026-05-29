@@ -31,6 +31,7 @@ final class LogsViewModel {
     var autoScroll: Bool = true
     var stats: LogStats? = nil
     var hasMore: Bool = true
+    var logLevel: String = "info"
 
     private let client: APIClient
     private var pollTimer: Timer?
@@ -181,6 +182,23 @@ final class LogsViewModel {
     }
 
     // MARK: - Polling
+
+    func fetchLogLevel() async {
+        do {
+            logLevel = try await client.fetchLogLevel()
+        } catch {
+            // keep default
+        }
+    }
+
+    func setLogLevel(_ level: String) async {
+        do {
+            try await client.setLogLevel(level)
+            logLevel = level
+        } catch {
+            // revert?
+        }
+    }
 
     func startPolling() {
         stopPolling()

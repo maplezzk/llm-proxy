@@ -16,6 +16,7 @@ struct LogsView: View {
         .frame(minWidth: 500)
         .task {
             await viewModel.load()
+            await viewModel.fetchLogLevel()
             viewModel.startPolling()
         }
         .onDisappear {
@@ -101,6 +102,23 @@ struct LogsView: View {
             }
             .buttonStyle(.borderless)
             .help(viewModel.autoScroll ? loc("logs.autoScroll.on") : loc("logs.autoScroll.off"))
+
+            // 日志级别设置
+            Picker("", selection: Binding(
+                get: { viewModel.logLevel },
+                set: { newLevel in
+                    Task { await viewModel.setLogLevel(newLevel) }
+                }
+            )) {
+                Text("debug").tag("debug")
+                Text("info").tag("info")
+                Text("warn").tag("warn")
+                Text("error").tag("error")
+            }
+            .pickerStyle(.menu)
+            .labelsHidden()
+            .frame(width: 70)
+            .help(loc("action.logLevel", viewModel.logLevel.uppercased()))
 
             // 日志总数
             if !viewModel.allLogs.isEmpty {
