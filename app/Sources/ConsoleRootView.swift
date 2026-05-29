@@ -8,9 +8,10 @@ struct ConsoleRootView: View {
     var body: some View {
         NavigationSplitView {
             sidebar
-                .navigationSplitViewColumnWidth(min: 160, ideal: 180, max: 220)
+                .navigationSplitViewColumnWidth(min: 140, ideal: 180, max: 220)
         } detail: {
             tabContent
+                .frame(minWidth: 400)
         }
         .navigationSplitViewStyle(.balanced)
         .environment(testCoordinator)
