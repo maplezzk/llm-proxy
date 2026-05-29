@@ -1,13 +1,12 @@
 import SwiftUI
 
-/// 侧边栏底部设置区：端口、代理密钥、语言、配置重载
+/// 设置页面——侧边栏独立 tab，完整详情区域展示
 struct SettingsView: View {
     @State private var port: String = ""
     @State private var originalPort: Int?
     @State private var hasProxyKey: Bool = false
     @State private var proxyKeyInput: String = ""
     @State private var selectedLang: String = currentLang()
-    @State private var showPortSheet: Bool = false
     @State private var showProxyKeySheet: Bool = false
     @State private var isReloading: Bool = false
     @State private var toastMessage: String?
@@ -16,90 +15,132 @@ struct SettingsView: View {
     private let api = APIClient()
 
     var body: some View {
-        VStack(spacing: 0) {
-            Divider()
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                // 标题
+                HStack {
+                    Label(loc("settings.title"), systemImage: "gearshape")
+                        .font(.title2)
+                        .fontWeight(.semibold)
+                    Spacer()
+                }
+                .padding(.horizontal, 24)
+                .padding(.top, 20)
+                .padding(.bottom, 16)
 
-            DisclosureGroup {
-                VStack(alignment: .leading, spacing: 8) {
-                    // 端口
-                    settingsRow(icon: "network", label: "settings.port") {
-                        Button(action: { openPortSheet() }) {
-                            HStack {
-                                Text(portLabel)
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                                Spacer()
-                                Image(systemName: "chevron.right")
-                                    .font(.system(size: 9, weight: .bold))
-                                    .foregroundColor(.secondary)
-                            }
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.borderless)
+                // Toast
+                if let toast = toastMessage {
+                    HStack(spacing: 6) {
+                        Image(systemName: toastType == "success" ? "checkmark.circle.fill" : "xmark.circle.fill")
+                            .foregroundColor(toastType == "success" ? .green : .red)
+                        Text(toast)
+                            .font(.callout)
                     }
+                    .padding(.horizontal, 24)
+                    .padding(.bottom, 12)
+                }
 
-                    // 代理密钥
-                    settingsRow(icon: "key", label: "settings.proxyKey") {
-                        Button(action: { openProxyKeySheet() }) {
-                            HStack {
-                                Text(hasProxyKey ? loc("settings.set") : loc("settings.notSet"))
-                                    .font(.caption)
-                                    .foregroundColor(hasProxyKey ? .green : .secondary)
-                                Spacer()
-                                Image(systemName: "chevron.right")
-                                    .font(.system(size: 9, weight: .bold))
-                                    .foregroundColor(.secondary)
+                // 端口
+                settingsSection {
+                    settingsRow(
+                        icon: "network",
+                        title: loc("settings.port"),
+                        subtitle: port.isEmpty ? loc("settings.notSet") : port
+                    ) {
+                        HStack(spacing: 8) {
+                            TextField(loc("settings.portPlaceholder"), text: $port)
+                                .textFieldStyle(.roundedBorder)
+                                .frame(width: 100)
+                                .onSubmit { Task { await savePort() } }
+                            Button(loc("action.save")) {
+                                Task { await savePort() }
                             }
-                            .contentShape(Rectangle())
+                            .buttonStyle(.borderedProminent)
+                            .controlSize(.small)
                         }
-                        .buttonStyle(.borderless)
                     }
+                }
 
-                    // 语言
-                    settingsRow(icon: "globe", label: "action.language") {
+                Divider().padding(.horizontal, 24)
+
+                // 代理密钥
+                settingsSection {
+                    settingsRow(
+                        icon: "key",
+                        title: loc("settings.proxyKey"),
+                        subtitle: hasProxyKey ? loc("settings.set") : loc("settings.notSet")
+                    ) {
+                        HStack(spacing: 8) {
+                            Button(loc("settings.set")) {
+                                showProxyKeySheet = true
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+
+                            if hasProxyKey {
+                                Button(loc("settings.remove"), role: .destructive) {
+                                    Task { await removeProxyKey() }
+                                }
+                                .buttonStyle(.bordered)
+                                .controlSize(.small)
+                            }
+                        }
+                    }
+                }
+
+                Divider().padding(.horizontal, 24)
+
+                // 语言
+                settingsSection {
+                    settingsRow(
+                        icon: "globe",
+                        title: loc("action.language"),
+                        subtitle: selectedLang == "zh" ? "中文" : "English"
+                    ) {
                         Picker("", selection: $selectedLang) {
                             Text("中文").tag("zh")
                             Text("English").tag("en")
                         }
                         .pickerStyle(.segmented)
                         .labelsHidden()
+                        .frame(width: 160)
                         .onChange(of: selectedLang) { _, newLang in
                             switchLang(newLang)
                             NotificationCenter.default.post(name: .configDidChange, object: nil)
                         }
                     }
+                }
 
-                    // 配置重载
-                    settingsRow(icon: "arrow.clockwise", label: "action.reloadConfig") {
-                        Button(action: { Task { await reloadConfig() } }) {
-                            HStack {
-                                if isReloading {
-                                    ProgressView()
-                                        .scaleEffect(0.6)
-                                        .frame(width: 14, height: 14)
-                                }
-                                Text(loc("action.reloadConfig"))
-                                    .font(.caption)
-                                Spacer()
-                            }
-                            .contentShape(Rectangle())
+                Divider().padding(.horizontal, 24)
+
+                // 配置重载
+                settingsSection {
+                    HStack {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.title3)
+                            .foregroundColor(.accentColor)
+                            .frame(width: 28)
+                        Text(loc("action.reloadConfig"))
+                            .font(.body)
+                        Spacer()
+                        if isReloading {
+                            ProgressView()
+                                .scaleEffect(0.7)
+                                .frame(width: 20, height: 20)
                         }
-                        .buttonStyle(.borderless)
+                        Button(loc("action.reloadConfig")) {
+                            Task { await reloadConfig() }
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.small)
                         .disabled(isReloading)
                     }
+                    .padding(.horizontal, 24)
+                    .padding(.vertical, 14)
                 }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-            } label: {
-                Label(loc("settings.title"), systemImage: "gearshape")
-                    .font(.subheadline)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
+
+                Spacer(minLength: 40)
             }
-        }
-        .padding(.bottom, 6)
-        .sheet(isPresented: $showPortSheet) {
-            portSheet
         }
         .sheet(isPresented: $showProxyKeySheet) {
             proxyKeySheet
@@ -109,29 +150,40 @@ struct SettingsView: View {
         }
     }
 
-    // MARK: - Labels
+    // MARK: - Layout Helpers
 
-    private var portLabel: String {
-        if let p = originalPort {
-            return "\(p)"
-        }
-        return loc("settings.notSet")
-    }
-
-    // MARK: - Settings Row
-
-    private func settingsRow<Content: View>(icon: String, label: String, @ViewBuilder content: () -> Content) -> some View {
-        HStack(spacing: 6) {
-            Image(systemName: icon)
-                .font(.system(size: 10))
-                .foregroundColor(.secondary)
-                .frame(width: 14)
-            Text(loc(label))
-                .font(.caption)
-                .foregroundColor(.secondary)
-            Spacer()
+    private func settingsSection<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
             content()
         }
+    }
+
+    private func settingsRow<Controls: View>(
+        icon: String,
+        title: String,
+        subtitle: String,
+        @ViewBuilder controls: () -> Controls
+    ) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon)
+                .font(.title3)
+                .foregroundColor(.accentColor)
+                .frame(width: 28)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.body)
+                Text(subtitle)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+
+            Spacer()
+
+            controls()
+        }
+        .padding(.horizontal, 24)
+        .padding(.vertical, 14)
     }
 
     // MARK: - Load
@@ -148,54 +200,7 @@ struct SettingsView: View {
         } catch {}
     }
 
-    // MARK: - Port Sheet
-
-    private func openPortSheet() {
-        showPortSheet = true
-        showToast(nil)
-    }
-
-    private var portSheet: some View {
-        VStack(spacing: 0) {
-            HStack {
-                Text(loc("action.port"))
-                    .font(.headline)
-                Spacer()
-            }
-            .padding()
-
-            Divider()
-
-            VStack(spacing: 16) {
-                TextField(loc("settings.portPlaceholder"), text: $port)
-                    .textFieldStyle(.roundedBorder)
-                    .frame(width: 200)
-            }
-            .padding(20)
-
-            if let toast = toastMessage {
-                Text(toast)
-                    .font(.caption)
-                    .foregroundColor(toastType == "success" ? .green : .red)
-                    .padding(.horizontal)
-            }
-
-            Divider()
-
-            HStack {
-                Spacer()
-                Button(loc("action.cancel")) { showPortSheet = false }
-                    .keyboardShortcut(.cancelAction)
-                Button(loc("action.save")) {
-                    Task { await savePort() }
-                }
-                .keyboardShortcut(.defaultAction)
-                .disabled(port.trimmingCharacters(in: .whitespaces).isEmpty)
-            }
-            .padding()
-        }
-        .frame(width: 320, height: 180)
-    }
+    // MARK: - Port
 
     private func savePort() async {
         guard let portNum = Int(port), portNum >= 1, portNum <= 65535 else {
@@ -213,19 +218,12 @@ struct SettingsView: View {
         }
     }
 
-    // MARK: - Proxy Key Sheet
-
-    private func openProxyKeySheet() {
-        proxyKeyInput = ""
-        showToast(nil)
-        showProxyKeySheet = true
-    }
+    // MARK: - Proxy Key
 
     private var proxyKeySheet: some View {
         VStack(spacing: 0) {
             HStack {
-                Text(loc("settings.proxyKey"))
-                    .font(.headline)
+                Text(loc("settings.proxyKey")).font(.headline)
                 Spacer()
             }
             .padding()
@@ -249,11 +247,6 @@ struct SettingsView: View {
             Divider()
 
             HStack {
-                if hasProxyKey {
-                    Button(loc("settings.remove"), role: .destructive) {
-                        Task { await removeProxyKey() }
-                    }
-                }
                 Spacer()
                 Button(loc("action.cancel")) { showProxyKeySheet = false }
                     .keyboardShortcut(.cancelAction)
@@ -306,7 +299,7 @@ struct SettingsView: View {
         isReloading = false
     }
 
-    // MARK: - Toast (inline)
+    // MARK: - Toast
 
     private func showToast(_ msg: String?, type: String = "info") {
         toastMessage = msg

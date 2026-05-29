@@ -39,9 +39,6 @@ struct ConsoleRootView: View {
                     .padding(.horizontal)
             }
         }
-        .safeAreaInset(edge: .bottom) {
-            SettingsView()
-        }
     }
 
     // MARK: - Tab Content
@@ -61,6 +58,8 @@ struct ConsoleRootView: View {
             CaptureView()
         case .test:
             TestPanelView()
+        case .settings:
+            SettingsView()
         }
     }
 }
@@ -74,6 +73,7 @@ enum ConsoleTab: String, CaseIterable {
     case logs
     case capture
     case test
+    case settings
 
     var title: String {
         switch self {
@@ -83,6 +83,7 @@ enum ConsoleTab: String, CaseIterable {
         case .logs: return loc("nav.logs")
         case .capture: return loc("nav.capture")
         case .test: return loc("test.title")
+        case .settings: return loc("settings.title")
         }
     }
 
@@ -94,6 +95,7 @@ enum ConsoleTab: String, CaseIterable {
         case .logs: return "doc.text.magnifyingglass"
         case .capture: return "antenna.radiowaves.left.and.right"
         case .test: return "flask"
+        case .settings: return "gearshape"
         }
     }
 }
