@@ -12,6 +12,7 @@ class ConsoleWindowController: NSWindowController {
             defer: false
         )
         window.title = loc("console.title")
+        window.minSize = NSSize(width: 600, height: 400)
         window.center()
 
         // 用 NSHostingView 嵌入 SwiftUI 根视图

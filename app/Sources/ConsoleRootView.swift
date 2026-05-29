@@ -13,7 +13,7 @@ struct ConsoleRootView: View {
             tabContent
                 .frame(minWidth: 400)
         }
-        .navigationSplitViewStyle(.balanced)
+        .navigationSplitViewStyle(.prominentDetail)
         .environment(testCoordinator)
         .onChange(of: testCoordinator.shouldSwitchToTestTab) { _, newValue in
             if newValue { selectedTab = .test }
