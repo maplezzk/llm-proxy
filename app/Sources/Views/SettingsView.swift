@@ -274,6 +274,7 @@ struct SettingsView: View {
             hasProxyKey = true
             showToast(loc("settings.proxyKeySaved"), type: "success")
             proxyKeyInput = ""
+            NotificationCenter.default.post(name: .configDidChange, object: nil)
         } catch {
             showToast(error.localizedDescription, type: "error")
         }
@@ -285,6 +286,7 @@ struct SettingsView: View {
             hasProxyKey = false
             showToast(loc("settings.proxyKeyRemoved"), type: "success")
             proxyKeyInput = ""
+            NotificationCenter.default.post(name: .configDidChange, object: nil)
         } catch {
             showToast(error.localizedDescription, type: "error")
         }
