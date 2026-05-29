@@ -23,22 +23,22 @@ struct ConsoleRootView: View {
     // MARK: - Sidebar
 
     private var sidebar: some View {
-        List(ConsoleTab.allCases, id: \.self, selection: $selectedTab) { tab in
-            Label(tab.title, systemImage: tab.iconName)
-                .tag(tab)
-        }
-        .listStyle(.sidebar)
-        .safeAreaInset(edge: .top) {
-            VStack(spacing: 0) {
-                Text(loc("console.title"))
-                    .font(.headline)
-                    .padding(.horizontal)
-                    .padding(.top, 20)
-                    .padding(.bottom, 10)
-                Divider()
-                    .padding(.horizontal)
+        List(selection: $selectedTab) {
+            // 标题——在 List 内部，不会越界遮盖 detail
+            Text(loc("console.title"))
+                .font(.headline)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 10)
+            
+            Divider()
+                .padding(.horizontal, 8)
+            
+            ForEach(ConsoleTab.allCases, id: \.self) { tab in
+                Label(tab.title, systemImage: tab.iconName)
+                    .tag(tab)
             }
         }
+        .listStyle(.sidebar)
     }
 
     // MARK: - Tab Content
