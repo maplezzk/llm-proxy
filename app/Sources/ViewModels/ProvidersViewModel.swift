@@ -242,7 +242,7 @@ final class ProvidersViewModel {
         pullModelsResult = nil
 
         do {
-            pullModelsResult = try await api.pullModels(providerName: providerName)
+            pullModelsResult = try await api.pullModels(providerName: providerName, type: formData.type, apiKey: formData.apiKey, apiBase: formData.apiBase)
         } catch {
             pullModelsError = error.localizedDescription
         }

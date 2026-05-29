@@ -238,11 +238,16 @@ class APIClient {
         }
     }
 
-    func pullModels(providerName: String) async throws -> PullModelsData {
+    func pullModels(providerName: String, type: String, apiKey: String = "", apiBase: String = "") async throws -> PullModelsData {
         let url = URL(string: "\(baseURL)/admin/providers/\(providerName)/pull-models")!
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
-        let (data, resp) = try await URLSession.shared.data(for: req)
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        var body: [String: String] = ["type": type]
+        if !apiKey.isEmpty { body["api_key"] = apiKey }
+        if !apiBase.isEmpty { body["api_base"] = apiBase }
+        req.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let (data, resp) = try await URLSession.shared.data(from: req)
         guard let http = resp as? HTTPURLResponse, http.statusCode == 200 else {
             throw URLError(.badServerResponse)
         }
