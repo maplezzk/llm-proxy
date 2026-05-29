@@ -267,7 +267,7 @@ class APIClient {
         if !apiKey.isEmpty { body["api_key"] = apiKey }
         if !apiBase.isEmpty { body["api_base"] = apiBase }
         req.httpBody = try JSONSerialization.data(withJSONObject: body)
-        let (data, resp) = try await URLSession.shared.data(from: req)
+        let (data, resp) = try await URLSession.shared.data(for: req)
         guard let http = resp as? HTTPURLResponse, http.statusCode == 200 else {
             throw URLError(.badServerResponse)
         }
