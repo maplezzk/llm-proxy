@@ -159,6 +159,7 @@ struct LogsView: View {
                     logRow(entry, index: index)
                         .id(entry.id)
                         .listRowSeparator(.hidden)
+                        .listRowInsets(EdgeInsets())
                 }
 
                 // 底部哨兵元素，用于自动滚动
@@ -229,36 +230,56 @@ struct LogsView: View {
     // MARK: - Log Row
 
     private func logRow(_ entry: LogEntry, index: Int) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
+        let hasDetails = entry.details != nil && !(entry.details?.isEmpty ?? true)
+        let isExpanded = expandedLogIds.contains(entry.id)
+
+        return VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 8) {
-                // 时间戳 — 仅显示时间
                 Text(LogsViewModel.formatTimeOnly(entry.timestamp))
                     .font(.system(.caption, design: .monospaced))
                     .foregroundColor(.secondary)
+                    .frame(width: 64, alignment: .leading)
 
-                // 级别标签 — pill shaped
                 levelBadge(entry.level)
 
-                // 类型标签
                 typeBadge(entry.type)
 
-                // 消息
                 Text(entry.message)
-                    .font(.system(.body))
-                    .lineLimit(3)
+                    .font(.system(.subheadline))
+                    .lineLimit(isExpanded ? nil : 2)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                if hasDetails {
+                    Button(action: { toggleExpanded(entry.id) }) {
+                        Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundColor(.secondary)
+                            .frame(width: 16, height: 16)
+                    }
+                    .buttonStyle(.borderless)
+                }
             }
 
-            // 详情展开
-            if let details = entry.details, !details.isEmpty {
-                detailsDisclosure(entry.id, details: details)
+            // 展开的详情
+            if isExpanded, let details = entry.details {
+                Text(LogsViewModel.formatDetails(details))
+                    .font(.system(.caption, design: .monospaced))
+                    .padding(8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color.gray.opacity(0.06))
+                    .clipShape(RoundedRectangle(cornerRadius: 4))
+                    .textSelection(.enabled)
+                    .padding(.top, 4)
+                    .padding(.leading, 72)  // 对齐时间戳+标签之后
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 6)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 5)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             index.isMultiple(of: 2)
                 ? Color(nsColor: .controlBackgroundColor)
-                : Color.primary.opacity(0.03)
+                : Color.clear
         )
     }
 
@@ -266,8 +287,8 @@ struct LogsView: View {
         Text(level.uppercased())
             .font(.system(.caption2, design: .monospaced))
             .fontWeight(.semibold)
-            .padding(.horizontal, 7)
-            .padding(.vertical, 2)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 3)
             .background(levelColor(level).opacity(0.15))
             .foregroundColor(levelColor(level))
             .clipShape(Capsule())
@@ -276,36 +297,11 @@ struct LogsView: View {
     private func typeBadge(_ type: String) -> some View {
         Text(type)
             .font(.system(.caption2))
-            .padding(.horizontal, 7)
-            .padding(.vertical, 2)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 3)
             .background(Color.secondary.opacity(0.12))
             .foregroundColor(.secondary)
             .clipShape(Capsule())
-    }
-
-    private func detailsDisclosure(_ id: Int, details: [String: AnyCodable]) -> some View {
-        let isExpanded = expandedLogIds.contains(id)
-        return VStack(alignment: .leading, spacing: 4) {
-            Button(action: { toggleExpanded(id) }) {
-                HStack(spacing: 4) {
-                    Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
-                        .font(.system(.caption))
-                    Text(isExpanded ? loc("logs.hideDetails") : loc("logs.showDetails"))
-                        .font(.system(.caption))
-                }
-                .foregroundColor(.blue)
-            }
-            .buttonStyle(.borderless)
-
-            if isExpanded {
-                Text(LogsViewModel.formatDetails(details))
-                    .font(.system(.caption, design: .monospaced))
-                    .padding(8)
-                    .background(Color.gray.opacity(0.08))
-                    .clipShape(RoundedRectangle(cornerRadius: 4))
-                    .textSelection(.enabled)
-            }
-        }
     }
 
     private func toggleExpanded(_ id: Int) {
