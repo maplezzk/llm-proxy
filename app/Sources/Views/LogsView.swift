@@ -26,109 +26,95 @@ struct LogsView: View {
     // MARK: - Filter Bar
 
     private var filterBar: some View {
-        VStack(spacing: 6) {
-            // 第一行：级别过滤 + 类型过滤 + 搜索
-            HStack(spacing: 12) {
-                Picker("", selection: Binding(
-                    get: { viewModel.levelFilter ?? "all" },
-                    set: { newVal in
-                        Task { await viewModel.setLevelFilter(newVal == "all" ? nil : newVal) }
-                    }
-                )) {
-                    Text(loc("logs.all")).tag("all")
-                    Text(loc("logs.level.debug")).tag("debug")
-                    Text(loc("logs.level.info")).tag("info")
-                    Text(loc("logs.level.warn")).tag("warn")
-                    Text(loc("logs.level.error")).tag("error")
+        HStack(spacing: 10) {
+            Picker("", selection: Binding(
+                get: { viewModel.levelFilter ?? "all" },
+                set: { newVal in
+                    Task { await viewModel.setLevelFilter(newVal == "all" ? nil : newVal) }
                 }
-                .pickerStyle(.menu)
-                .labelsHidden()
-
-                Picker("", selection: Binding(
-                    get: { viewModel.typeFilter ?? "all" },
-                    set: { newVal in
-                        Task { await viewModel.setTypeFilter(newVal == "all" ? nil : newVal) }
-                    }
-                )) {
-                    Text(loc("logs.all")).tag("all")
-                    Text(loc("logs.type.request")).tag("request")
-                    Text(loc("logs.type.system")).tag("system")
-                }
-                .pickerStyle(.menu)
-                .labelsHidden()
-
-                Spacer()
-
-                HStack(spacing: 6) {
-                    Image(systemName: "magnifyingglass")
-                        .foregroundColor(.secondary)
-                        .font(.caption)
-                    TextField(loc("logs.searchPlaceholder"), text: Binding(
-                        get: { viewModel.search },
-                        set: { viewModel.setSearch($0) }
-                    ))
-                    .textFieldStyle(.plain)
-                    .font(.subheadline)
-                    if !viewModel.search.isEmpty {
-                        Button(action: { viewModel.setSearch("") }) {
-                            Image(systemName: "xmark.circle.fill")
-                                .foregroundColor(.secondary)
-                                .font(.caption)
-                        }
-                        .buttonStyle(.borderless)
-                    }
-                }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background(
-                    RoundedRectangle(cornerRadius: 6)
-                        .fill(Color(nsColor: .textBackgroundColor))
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 6)
-                        .strokeBorder(Color.secondary.opacity(0.25), lineWidth: 1)
-                )
-                .frame(maxWidth: 180)
+            )) {
+                Text(loc("logs.all")).tag("all")
+                Text(loc("logs.level.debug")).tag("debug")
+                Text(loc("logs.level.info")).tag("info")
+                Text(loc("logs.level.warn")).tag("warn")
+                Text(loc("logs.level.error")).tag("error")
             }
+            .pickerStyle(.menu)
+            .labelsHidden()
 
-            // 第二行：自动滚动 + 日志级别 + 总数
-            HStack(spacing: 12) {
-                Button(action: { viewModel.autoScroll.toggle() }) {
-                    Image(systemName: viewModel.autoScroll ? "arrow.down.to.line.circle.fill" : "arrow.down.to.line.circle")
-                        .font(.system(size: 14))
-                        .foregroundColor(viewModel.autoScroll ? .accentColor : .secondary)
+            Picker("", selection: Binding(
+                get: { viewModel.typeFilter ?? "all" },
+                set: { newVal in
+                    Task { await viewModel.setTypeFilter(newVal == "all" ? nil : newVal) }
                 }
-                .buttonStyle(.borderless)
-                .help(viewModel.autoScroll ? loc("logs.autoScroll.on") : loc("logs.autoScroll.off"))
+            )) {
+                Text(loc("logs.all")).tag("all")
+                Text(loc("logs.type.request")).tag("request")
+                Text(loc("logs.type.system")).tag("system")
+            }
+            .pickerStyle(.menu)
+            .labelsHidden()
 
-                Divider()
-                    .frame(height: 14)
+            Spacer()
 
-                Text(loc("action.logLevel", viewModel.logLevel.uppercased()))
+            Picker("", selection: Binding(
+                get: { viewModel.logLevel },
+                set: { newLevel in
+                    Task { await viewModel.setLogLevel(newLevel) }
+                }
+            )) {
+                Text("debug").tag("debug")
+                Text("info").tag("info")
+                Text("warn").tag("warn")
+                Text("error").tag("error")
+            }
+            .pickerStyle(.menu)
+            .labelsHidden()
+
+            Button(action: { viewModel.autoScroll.toggle() }) {
+                Image(systemName: viewModel.autoScroll ? "arrow.down.to.line.circle.fill" : "arrow.down.to.line.circle")
+                    .font(.system(size: 14))
+                    .foregroundColor(viewModel.autoScroll ? .accentColor : .secondary)
+            }
+            .buttonStyle(.borderless)
+            .help(viewModel.autoScroll ? loc("logs.autoScroll.on") : loc("logs.autoScroll.off"))
+
+            HStack(spacing: 6) {
+                Image(systemName: "magnifyingglass")
+                    .foregroundColor(.secondary)
+                    .font(.caption)
+                TextField(loc("logs.searchPlaceholder"), text: Binding(
+                    get: { viewModel.search },
+                    set: { viewModel.setSearch($0) }
+                ))
+                .textFieldStyle(.plain)
+                .font(.subheadline)
+                if !viewModel.search.isEmpty {
+                    Button(action: { viewModel.setSearch("") }) {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundColor(.secondary)
+                            .font(.caption)
+                    }
+                    .buttonStyle(.borderless)
+                }
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(Color(nsColor: .textBackgroundColor))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 6)
+                    .strokeBorder(Color.secondary.opacity(0.25), lineWidth: 1)
+            )
+            .frame(maxWidth: 160)
+
+            if !viewModel.allLogs.isEmpty {
+                Text(loc("logs.totalCount", viewModel.totalCount))
                     .font(.caption)
                     .foregroundColor(.secondary)
-                Picker("", selection: Binding(
-                    get: { viewModel.logLevel },
-                    set: { newLevel in
-                        Task { await viewModel.setLogLevel(newLevel) }
-                    }
-                )) {
-                    Text("debug").tag("debug")
-                    Text("info").tag("info")
-                    Text("warn").tag("warn")
-                    Text("error").tag("error")
-                }
-                .pickerStyle(.menu)
-                .labelsHidden()
-
-                Spacer()
-
-                if !viewModel.allLogs.isEmpty {
-                    Text(loc("logs.totalCount", viewModel.totalCount))
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                        .monospacedDigit()
-                }
+                    .monospacedDigit()
             }
         }
         .padding(.horizontal, 16)
@@ -191,24 +177,6 @@ struct LogsView: View {
             }
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
-            .overlay(alignment: .bottomTrailing) {
-                // 自动滚动关闭时显示"回到底部"按钮
-                if !viewModel.autoScroll && viewModel.currentPage == 1 && !viewModel.pagedLogs.isEmpty {
-                    Button(action: {
-                        viewModel.autoScroll = true
-                        withAnimation {
-                            proxy.scrollTo(logListBottom, anchor: .bottom)
-                        }
-                    }) {
-                        Image(systemName: "arrow.down.circle.fill")
-                            .font(.system(size: 28))
-                            .foregroundColor(.blue)
-                            .background(Circle().fill(Color.white).shadow(radius: 2))
-                    }
-                    .buttonStyle(.borderless)
-                    .padding(.trailing, 16)
-                    .padding(.bottom, 12)
-                }
             }
             .onChange(of: viewModel.pagedLogs.count) { _, _ in
                 scrollToBottomIfNeeded(proxy: proxy)
@@ -358,6 +326,10 @@ struct LogsView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
+        .background(Color(nsColor: .controlBackgroundColor))
+        .overlay(alignment: .top) {
+            Divider()
+        }
     }
 
     // MARK: - Empty / Loading / Error States
