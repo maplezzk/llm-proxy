@@ -38,6 +38,9 @@ struct ConsoleRootView: View {
                     .padding(.horizontal)
             }
         }
+        .safeAreaInset(edge: .bottom) {
+            SettingsView()
+        }
     }
 
     // MARK: - Tab Content

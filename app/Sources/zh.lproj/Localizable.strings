@@ -227,3 +227,17 @@
 "common.copied" = "已复制";
 "common.refresh" = "刷新";
 "common.close" = "关闭";
+
+// Settings
+"settings.title" = "设置";
+"settings.port" = "端口";
+"settings.proxyKey" = "代理密钥";
+"settings.set" = "已设置";
+"settings.notSet" = "未设置";
+"settings.remove" = "移除";
+"settings.proxyKeyPlaceholder" = "输入代理密钥...";
+"settings.portPlaceholder" = "端口号";
+"settings.portSaved" = "端口已保存（重启后生效）";
+"settings.portInvalid" = "端口号需在 1-65535 之间";
+"settings.proxyKeySaved" = "代理密钥已保存";
+"settings.proxyKeyRemoved" = "代理密钥已移除";

@@ -108,6 +108,26 @@ class APIClient {
         }
     }
 
+    func fetchProxyKey() async throws -> Bool {
+        let url = URL(string: "\(baseURL)/admin/proxy-key")!
+        let (data, _) = try await URLSession.shared.data(from: url)
+        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let d = json["data"] as? [String: Any] else { return false }
+        return d["set"] as? Bool ?? false
+    }
+
+    func setProxyKey(_ key: String?) async throws {
+        let url = URL(string: "\(baseURL)/admin/proxy-key")!
+        var req = URLRequest(url: url)
+        req.httpMethod = "PUT"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try JSONSerialization.data(withJSONObject: ["key": key ?? ""])
+        let (_, resp) = try await URLSession.shared.data(for: req)
+        guard let http = resp as? HTTPURLResponse, http.statusCode == 200 else {
+            throw URLError(.badServerResponse)
+        }
+    }
+
     func fetchPort() async throws -> Int? {
         let url = URL(string: "\(baseURL)/admin/port")!
         let (data, _) = try await URLSession.shared.data(from: url)
