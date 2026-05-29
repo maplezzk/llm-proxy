@@ -177,7 +177,6 @@ struct LogsView: View {
             }
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
-            }
             .onChange(of: viewModel.pagedLogs.count) { _, _ in
                 scrollToBottomIfNeeded(proxy: proxy)
             }
