@@ -13,7 +13,6 @@ struct LogsView: View {
             Divider()
             paginationBar
         }
-        .frame(minWidth: 500)
         .task {
             await viewModel.load()
             await viewModel.fetchLogLevel()
