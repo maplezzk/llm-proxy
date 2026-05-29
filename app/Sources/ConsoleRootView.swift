@@ -11,9 +11,7 @@ struct ConsoleRootView: View {
                 .navigationSplitViewColumnWidth(min: 140, ideal: 180, max: 220)
         } detail: {
             tabContent
-                .frame(minWidth: 400)
         }
-        .navigationSplitViewStyle(.prominentDetail)
         .environment(testCoordinator)
         .onChange(of: testCoordinator.shouldSwitchToTestTab) { _, newValue in
             if newValue { selectedTab = .test }
