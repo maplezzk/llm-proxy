@@ -22,9 +22,13 @@ struct ConsoleRootView: View {
 
     private var sidebar: some View {
         List(selection: $selectedTab) {
-            ForEach(ConsoleTab.allCases, id: \.self) { tab in
-                Label(tab.title, systemImage: tab.iconName)
-                    .tag(tab)
+            ForEach(ConsoleTab.Section.allCases, id: \.self) { section in
+                Section(section.title) {
+                    ForEach(section.tabs, id: \.self) { tab in
+                        Label(tab.title, systemImage: tab.iconName)
+                            .tag(tab)
+                    }
+                }
             }
         }
         .listStyle(.sidebar)
@@ -85,6 +89,29 @@ enum ConsoleTab: String, CaseIterable {
         case .capture: return "antenna.radiowaves.left.and.right"
         case .test: return "flask"
         case .settings: return "gearshape"
+        }
+    }
+
+    /// 侧边栏分组
+    enum Section: String, CaseIterable {
+        case overview
+        case proxy
+        case tools
+
+        var title: String {
+            switch self {
+            case .overview: return loc("nav.section.overview")
+            case .proxy: return loc("nav.section.proxy")
+            case .tools: return loc("nav.section.tools")
+            }
+        }
+
+        var tabs: [ConsoleTab] {
+            switch self {
+            case .overview: return [.dashboard, .logs]
+            case .proxy: return [.providers, .adapters]
+            case .tools: return [.capture, .test, .settings]
+            }
         }
     }
 }

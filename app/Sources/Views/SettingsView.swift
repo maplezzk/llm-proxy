@@ -44,6 +44,7 @@ struct SettingsView: View {
                 settingsSection {
                     settingsRow(
                         icon: "network",
+                        iconColor: .blue,
                         title: loc("settings.port"),
                         subtitle: port.isEmpty ? loc("settings.notSet") : port
                     ) {
@@ -67,6 +68,7 @@ struct SettingsView: View {
                 settingsSection {
                     settingsRow(
                         icon: "key",
+                        iconColor: .orange,
                         title: loc("settings.proxyKey"),
                         subtitle: hasProxyKey ? loc("settings.set") : loc("settings.notSet")
                     ) {
@@ -94,6 +96,7 @@ struct SettingsView: View {
                 settingsSection {
                     settingsRow(
                         icon: "globe",
+                        iconColor: .purple,
                         title: loc("action.language"),
                         subtitle: selectedLang == "zh" ? "中文" : "English"
                     ) {
@@ -115,11 +118,12 @@ struct SettingsView: View {
 
                 // 配置重载
                 settingsSection {
-                    HStack {
+                    HStack(spacing: 12) {
                         Image(systemName: "arrow.clockwise")
-                            .font(.title3)
-                            .foregroundColor(.accentColor)
-                            .frame(width: 28)
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundColor(.white)
+                            .frame(width: 30, height: 30)
+                            .background(Color.green, in: RoundedRectangle(cornerRadius: 7))
                         Text(loc("action.reloadConfig"))
                             .font(.body)
                         Spacer()
@@ -160,15 +164,17 @@ struct SettingsView: View {
 
     private func settingsRow<Controls: View>(
         icon: String,
+        iconColor: Color = .accentColor,
         title: String,
         subtitle: String,
         @ViewBuilder controls: () -> Controls
     ) -> some View {
         HStack(spacing: 12) {
             Image(systemName: icon)
-                .font(.title3)
-                .foregroundColor(.accentColor)
-                .frame(width: 28)
+                .font(.system(size: 14, weight: .medium))
+                .foregroundColor(.white)
+                .frame(width: 30, height: 30)
+                .background(iconColor, in: RoundedRectangle(cornerRadius: 7))
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)

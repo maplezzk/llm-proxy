@@ -58,6 +58,9 @@
 "nav.adapters" = "适配器";
 "nav.logs" = "日志";
 "nav.capture" = "抓包";
+"nav.section.overview" = "概览";
+"nav.section.proxy" = "代理";
+"nav.section.tools" = "工具";
 
 // Test Panel
 "test.title" = "测试";

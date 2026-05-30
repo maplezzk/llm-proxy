@@ -58,6 +58,9 @@
 "nav.adapters" = "Adapters";
 "nav.logs" = "Logs";
 "nav.capture" = "Capture";
+"nav.section.overview" = "Overview";
+"nav.section.proxy" = "Proxy";
+"nav.section.tools" = "Tools";
 
 // Test Panel
 "test.title" = "Test";
