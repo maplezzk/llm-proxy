@@ -137,11 +137,25 @@ struct AdaptersView: View {
                         .foregroundColor(.secondary)
                 }
 
-                Text(adapterURL(adapter))
-                    .font(.system(.caption, design: .monospaced))
-                    .foregroundColor(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
+                HStack(spacing: 4) {
+                    Text(adapterURL(adapter))
+                        .font(.system(.caption, design: .monospaced))
+                        .foregroundColor(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .textSelection(.enabled)
+
+                    Button {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(adapterURL(adapter), forType: .string)
+                    } label: {
+                        Image(systemName: "doc.on.doc")
+                            .font(.system(size: 10))
+                            .foregroundColor(.secondary)
+                    }
+                    .buttonStyle(.borderless)
+                    .help(loc("common.copy"))
+                }
             }
 
             Spacer()
@@ -200,14 +214,7 @@ struct AdaptersView: View {
     // MARK: - Helpers
 
     private func adapterURL(_ adapter: Adapter) -> String {
-        let endpoint: String = {
-            switch adapter.type {
-            case "anthropic": return "messages"
-            case "openai-responses": return "responses"
-            default: return "chat/completions"
-            }
-        }()
-        return "http://127.0.0.1:\(port)/\(adapter.name)/v1/\(endpoint)"
+        return "http://127.0.0.1:\(port)/\(adapter.name)/v1/"
     }
 
     private func typeIcon(for type: String) -> String {
