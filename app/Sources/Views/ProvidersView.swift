@@ -82,10 +82,16 @@ struct ProvidersView: View {
 
     private func providerCard(_ provider: ProviderDetail) -> some View {
         HStack(spacing: 14) {
-            // 左侧：状态指示 + 信息
+            // 左侧：类型图标
+            Image(systemName: typeIcon(for: provider.type))
+                .font(.title3)
+                .foregroundColor(.white)
+                .frame(width: 32, height: 32)
+                .background(typeBadgeColor(provider.type), in: RoundedRectangle(cornerRadius: 7))
+
+            // 中间：信息
             VStack(alignment: .leading, spacing: 5) {
                 HStack(spacing: 8) {
-                    providerStatusIcon(provider)
                     Text(provider.name)
                         .font(.body)
                         .fontWeight(.medium)
@@ -170,6 +176,15 @@ struct ProvidersView: View {
         case "anthropic": return .orange
         case "openai-responses": return .purple
         default: return .blue
+        }
+    }
+
+    private func typeIcon(for type: String) -> String {
+        switch type {
+        case "anthropic": return "a.circle"
+        case "openai": return "o.circle"
+        case "openai-responses": return "r.circle"
+        default: return "questionmark.circle"
         }
     }
 
