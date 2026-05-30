@@ -105,17 +105,18 @@ final class CaptureViewModel {
         let client = CaptureSSEClient(baseURL: apiClient.baseURL)
         captureClient = client
 
-        client.onEntry = { [weak self] entry in
+        client.onEntries = { [weak self] batch in
             guard let self else { return }
-            // 更新已有条目（按 pairId）或追加新条目
-            if let idx = self.entries.firstIndex(where: { $0.pairId == entry.pairId }) {
-                self.entries[idx] = entry
-            } else {
-                self.entries.append(entry)
-                // 限制最大 200 条
-                if self.entries.count > 200 {
-                    self.entries = Array(self.entries.suffix(200))
+            for entry in batch {
+                if let idx = self.entries.firstIndex(where: { $0.pairId == entry.pairId }) {
+                    self.entries[idx] = entry
+                } else {
+                    self.entries.append(entry)
                 }
+            }
+            // 限制最大 200 条
+            if self.entries.count > 200 {
+                self.entries = Array(self.entries.suffix(200))
             }
         }
 
