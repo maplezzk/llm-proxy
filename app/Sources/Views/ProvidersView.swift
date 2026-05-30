@@ -103,31 +103,28 @@ struct ProvidersView: View {
             Spacer()
 
             // 右侧：操作按钮
-            HStack(spacing: 6) {
+            HStack(spacing: 12) {
                 Button(action: { testCoordinator.requestProviderTest(provider: provider) }) {
-                    Image(systemName: "paperplane")
-                        .font(.system(size: 13))
-                        .foregroundColor(.secondary)
+                    Text(loc("providers.testConnectivity"))
+                        .font(.caption)
+                        .foregroundColor(.accentColor)
                 }
                 .buttonStyle(.borderless)
                 .disabled(provider.models.isEmpty)
-                .help(loc("providers.testConnectivity"))
 
                 Button(action: { viewModel.openEditForm(provider) }) {
-                    Image(systemName: "pencil")
-                        .font(.system(size: 13))
+                    Text(loc("providers.edit"))
+                        .font(.caption)
                         .foregroundColor(.secondary)
                 }
                 .buttonStyle(.borderless)
-                .help(loc("providers.edit"))
 
                 Button(action: { viewModel.confirmDelete(provider.name) }) {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(.secondary)
+                    Text(loc("providers.delete.confirm"))
+                        .font(.caption)
+                        .foregroundColor(.red)
                 }
                 .buttonStyle(.borderless)
-                .help(loc("providers.delete.title"))
             }
         }
         .padding(.horizontal, 16)

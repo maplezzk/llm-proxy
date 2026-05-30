@@ -147,38 +147,35 @@ struct AdaptersView: View {
             Spacer()
 
             // 操作按钮
-            HStack(spacing: 6) {
+            HStack(spacing: 12) {
                 Button {
                     let firstModelId = adapter.models.first?.sourceModelId
                     testCoordinator.requestAdapterTest(adapter: adapter, firstModelId: firstModelId)
                 } label: {
-                    Image(systemName: "paperplane")
-                        .font(.system(size: 13))
-                        .foregroundColor(.secondary)
+                    Text(loc("adapter.test"))
+                        .font(.caption)
+                        .foregroundColor(.accentColor)
                 }
                 .buttonStyle(.borderless)
-                .help(loc("adapter.test"))
 
                 Button {
                     viewModel.openForm(adapter: adapter)
                 } label: {
-                    Image(systemName: "pencil")
-                        .font(.system(size: 13))
+                    Text(loc("adapter.edit"))
+                        .font(.caption)
                         .foregroundColor(.secondary)
                 }
                 .buttonStyle(.borderless)
-                .help(loc("adapter.edit"))
 
                 Button {
                     adapterToDelete = adapter.name
                     showDeleteAlert = true
                 } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(.secondary)
+                    Text(loc("adapter.delete"))
+                        .font(.caption)
+                        .foregroundColor(.red)
                 }
                 .buttonStyle(.borderless)
-                .help(loc("adapter.delete"))
             }
         }
         .padding(.horizontal, 16)
