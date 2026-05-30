@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.16.0](https://github.com/maplezzk/llm-proxy/compare/v0.15.1...v0.16.0) (2026-05-30)
+
+
+### Features
+
+* macOS 原生管理控制台 ([#122](https://github.com/maplezzk/llm-proxy/issues/122)) ([b7a4d72](https://github.com/maplezzk/llm-proxy/commit/b7a4d720cd6ed0ab1765a2b0912ac621a7fca61d))
+
+
+### Bug Fixes
+
+* 修复删除供应商/适配器确认弹窗不显示的问题 ([#123](https://github.com/maplezzk/llm-proxy/issues/123)) ([aace069](https://github.com/maplezzk/llm-proxy/commit/aace069a4b20de7ec2d4808d4859b28a2bd08108))
+
 ## [0.15.1](https://github.com/maplezzk/llm-proxy/compare/v0.15.0...v0.15.1) (2026-05-28)
 
 
