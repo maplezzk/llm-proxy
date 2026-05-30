@@ -17,9 +17,16 @@ class MenuBarController: NSObject {
     private var isDownloadingUpdate = false
     private var downloadProgress: Double = 0
     private var downloadCompletedURL: URL?
+    private var consoleWindowController: ConsoleWindowController?
 
     init(statusItem: NSStatusItem) {
         self.statusItem = statusItem
+        super.init()
+        NotificationCenter.default.addObserver(forName: .configDidChange, object: nil, queue: .main) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                await self?.refresh()
+            }
+        }
     }
 
     func buildMenu() {
@@ -132,6 +139,19 @@ class MenuBarController: NSObject {
             reloadItem.image = NSImage(systemSymbolName: "gearshape", accessibilityDescription: loc("action.reloadConfig"))
         }
         menu.addItem(reloadItem)
+
+        // 控制台入口
+        let consoleItem = NSMenuItem()
+        let consoleText = loc("console.openConsole")
+        let attrConsole = NSMutableAttributedString(string: consoleText)
+        attrConsole.addAttribute(.font, value: NSFont.systemFont(ofSize: 13, weight: .medium), range: NSRange(location: 0, length: attrConsole.length))
+        consoleItem.attributedTitle = attrConsole
+        consoleItem.target = self
+        consoleItem.action = #selector(openConsole)
+        if #available(macOS 11.0, *) {
+            consoleItem.image = NSImage(systemSymbolName: "sidebar.left", accessibilityDescription: loc("console.openConsole"))
+        }
+        menu.addItem(consoleItem)
 
         menu.addItem(.separator())
 
@@ -373,6 +393,12 @@ class MenuBarController: NSObject {
         Task { @MainActor in
             await refresh()
         }
+    }
+
+    @MainActor @objc func openConsole() {
+        let controller = ConsoleWindowController()
+        consoleWindowController = controller
+        controller.show()
     }
 
     @MainActor @objc func changeLogLevel(_ sender: NSMenuItem) {
