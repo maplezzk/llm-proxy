@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ProviderFormView: View {
     @Bindable var viewModel: ProvidersViewModel
+    @State private var selectedPullModelIds: Set<String> = []
 
     var body: some View {
         VStack(spacing: 0) {
@@ -110,40 +111,74 @@ struct ProviderFormView: View {
                 Spacer()
                 if viewModel.pullModelsResult != nil && !viewModel.pullModelsLoading {
                     Button(loc("providers.pullModels.importAll")) {
-                        viewModel.importPullModels()
+                        importSelectedModels()
                     }
                     .buttonStyle(.borderedProminent)
-                    .disabled(viewModel.pullModelsNewItems.isEmpty)
+                    .disabled(selectedPullModelIds.isEmpty)
                 }
             }
             .padding(12)
         }
         .frame(width: 460, height: 420)
+        .onAppear {
+            // 默认全选新模型
+            selectedPullModelIds = Set(viewModel.pullModelsNewItems.map { $0.id })
+        }
+        .onChange(of: viewModel.pullModelsResult?.models.count) { _, _ in
+            selectedPullModelIds = Set(viewModel.pullModelsNewItems.map { $0.id })
+        }
+    }
+
+    private func importSelectedModels() {
+        let existingIds = Set(viewModel.formData.models.map { $0.modelId })
+        var added = 0
+        for id in selectedPullModelIds {
+            if !existingIds.contains(id) {
+                viewModel.formData.models.append(ProviderModelFormData(modelId: id))
+                added += 1
+            }
+        }
+        viewModel.showPullModelsSheet = false
+        viewModel.pullModelsResult = nil
+        selectedPullModelIds = []
     }
 
     private func pullModelRow(_ item: PullModelItem) -> some View {
         let existingIds = viewModel.pullModelsResult?.existing ?? []
         let isExisting = existingIds.contains(item.id)
+        let isSelected = selectedPullModelIds.contains(item.id)
 
-        return HStack(spacing: 8) {
-            Image(systemName: isExisting ? "checkmark.circle.fill" : "circle")
-                .foregroundColor(isExisting ? .green : .secondary)
-                .font(.caption)
-
-            Text(item.id)
-                .font(.callout)
-                .strikethrough(isExisting, color: .secondary)
-                .foregroundColor(isExisting ? .secondary : .primary)
-
-            if let desc = item.description {
-                Text("— \(desc)")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                    .lineLimit(1)
+        return Button(action: {
+            if !isExisting {
+                if isSelected {
+                    selectedPullModelIds.remove(item.id)
+                } else {
+                    selectedPullModelIds.insert(item.id)
+                }
             }
+        }) {
+            HStack(spacing: 8) {
+                Image(systemName: isExisting ? "checkmark.circle.fill" : (isSelected ? "checkmark.circle.fill" : "circle"))
+                    .foregroundColor(isExisting ? .green : (isSelected ? .accentColor : .secondary))
+                    .font(.body)
 
-            Spacer()
+                Text(item.id)
+                    .font(.callout)
+                    .strikethrough(isExisting, color: .secondary)
+                    .foregroundColor(isExisting ? .secondary : .primary)
+
+                if let desc = item.description {
+                    Text("— \(desc)")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .lineLimit(1)
+                }
+
+                Spacer()
+            }
         }
+        .buttonStyle(.plain)
+        .disabled(isExisting)
         .padding(.vertical, 4)
     }
 
