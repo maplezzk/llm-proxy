@@ -5,7 +5,7 @@ struct DashboardView: View {
 
     var body: some View {
         ScrollView {
-            VStack(spacing: 20) {
+            VStack(spacing: 24) {
                 if viewModel.isLoading && viewModel.config == nil {
                     loadingView
                 } else {

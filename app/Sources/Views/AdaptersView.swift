@@ -9,35 +9,6 @@ struct AdaptersView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // 顶部操作栏
-            HStack {
-                Image(systemName: "magnifyingglass")
-                    .foregroundColor(.secondary)
-                TextField(loc("adapter.searchPlaceholder"), text: Binding(
-                    get: { viewModel.search },
-                    set: { viewModel.search = $0 }
-                ))
-                .textFieldStyle(.roundedBorder)
-                .frame(maxWidth: 240)
-
-                Spacer()
-
-                Button(action: { viewModel.openForm() }) {
-                    Label(loc("adapter.newAdapter"), systemImage: "plus")
-                }
-                .buttonStyle(.borderedProminent)
-
-                Button(action: { Task { await viewModel.load() } }) {
-                    Image(systemName: "arrow.clockwise")
-                }
-                .buttonStyle(.borderless)
-                .disabled(viewModel.isLoading)
-            }
-            .padding(.horizontal)
-            .padding(.vertical, 10)
-
-            Divider()
-
             // 内容区
             if viewModel.isLoading && viewModel.adapters.isEmpty {
                 Spacer()
@@ -74,6 +45,23 @@ struct AdaptersView: View {
                     }
                 }
                 .listStyle(.inset)
+            }
+        }
+        .searchable(text: Binding(
+            get: { viewModel.search },
+            set: { viewModel.search = $0 }
+        ), prompt: loc("adapter.searchPlaceholder"))
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button(action: { viewModel.openForm() }) {
+                    Label(loc("adapter.newAdapter"), systemImage: "plus")
+                }
+            }
+            ToolbarItem(placement: .automatic) {
+                Button(action: { Task { await viewModel.load() } }) {
+                    Image(systemName: "arrow.clockwise")
+                }
+                .disabled(viewModel.isLoading)
             }
         }
         .onAppear {

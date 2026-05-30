@@ -6,11 +6,6 @@ struct ProvidersView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // 搜索栏 + 新增
-            toolbar
-
-            Divider()
-
             // 内容区
             ZStack {
                 if viewModel.isLoading && viewModel.providers.isEmpty {
@@ -23,6 +18,14 @@ struct ProvidersView: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .searchable(text: $viewModel.searchText, prompt: loc("providers.searchPlaceholder"))
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button(action: { viewModel.openCreateForm() }) {
+                    Label(loc("providers.addProvider"), systemImage: "plus")
+                }
+            }
         }
         .task { await viewModel.load() }
         .sheet(isPresented: $viewModel.showForm) {
@@ -44,25 +47,6 @@ struct ProvidersView: View {
     }
 
     // MARK: - Toolbar
-
-    private var toolbar: some View {
-        HStack(spacing: 12) {
-            Image(systemName: "magnifyingglass")
-                .foregroundColor(.secondary)
-            TextField(loc("providers.searchPlaceholder"), text: $viewModel.searchText)
-                .textFieldStyle(.roundedBorder)
-                .frame(maxWidth: 280)
-
-            Spacer()
-
-            Button(action: { viewModel.openCreateForm() }) {
-                Label(loc("providers.addProvider"), systemImage: "plus")
-            }
-            .buttonStyle(.borderedProminent)
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
-    }
 
     // MARK: - Provider List
 

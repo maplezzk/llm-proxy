@@ -16,6 +16,9 @@ struct ConsoleRootView: View {
         .onChange(of: testCoordinator.shouldSwitchToTestTab) { _, newValue in
             if newValue { selectedTab = .test }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .openSettings)) { _ in
+            selectedTab = .settings
+        }
     }
 
     // MARK: - Sidebar

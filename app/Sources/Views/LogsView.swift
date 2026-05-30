@@ -119,7 +119,6 @@ struct LogsView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
-        .background(Color(nsColor: .controlBackgroundColor))
     }
 
     // MARK: - Log List
@@ -325,10 +324,6 @@ struct LogsView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
-        .background(Color(nsColor: .controlBackgroundColor))
-        .overlay(alignment: .top) {
-            Divider()
-        }
     }
 
     // MARK: - Empty / Loading / Error States

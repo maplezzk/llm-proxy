@@ -244,3 +244,24 @@
 "settings.portInvalid" = "Port must be 1-65535";
 "settings.proxyKeySaved" = "Proxy key saved";
 "settings.proxyKeyRemoved" = "Proxy key removed";
+
+// Menu
+"menu.about" = "About LLM Proxy";
+"menu.settings" = "Settings…";
+"menu.hide" = "Hide LLM Proxy";
+"menu.hideOthers" = "Hide Others";
+"menu.showAll" = "Show All";
+"menu.quit" = "Quit LLM Proxy";
+"menu.edit" = "Edit";
+"menu.undo" = "Undo";
+"menu.redo" = "Redo";
+"menu.cut" = "Cut";
+"menu.copy" = "Copy";
+"menu.paste" = "Paste";
+"menu.selectAll" = "Select All";
+"menu.view" = "View";
+"menu.fullScreen" = "Enter Full Screen";
+"menu.window" = "Window";
+"menu.minimize" = "Minimize";
+"menu.close" = "Close";
+"menu.help" = "Help";
