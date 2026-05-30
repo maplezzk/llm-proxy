@@ -44,7 +44,7 @@ struct AdaptersView: View {
                         adapterRow(adapter)
                     }
                 }
-                .listStyle(.inset)
+                .listStyle(.inset(alternatesRowBackgrounds: true))
             }
         }
         .searchable(text: Binding(

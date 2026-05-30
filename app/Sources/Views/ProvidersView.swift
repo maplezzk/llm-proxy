@@ -31,9 +31,6 @@ struct ProvidersView: View {
         .sheet(isPresented: $viewModel.showForm) {
             ProviderFormView(viewModel: viewModel)
         }
-        .sheet(isPresented: $viewModel.showPullModelsSheet) {
-            pullModelsSheetView
-        }
         .alert(loc("providers.delete.title"), isPresented: $viewModel.showDeleteAlert) {
             Button(loc("action.cancel"), role: .cancel) {
                 viewModel.deleteTargetName = nil
@@ -56,7 +53,7 @@ struct ProvidersView: View {
                 providerRow(provider)
             }
         }
-        .listStyle(.inset)
+        .listStyle(.inset(alternatesRowBackgrounds: true))
     }
 
     private func providerRow(_ provider: ProviderDetail) -> some View {
@@ -200,124 +197,4 @@ struct ProvidersView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    // MARK: - Pull Models Sheet
-
-    private var pullModelsSheetView: some View {
-        VStack(spacing: 0) {
-            // Header
-            HStack {
-                Text(loc("providers.pullModels.title"))
-                    .font(.headline)
-                Spacer()
-                Button(loc("providers.pullModels.close")) {
-                    viewModel.dismissPullModels()
-                }
-                .buttonStyle(.borderless)
-            }
-            .padding(16)
-
-            Divider()
-
-            // Content
-            Group {
-                if viewModel.pullModelsLoading {
-                    VStack(spacing: 12) {
-                        ProgressView()
-                        Text(loc("providers.pullModels.loading"))
-                            .foregroundColor(.secondary)
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else if let error = viewModel.pullModelsError {
-                    VStack(spacing: 12) {
-                        Image(systemName: "xmark.circle")
-                            .font(.title)
-                            .foregroundColor(.red)
-                        Text(error)
-                            .foregroundColor(.secondary)
-                            .multilineTextAlignment(.center)
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .padding()
-                } else if let result = viewModel.pullModelsResult {
-                    VStack(alignment: .leading, spacing: 12) {
-                        // 统计信息
-                        HStack {
-                            Text(loc("providers.pullModels.total", result.models.count))
-                            Text("·")
-                            Text(loc("providers.pullModels.existing", viewModel.pullModelsExistingCount))
-                            Text("·")
-                            Text(loc("providers.pullModels.new", viewModel.pullModelsNewItems.count))
-                                .foregroundColor(.green)
-                        }
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                        .padding(.horizontal, 16)
-                        .padding(.top, 8)
-
-                        Divider()
-
-                        // 模型列表
-                        if result.models.isEmpty {
-                            Text(loc("providers.pullModels.empty"))
-                                .foregroundColor(.secondary)
-                                .frame(maxWidth: .infinity, alignment: .center)
-                                .padding(.top, 40)
-                        } else {
-                            ScrollView {
-                                LazyVStack(alignment: .leading, spacing: 2) {
-                                    ForEach(result.models, id: \.id) { item in
-                                        pullModelRow(item)
-                                    }
-                                }
-                                .padding(.horizontal, 16)
-                            }
-                        }
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                }
-            }
-
-            Divider()
-
-            // Footer
-            HStack {
-                Spacer()
-                if viewModel.pullModelsResult != nil && !viewModel.pullModelsLoading {
-                    Button(loc("providers.pullModels.importAll")) {
-                        viewModel.importPullModels()
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(viewModel.pullModelsNewItems.isEmpty)
-                }
-            }
-            .padding(12)
-        }
-        .frame(width: 460, height: 420)
-    }
-
-    private func pullModelRow(_ item: PullModelItem) -> some View {
-        let existingIds = viewModel.pullModelsResult?.existing ?? []
-        let isExisting = existingIds.contains(item.id)
-
-        return HStack(spacing: 8) {
-            Image(systemName: isExisting ? "checkmark.circle.fill" : "circle")
-                .foregroundColor(isExisting ? .green : .secondary)
-                .font(.caption)
-
-            Text(item.id)
-                .font(.callout)
-                .strikethrough(isExisting, color: .secondary)
-                .foregroundColor(isExisting ? .secondary : .primary)
-
-            if let desc = item.description {
-                Text("— \(desc)")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                    .lineLimit(1)
-            }
-
-            Spacer()
-        }
-        .padding(.vertical, 4)
-    }
 }

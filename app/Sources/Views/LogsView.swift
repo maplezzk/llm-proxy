@@ -259,7 +259,7 @@ struct LogsView: View {
         Text(level.uppercased())
             .font(.system(.caption2, design: .monospaced))
             .fontWeight(.semibold)
-            .padding(.horizontal, 6)
+            .frame(width: 50)
             .padding(.vertical, 3)
             .background(levelColor(level).opacity(0.15))
             .foregroundColor(levelColor(level))
@@ -269,7 +269,7 @@ struct LogsView: View {
     private func typeBadge(_ type: String) -> some View {
         Text(type)
             .font(.system(.caption2))
-            .padding(.horizontal, 6)
+            .frame(width: 56)
             .padding(.vertical, 3)
             .background(Color.secondary.opacity(0.12))
             .foregroundColor(.secondary)
