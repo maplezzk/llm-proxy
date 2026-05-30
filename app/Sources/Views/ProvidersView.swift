@@ -83,7 +83,6 @@ struct ProvidersView: View {
 
             // 操作按钮组
             HStack(spacing: 4) {
-                // 测试按钮 → 跳转到测试 tab
                 Button(action: { testCoordinator.requestProviderTest(provider: provider) }) {
                     Image(systemName: "play.circle")
                         .help(loc("providers.testConnectivity"))
@@ -91,14 +90,12 @@ struct ProvidersView: View {
                 .buttonStyle(.borderless)
                 .disabled(provider.models.isEmpty)
 
-                // 编辑按钮
                 Button(action: { viewModel.openEditForm(provider) }) {
                     Image(systemName: "pencil")
                         .help(loc("providers.edit"))
                 }
                 .buttonStyle(.borderless)
 
-                // 删除按钮
                 Button(action: { viewModel.confirmDelete(provider.name) }) {
                     Image(systemName: "trash")
                         .foregroundColor(.red)
@@ -107,7 +104,8 @@ struct ProvidersView: View {
                 .buttonStyle(.borderless)
             }
         }
-        .padding(.vertical, 6)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
     }
 
     // MARK: - Status Icon

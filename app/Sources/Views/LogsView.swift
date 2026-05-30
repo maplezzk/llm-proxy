@@ -27,6 +27,9 @@ struct LogsView: View {
 
     private var filterBar: some View {
         HStack(spacing: 10) {
+            Text(loc("logs.filter.level"))
+                .font(.caption)
+                .foregroundColor(.secondary)
             Picker("", selection: Binding(
                 get: { viewModel.levelFilter ?? "all" },
                 set: { newVal in
@@ -42,6 +45,9 @@ struct LogsView: View {
             .pickerStyle(.menu)
             .labelsHidden()
 
+            Text(loc("logs.filter.type"))
+                .font(.caption)
+                .foregroundColor(.secondary)
             Picker("", selection: Binding(
                 get: { viewModel.typeFilter ?? "all" },
                 set: { newVal in

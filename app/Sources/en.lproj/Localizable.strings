@@ -265,3 +265,5 @@
 "menu.minimize" = "Minimize";
 "menu.close" = "Close";
 "menu.help" = "Help";
+"logs.filter.level" = "Level";
+"logs.filter.type" = "Type";

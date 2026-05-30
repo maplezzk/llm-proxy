@@ -143,12 +143,15 @@ struct TestPanelView: View {
     // MARK: - Send
 
     private var sendButton: some View {
-        Button(action: { Task { await runTest() } }) {
-            Label(loc("test.send"), systemImage: "play.fill")
-                .frame(maxWidth: .infinity)
+        HStack {
+            Spacer()
+            Button(action: { Task { await runTest() } }) {
+                Label(loc("test.send"), systemImage: "play.fill")
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+            .disabled(isTesting || (mode == .provider ? selectedModelId.isEmpty : adapterModelId.isEmpty))
         }
-        .buttonStyle(.borderedProminent)
-        .disabled(isTesting || (mode == .provider ? selectedModelId.isEmpty : adapterModelId.isEmpty))
     }
 
     // MARK: - Run

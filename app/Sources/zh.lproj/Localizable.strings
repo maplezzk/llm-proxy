@@ -265,3 +265,5 @@
 "menu.minimize" = "最小化";
 "menu.close" = "关闭";
 "menu.help" = "帮助";
+"logs.filter.level" = "级别";
+"logs.filter.type" = "类型";
