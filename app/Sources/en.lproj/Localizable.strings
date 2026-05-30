@@ -241,3 +241,4 @@
 "menu.close" = "Close";
 "menu.help" = "Help";
 "adapter.importFromProvider" = "Import Models";
+"test.copyCurl" = "Copy curl";

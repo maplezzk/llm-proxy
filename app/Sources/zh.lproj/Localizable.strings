@@ -268,3 +268,4 @@
 "logs.filter.level" = "级别";
 "logs.filter.type" = "类型";
 "adapter.importFromProvider" = "导入模型";
+"test.copyCurl" = "复制 curl";

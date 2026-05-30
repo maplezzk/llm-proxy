@@ -177,7 +177,16 @@ struct TestPanelView: View {
 
     private func resultView(_ result: TestModelResult) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Label(loc("test.result"), systemImage: "list.clipboard").font(.headline)
+            HStack {
+                Label(loc("test.result"), systemImage: "list.clipboard").font(.headline)
+                Spacer()
+                Button(action: { copyCurl() }) {
+                    Label(loc("test.copyCurl"), systemImage: "doc.on.doc")
+                        .font(.caption)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+            }
             Divider()
 
             HStack {
@@ -213,6 +222,57 @@ struct TestPanelView: View {
         guard let data = try? JSONSerialization.data(withJSONObject: body.value, options: [.prettyPrinted, .sortedKeys]),
               let str = String(data: data, encoding: .utf8) else { return "\(body.value)" }
         return str
+    }
+
+    // MARK: - Copy Curl
+
+    private func copyCurl() {
+        let curl: String
+        if mode == .provider {
+            let key = apiKey.isEmpty ? (selectedProvider?.api_key ?? "") : apiKey
+            let base = apiBase.isEmpty ? (selectedProvider?.api_base ?? "") : apiBase
+            curl = generateProviderCurl(type: selectedType, model: selectedModelId, apiKey: key, apiBase: base)
+        } else {
+            let port = APIClient.storedPort()
+            curl = generateAdapterCurl(adapterName: selectedAdapterName, model: adapterModelId, port: port)
+        }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(curl, forType: .string)
+    }
+
+    private func generateProviderCurl(type: String, model: String, apiKey: String, apiBase: String) -> String {
+        switch type {
+        case "anthropic":
+            return """
+            curl -X POST \(apiBase)/v1/messages \\
+              -H "Content-Type: application/json" \\
+              -H "x-api-key: \(apiKey)" \\
+              -H "anthropic-version: 2023-06-01" \\
+              -d '{"model": "\(model)", "max_tokens": 100, "messages": [{"role": "user", "content": "hi"}]}'
+            """
+        case "openai-responses":
+            return """
+            curl -X POST \(apiBase)/v1/responses \\
+              -H "Content-Type: application/json" \\
+              -H "Authorization: Bearer \(apiKey)" \\
+              -d '{"model": "\(model)", "input": "hi"}'
+            """
+        default: // openai
+            return """
+            curl -X POST \(apiBase)/v1/chat/completions \\
+              -H "Content-Type: application/json" \\
+              -H "Authorization: Bearer \(apiKey)" \\
+              -d '{"model": "\(model)", "messages": [{"role": "user", "content": "hi"}]}'
+            """
+        }
+    }
+
+    private func generateAdapterCurl(adapterName: String, model: String, port: Int) -> String {
+        return """
+        curl -X POST http://127.0.0.1:\(port)/\(adapterName)/v1/chat/completions \\
+          -H "Content-Type: application/json" \\
+          -d '{"model": "\(model)", "messages": [{"role": "user", "content": "hi"}]}'
+        """
     }
 
     // MARK: - Data Loading
