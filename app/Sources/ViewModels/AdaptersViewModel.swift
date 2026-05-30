@@ -86,6 +86,31 @@ final class AdaptersViewModel {
         formMappings.append(FormMappingRow(sourceModelId: "", provider: "", targetModelId: ""))
     }
 
+    var bulkImportProvider: String = ""
+
+    func bulkImportModels() {
+        guard !bulkImportProvider.isEmpty else { return }
+        guard let provider = providers.first(where: { $0.name == bulkImportProvider }) else { return }
+        guard !provider.models.isEmpty else { return }
+
+        let existingSourceIds = Set(formMappings.map { $0.sourceModelId }.filter { !$0.isEmpty })
+        var added = 0
+        for model in provider.models {
+            if !existingSourceIds.contains(model.id) {
+                formMappings.append(FormMappingRow(
+                    sourceModelId: model.id,
+                    provider: bulkImportProvider,
+                    targetModelId: model.id
+                ))
+                added += 1
+            }
+        }
+        // 删除空行
+        formMappings.removeAll { $0.sourceModelId.isEmpty && $0.provider.isEmpty && $0.targetModelId.isEmpty }
+        if formMappings.isEmpty { addMappingRow() }
+        bulkImportProvider = ""
+    }
+
     func removeMappingRow(at index: Int) {
         guard index < formMappings.count else { return }
         formMappings.remove(at: index)

@@ -55,6 +55,27 @@ struct AdapterFormView: View {
                             .buttonStyle(.borderless)
                         }
 
+                        // 一键导入供应商模型
+                        HStack(spacing: 8) {
+                            Picker("", selection: $vm.bulkImportProvider) {
+                                Text(loc("adapter.selectProvider")).tag("")
+                                ForEach(vm.providers, id: \.name) { p in
+                                    Text(p.name).tag(p.name)
+                                }
+                            }
+                            .pickerStyle(.menu)
+                            .labelsHidden()
+                            .frame(maxWidth: 180)
+
+                            Button(action: { vm.bulkImportModels() }) {
+                                Text(loc("adapter.importFromProvider"))
+                                    .font(.caption)
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                            .disabled(vm.bulkImportProvider.isEmpty)
+                        }
+
                         ForEach(Array(vm.formMappings.enumerated()), id: \.element.id) { index, _ in
                             mappingRow(index: index)
                         }

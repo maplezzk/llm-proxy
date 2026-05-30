@@ -267,3 +267,4 @@
 "menu.help" = "帮助";
 "logs.filter.level" = "级别";
 "logs.filter.type" = "类型";
+"adapter.importFromProvider" = "导入模型";
