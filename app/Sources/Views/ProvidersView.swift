@@ -109,28 +109,37 @@ struct ProvidersView: View {
             Spacer()
 
             // 右侧：操作按钮
-            HStack(spacing: 12) {
+            HStack(spacing: 8) {
                 Button(action: { testCoordinator.requestProviderTest(provider: provider) }) {
-                    Text(loc("providers.testConnectivity"))
+                    Text(loc("test.title"))
                         .font(.caption)
-                        .foregroundColor(.accentColor)
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 4)
+                        .background(Color.green, in: Capsule())
                 }
-                .buttonStyle(.borderless)
+                .buttonStyle(.plain)
                 .disabled(provider.models.isEmpty)
 
                 Button(action: { viewModel.openEditForm(provider) }) {
                     Text(loc("providers.edit"))
                         .font(.caption)
-                        .foregroundColor(.secondary)
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 4)
+                        .background(Color.accentColor, in: Capsule())
                 }
-                .buttonStyle(.borderless)
+                .buttonStyle(.plain)
 
                 Button(action: { viewModel.confirmDelete(provider.name) }) {
                     Text(loc("providers.delete.confirm"))
                         .font(.caption)
-                        .foregroundColor(.red)
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 4)
+                        .background(Color.red, in: Capsule())
                 }
-                .buttonStyle(.borderless)
+                .buttonStyle(.plain)
             }
         }
         .padding(.horizontal, 16)

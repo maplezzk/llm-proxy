@@ -147,25 +147,31 @@ struct AdaptersView: View {
             Spacer()
 
             // 操作按钮
-            HStack(spacing: 12) {
+            HStack(spacing: 8) {
                 Button {
                     let firstModelId = adapter.models.first?.sourceModelId
                     testCoordinator.requestAdapterTest(adapter: adapter, firstModelId: firstModelId)
                 } label: {
-                    Text(loc("adapter.test"))
+                    Text(loc("test.title"))
                         .font(.caption)
-                        .foregroundColor(.accentColor)
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 4)
+                        .background(Color.green, in: Capsule())
                 }
-                .buttonStyle(.borderless)
+                .buttonStyle(.plain)
 
                 Button {
                     viewModel.openForm(adapter: adapter)
                 } label: {
                     Text(loc("adapter.edit"))
                         .font(.caption)
-                        .foregroundColor(.secondary)
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 4)
+                        .background(Color.accentColor, in: Capsule())
                 }
-                .buttonStyle(.borderless)
+                .buttonStyle(.plain)
 
                 Button {
                     adapterToDelete = adapter.name
@@ -173,9 +179,12 @@ struct AdaptersView: View {
                 } label: {
                     Text(loc("adapter.delete"))
                         .font(.caption)
-                        .foregroundColor(.red)
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 4)
+                        .background(Color.red, in: Capsule())
                 }
-                .buttonStyle(.borderless)
+                .buttonStyle(.plain)
             }
         }
         .padding(.horizontal, 16)

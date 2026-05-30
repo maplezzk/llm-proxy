@@ -116,9 +116,9 @@ enum ConsoleTab: String, CaseIterable {
 
         var tabs: [ConsoleTab] {
             switch self {
-            case .overview: return [.dashboard, .logs]
+            case .overview: return [.dashboard]
             case .proxy: return [.providers, .adapters]
-            case .tools: return [.capture, .test, .settings]
+            case .tools: return [.logs, .capture, .test, .settings]
             }
         }
     }
