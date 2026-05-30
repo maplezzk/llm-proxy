@@ -105,7 +105,7 @@ struct ProvidersView: View {
             // 右侧：操作按钮
             HStack(spacing: 6) {
                 Button(action: { testCoordinator.requestProviderTest(provider: provider) }) {
-                    Image(systemName: "bolt.horizontal")
+                    Image(systemName: "paperplane")
                         .font(.system(size: 13))
                         .foregroundColor(.secondary)
                 }
@@ -114,7 +114,7 @@ struct ProvidersView: View {
                 .help(loc("providers.testConnectivity"))
 
                 Button(action: { viewModel.openEditForm(provider) }) {
-                    Image(systemName: "square.and.pencil")
+                    Image(systemName: "pencil")
                         .font(.system(size: 13))
                         .foregroundColor(.secondary)
                 }

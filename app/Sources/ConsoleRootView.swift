@@ -4,6 +4,7 @@ import SwiftUI
 struct ConsoleRootView: View {
     @State private var selectedTab: ConsoleTab = .dashboard
     @State private var testCoordinator = TestCoordinator()
+    @State private var langVersion: Int = 0  // 语言切换时递增，强制视图重建
 
     var body: some View {
         NavigationSplitView {
@@ -12,12 +13,16 @@ struct ConsoleRootView: View {
         } detail: {
             tabContent
         }
+        .id(langVersion)
         .environment(testCoordinator)
         .onChange(of: testCoordinator.shouldSwitchToTestTab) { _, newValue in
             if newValue { selectedTab = .test }
         }
         .onReceive(NotificationCenter.default.publisher(for: .openSettings)) { _ in
             selectedTab = .settings
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .configDidChange)) { _ in
+            langVersion += 1
         }
     }
 

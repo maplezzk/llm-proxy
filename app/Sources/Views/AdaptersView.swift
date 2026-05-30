@@ -152,7 +152,7 @@ struct AdaptersView: View {
                     let firstModelId = adapter.models.first?.sourceModelId
                     testCoordinator.requestAdapterTest(adapter: adapter, firstModelId: firstModelId)
                 } label: {
-                    Image(systemName: "bolt.horizontal")
+                    Image(systemName: "paperplane")
                         .font(.system(size: 13))
                         .foregroundColor(.secondary)
                 }
@@ -162,7 +162,7 @@ struct AdaptersView: View {
                 Button {
                     viewModel.openForm(adapter: adapter)
                 } label: {
-                    Image(systemName: "square.and.pencil")
+                    Image(systemName: "pencil")
                         .font(.system(size: 13))
                         .foregroundColor(.secondary)
                 }

@@ -23,7 +23,6 @@
 "error.portChangeWhileRunning" = "Cannot change port while service is running. Please stop the service first.";
 "error.restartFailed" = "Failed to restart service";
 "app.title" = "LLM Proxy";
-
 "menu.version" = "Version %@";
 "action.checkForUpdates" = "Check for Updates…";
 "menu.updatesAvailable" = "⬆ Update Available: v%@";
@@ -40,16 +39,12 @@
 "action.retry" = "Retry";
 "menu.installNow" = "⬇ Install Now";
 "update.installFailed" = "Installation failed: %@";
-
 "action.save" = "Save";
 "action.cancel" = "Cancel";
-
 "action.port" = "Port: %@";
 "action.customPort" = "Custom…";
 "action.portTitle" = "Set Port";
 "action.portPrompt" = "Enter port number (1-65535):";
-
-// Console
 "console.title" = "llm-proxy Console";
 "console.comingSoon" = "Coming Soon";
 "console.openConsole" = "Open Console";
@@ -61,8 +56,6 @@
 "nav.section.overview" = "Overview";
 "nav.section.proxy" = "Proxy";
 "nav.section.tools" = "Tools";
-
-// Test Panel
 "test.title" = "Test";
 "test.help" = "Open test panel";
 "test.model" = "Model";
@@ -76,13 +69,12 @@
 "test.reachable" = "Reachable";
 "test.unreachable" = "Unreachable";
 "test.selectProvider" = "Select provider…";
-
-// Providers
 "providers.loading" = "Loading providers...";
 "providers.searchPlaceholder" = "Search providers...";
 "providers.addProvider" = "Add Provider";
 "providers.empty" = "No providers configured";
 "providers.emptyHint" = "Add your first LLM provider to get started";
+"providers.noResults" = "No matching providers";
 "providers.edit" = "Edit";
 "providers.testConnectivity" = "Test Connectivity";
 "providers.andMore" = "+%d more";
@@ -90,19 +82,15 @@
 "providers.created" = "Provider created successfully";
 "providers.updated" = "Provider updated successfully";
 "providers.deleted" = "Provider deleted";
-
 "providers.validation.name" = "Provider name is required";
 "providers.validation.models" = "At least one model is required";
 "providers.validation.apiKey" = "API Key is required for new providers";
 "providers.validation.providerName" = "Provider name is required to pull models";
 "providers.validation.noModels" = "Provider has no models to test";
-
 "providers.error.loadFailed" = "Failed to load providers: %@";
-
 "providers.delete.title" = "Delete Provider";
-"providers.delete.message" = "Are you sure you want to delete provider "%@"? This action cannot be undone.";
+"providers.delete.message" = "Are you sure you want to delete provider \"%@\"? This action cannot be undone.";
 "providers.delete.confirm" = "Delete";
-
 "providers.form.createTitle" = "New Provider";
 "providers.form.editTitle" = "Edit Provider";
 "providers.form.name" = "Name";
@@ -117,7 +105,6 @@
 "providers.form.budgetTokens" = "Budget Tokens";
 "providers.form.budgetTokensHelp" = "Thinking budget tokens for Anthropic models";
 "providers.form.reasoningNone" = "None";
-
 "providers.pullModels.title" = "Pull Models from API";
 "providers.pullModels.close" = "Close";
 "providers.pullModels.loading" = "Fetching model list...";
@@ -125,11 +112,9 @@
 "providers.pullModels.existing" = "%d existing";
 "providers.pullModels.new" = "%d new";
 "providers.pullModels.empty" = "No models returned from API";
-"providers.pullModels.importAll" = "Import All";
+"providers.pullModels.importAll" = "Import Selected";
 "providers.pullModels.imported" = "Imported %d model(s)";
 "providers.pullModels.importedWithSkip" = "Imported %d model(s), %d already existed";
-
-// Adapters
 "adapter.searchPlaceholder" = "Search adapters...";
 "adapter.newAdapter" = "New Adapter";
 "adapter.newTitle" = "Create Adapter";
@@ -163,8 +148,6 @@
 "adapter.empty" = "No adapters configured";
 "adapter.noResults" = "No matching adapters";
 "adapter.mappingCount" = "%d mapping(s)";
-
-// Capture tab
 "capture.toggle" = "Capture";
 "capture.start" = "Start Capture";
 "capture.stop" = "Stop Capture";
@@ -183,8 +166,6 @@
 "capture.phase.requestOut" = "Proxy→Upstream Request";
 "capture.phase.responseIn" = "Upstream→Proxy Response";
 "capture.phase.responseOut" = "Proxy→Client Response";
-
-// Logs
 "logs.all" = "All";
 "logs.levelFilter" = "Level";
 "logs.typeFilter" = "Type";
@@ -205,8 +186,8 @@
 "logs.totalCount" = "%d entries";
 "logs.autoScroll.on" = "Auto-scroll: ON (click to disable)";
 "logs.autoScroll.off" = "Auto-scroll: OFF (click to enable)";
-
-// Dashboard
+"logs.filter.level" = "Level";
+"logs.filter.type" = "Type";
 "dashboard.serviceStatus" = "Service Status";
 "dashboard.online" = "Online";
 "dashboard.offline" = "Offline";
@@ -223,15 +204,11 @@
 "dashboard.hitRate" = "Hit Rate";
 "dashboard.empty" = "No data";
 "dashboard.loading" = "Loading...";
-
-// Common
 "console.empty" = "No data";
 "common.copy" = "Copy";
 "common.copied" = "Copied";
 "common.refresh" = "Refresh";
 "common.close" = "Close";
-
-// Settings
 "settings.title" = "Settings";
 "settings.port" = "Port";
 "settings.proxyKey" = "Proxy Key";
@@ -244,8 +221,6 @@
 "settings.portInvalid" = "Port must be 1-65535";
 "settings.proxyKeySaved" = "Proxy key saved";
 "settings.proxyKeyRemoved" = "Proxy key removed";
-
-// Menu
 "menu.about" = "About LLM Proxy";
 "menu.settings" = "Settings…";
 "menu.hide" = "Hide LLM Proxy";
@@ -265,5 +240,3 @@
 "menu.minimize" = "Minimize";
 "menu.close" = "Close";
 "menu.help" = "Help";
-"logs.filter.level" = "Level";
-"logs.filter.type" = "Type";
