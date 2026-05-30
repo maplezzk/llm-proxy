@@ -9,6 +9,43 @@ struct AdaptersView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            // 顶部工具栏
+            HStack(spacing: 12) {
+                HStack(spacing: 6) {
+                    Image(systemName: "magnifyingglass")
+                        .foregroundColor(.secondary)
+                        .font(.caption)
+                    TextField(loc("adapter.searchPlaceholder"), text: Binding(
+                        get: { viewModel.search },
+                        set: { viewModel.search = $0 }
+                    ))
+                    .textFieldStyle(.plain)
+                    .font(.body)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(RoundedRectangle(cornerRadius: 8).fill(Color(nsColor: .controlBackgroundColor)))
+                .frame(maxWidth: 240)
+
+                Spacer()
+
+                Button(action: { viewModel.openForm() }) {
+                    Label(loc("adapter.newAdapter"), systemImage: "plus")
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.regular)
+
+                Button(action: { Task { await viewModel.load() } }) {
+                    Image(systemName: "arrow.clockwise")
+                }
+                .buttonStyle(.borderless)
+                .disabled(viewModel.isLoading)
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 12)
+
+            Divider()
+
             // 内容区
             if viewModel.isLoading && viewModel.adapters.isEmpty {
                 Spacer()
@@ -39,29 +76,7 @@ struct AdaptersView: View {
                 }
                 Spacer()
             } else {
-                List {
-                    ForEach(viewModel.filteredAdapters, id: \.name) { adapter in
-                        adapterRow(adapter)
-                    }
-                }
-                .listStyle(.inset(alternatesRowBackgrounds: true))
-            }
-        }
-        .searchable(text: Binding(
-            get: { viewModel.search },
-            set: { viewModel.search = $0 }
-        ), prompt: loc("adapter.searchPlaceholder"))
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                Button(action: { viewModel.openForm() }) {
-                    Label(loc("adapter.newAdapter"), systemImage: "plus")
-                }
-            }
-            ToolbarItem(placement: .automatic) {
-                Button(action: { Task { await viewModel.load() } }) {
-                    Image(systemName: "arrow.clockwise")
-                }
-                .disabled(viewModel.isLoading)
+                adapterCards
             }
         }
         .onAppear {
@@ -74,7 +89,7 @@ struct AdaptersView: View {
             AdapterFormView()
                 .environment(viewModel)
         }
-        .alert(loc("adapter.deleteConfirm", viewModel.testingAdapterName ?? ""), isPresented: $showDeleteAlert) {
+        .alert(loc("adapter.deleteConfirm", adapterToDelete ?? ""), isPresented: $showDeleteAlert) {
             Button(loc("action.cancel"), role: .cancel) {
                 adapterToDelete = nil
             }
@@ -87,31 +102,43 @@ struct AdaptersView: View {
         }
     }
 
-    // MARK: - Adapter Row
+    // MARK: - Card List
 
-    private func adapterRow(_ adapter: Adapter) -> some View {
-        HStack(spacing: 12) {
+    private var adapterCards: some View {
+        ScrollView {
+            LazyVStack(spacing: 1) {
+                ForEach(viewModel.filteredAdapters, id: \.name) { adapter in
+                    adapterCard(adapter)
+                }
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 12)
+        }
+    }
+
+    private func adapterCard(_ adapter: Adapter) -> some View {
+        HStack(spacing: 14) {
             // 类型图标
             Image(systemName: typeIcon(for: adapter.type))
                 .font(.title3)
-                .foregroundColor(.accentColor)
-                .frame(width: 28)
+                .foregroundColor(.white)
+                .frame(width: 32, height: 32)
+                .background(typeIconColor(for: adapter.type), in: RoundedRectangle(cornerRadius: 7))
 
-            // 名称 + 类型标签
+            // 信息
             VStack(alignment: .leading, spacing: 4) {
-                Text(adapter.name)
-                    .font(.body)
-                    .fontWeight(.medium)
-                HStack(spacing: 6) {
+                HStack(spacing: 8) {
+                    Text(adapter.name)
+                        .font(.body)
+                        .fontWeight(.medium)
                     typeBadge(adapter.type)
                     Text(loc("adapter.mappingCount", adapter.models.count))
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
 
-                // 虚拟端点 URL
                 Text(adapterURL(adapter))
-                    .font(.caption.monospaced())
+                    .font(.system(.caption, design: .monospaced))
                     .foregroundColor(.secondary)
                     .lineLimit(1)
                     .truncationMode(.middle)
@@ -120,39 +147,48 @@ struct AdaptersView: View {
             Spacer()
 
             // 操作按钮
-            HStack(spacing: 4) {
-                // 测试按钮 → 跳转到测试 tab
+            HStack(spacing: 8) {
                 Button {
                     let firstModelId = adapter.models.first?.sourceModelId
                     testCoordinator.requestAdapterTest(adapter: adapter, firstModelId: firstModelId)
                 } label: {
                     Image(systemName: "play.circle")
+                        .font(.system(size: 16))
+                        .foregroundColor(.secondary)
                 }
                 .buttonStyle(.borderless)
                 .help(loc("adapter.test"))
 
-                // 编辑按钮
                 Button {
                     viewModel.openForm(adapter: adapter)
                 } label: {
                     Image(systemName: "pencil")
+                        .font(.system(size: 14))
+                        .foregroundColor(.secondary)
                 }
                 .buttonStyle(.borderless)
                 .help(loc("adapter.edit"))
 
-                // 删除按钮
                 Button {
                     adapterToDelete = adapter.name
                     showDeleteAlert = true
                 } label: {
                     Image(systemName: "trash")
-                        .foregroundColor(.red)
+                        .font(.system(size: 14))
+                        .foregroundColor(.red.opacity(0.7))
                 }
                 .buttonStyle(.borderless)
                 .help(loc("adapter.delete"))
             }
         }
-        .padding(.vertical, 4)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
+        .background(Color(nsColor: .controlBackgroundColor))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .strokeBorder(Color.primary.opacity(0.06), lineWidth: 1)
+        )
     }
 
     // MARK: - Helpers
@@ -170,10 +206,19 @@ struct AdaptersView: View {
 
     private func typeIcon(for type: String) -> String {
         switch type {
-        case "anthropic": return "a.circle.fill"
-        case "openai": return "o.circle.fill"
-        case "openai-responses": return "r.circle.fill"
+        case "anthropic": return "a.circle"
+        case "openai": return "o.circle"
+        case "openai-responses": return "r.circle"
         default: return "questionmark.circle"
+        }
+    }
+
+    private func typeIconColor(for type: String) -> Color {
+        switch type {
+        case "anthropic": return .orange
+        case "openai": return .blue
+        case "openai-responses": return .purple
+        default: return .gray
         }
     }
 
@@ -191,7 +236,8 @@ struct AdaptersView: View {
             .fontWeight(.medium)
             .padding(.horizontal, 6)
             .padding(.vertical, 2)
-            .background(Color.accentColor.opacity(0.12))
-            .cornerRadius(4)
+            .background(typeIconColor(for: type).opacity(0.12))
+            .foregroundColor(typeIconColor(for: type))
+            .clipShape(Capsule())
     }
 }

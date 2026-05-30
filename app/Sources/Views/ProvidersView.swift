@@ -6,25 +6,48 @@ struct ProvidersView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // 内容区
-            ZStack {
-                if viewModel.isLoading && viewModel.providers.isEmpty {
-                    ProgressView(loc("providers.loading"))
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else if !viewModel.providers.isEmpty || !viewModel.searchText.isEmpty {
-                    providerList
-                } else {
-                    emptyState
+            // 顶部工具栏
+            HStack(spacing: 12) {
+                HStack(spacing: 6) {
+                    Image(systemName: "magnifyingglass")
+                        .foregroundColor(.secondary)
+                        .font(.caption)
+                    TextField(loc("providers.searchPlaceholder"), text: $viewModel.searchText)
+                        .textFieldStyle(.plain)
+                        .font(.body)
                 }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-        }
-        .searchable(text: $viewModel.searchText, prompt: loc("providers.searchPlaceholder"))
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) {
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(RoundedRectangle(cornerRadius: 8).fill(Color(nsColor: .controlBackgroundColor)))
+                .frame(maxWidth: 240)
+
+                Spacer()
+
                 Button(action: { viewModel.openCreateForm() }) {
                     Label(loc("providers.addProvider"), systemImage: "plus")
                 }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.regular)
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 12)
+
+            Divider()
+
+            // 内容区
+            if viewModel.isLoading && viewModel.providers.isEmpty {
+                Spacer()
+                ProgressView(loc("providers.loading"))
+                Spacer()
+            } else if viewModel.filteredProviders.isEmpty && !viewModel.searchText.isEmpty {
+                Spacer()
+                Text(loc("providers.noResults"))
+                    .foregroundColor(.secondary)
+                Spacer()
+            } else if viewModel.providers.isEmpty {
+                emptyState
+            } else {
+                providerCards
             }
         }
         .task { await viewModel.load() }
@@ -43,31 +66,32 @@ struct ProvidersView: View {
         }
     }
 
-    // MARK: - Toolbar
+    // MARK: - Card List
 
-    // MARK: - Provider List
-
-    private var providerList: some View {
-        List {
-            ForEach(viewModel.filteredProviders, id: \.name) { provider in
-                providerRow(provider)
+    private var providerCards: some View {
+        ScrollView {
+            LazyVStack(spacing: 1) {
+                ForEach(viewModel.filteredProviders, id: \.name) { provider in
+                    providerCard(provider)
+                }
             }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 12)
         }
-        .listStyle(.inset(alternatesRowBackgrounds: true))
     }
 
-    private func providerRow(_ provider: ProviderDetail) -> some View {
-        HStack(spacing: 12) {
-            // 状态 + 名称
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 6) {
+    private func providerCard(_ provider: ProviderDetail) -> some View {
+        HStack(spacing: 14) {
+            // 左侧：状态指示 + 信息
+            VStack(alignment: .leading, spacing: 5) {
+                HStack(spacing: 8) {
                     providerStatusIcon(provider)
                     Text(provider.name)
-                        .font(.headline)
+                        .font(.body)
+                        .fontWeight(.medium)
                     typeBadge(provider.type)
                 }
 
-                // 模型列表（截断显示）
                 if !provider.models.isEmpty {
                     Text(modelSummary(provider.models))
                         .font(.caption)
@@ -78,35 +102,47 @@ struct ProvidersView: View {
 
             Spacer()
 
-            // 操作按钮组
-            HStack(spacing: 4) {
+            // 右侧：操作按钮
+            HStack(spacing: 8) {
                 Button(action: { testCoordinator.requestProviderTest(provider: provider) }) {
                     Image(systemName: "play.circle")
-                        .help(loc("providers.testConnectivity"))
+                        .font(.system(size: 16))
+                        .foregroundColor(.secondary)
                 }
                 .buttonStyle(.borderless)
                 .disabled(provider.models.isEmpty)
+                .help(loc("providers.testConnectivity"))
 
                 Button(action: { viewModel.openEditForm(provider) }) {
                     Image(systemName: "pencil")
-                        .help(loc("providers.edit"))
+                        .font(.system(size: 14))
+                        .foregroundColor(.secondary)
                 }
                 .buttonStyle(.borderless)
+                .help(loc("providers.edit"))
 
                 Button(action: { viewModel.confirmDelete(provider.name) }) {
                     Image(systemName: "trash")
-                        .foregroundColor(.red)
-                        .help(loc("providers.delete.title"))
+                        .font(.system(size: 14))
+                        .foregroundColor(.red.opacity(0.7))
                 }
                 .buttonStyle(.borderless)
+                .help(loc("providers.delete.title"))
             }
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, 12)
+        .padding(.vertical, 14)
+        .background(Color(nsColor: .controlBackgroundColor))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .strokeBorder(Color.primary.opacity(0.06), lineWidth: 1)
+        )
     }
 
     // MARK: - Status Icon
 
+    @ViewBuilder
     private func providerStatusIcon(_ provider: ProviderDetail) -> some View {
         if let result = viewModel.testResults[provider.name] {
             Circle()
@@ -119,42 +155,17 @@ struct ProvidersView: View {
         }
     }
 
-    // MARK: - Test Status
-
-    @ViewBuilder
-    private func testStatusView(_ provider: ProviderDetail) -> some View {
-        if let result = viewModel.testResults[provider.name] {
-            HStack(spacing: 4) {
-                if result.reachable, let latency = result.latency {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundColor(.green)
-                        .font(.caption)
-                    Text("\(latency)ms")
-                        .font(.caption)
-                        .foregroundColor(.green)
-                } else {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundColor(.red)
-                        .font(.caption)
-                    Text(result.error ?? loc("providers.testFailed"))
-                        .font(.caption)
-                        .foregroundColor(.red)
-                        .lineLimit(1)
-                }
-            }
-        }
-    }
-
     // MARK: - Type Badge
 
     private func typeBadge(_ type: String) -> some View {
         Text(type)
             .font(.caption2)
+            .fontWeight(.medium)
             .padding(.horizontal, 6)
             .padding(.vertical, 2)
-            .background(typeBadgeColor(type).opacity(0.15))
+            .background(typeBadgeColor(type).opacity(0.12))
             .foregroundColor(typeBadgeColor(type))
-            .cornerRadius(4)
+            .clipShape(Capsule())
     }
 
     private func typeBadgeColor(_ type: String) -> Color {
@@ -180,6 +191,7 @@ struct ProvidersView: View {
 
     private var emptyState: some View {
         VStack(spacing: 16) {
+            Spacer()
             Image(systemName: "server.rack")
                 .font(.system(size: 48))
                 .foregroundColor(.secondary.opacity(0.5))
@@ -193,8 +205,8 @@ struct ProvidersView: View {
                 Label(loc("providers.addProvider"), systemImage: "plus")
             }
             .buttonStyle(.borderedProminent)
+            Spacer()
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .frame(maxWidth: .infinity)
     }
-
 }
