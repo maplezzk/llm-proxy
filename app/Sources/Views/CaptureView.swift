@@ -386,12 +386,35 @@ struct CaptureView: View {
 
             // 内容
             if let contentStr = content, !contentStr.isEmpty {
-                ScrollView([.horizontal, .vertical]) {
-                    Text(formatPhaseContent(contentStr, isResponse: isResponse))
-                        .font(.system(.caption, design: .monospaced))
-                        .textSelection(.enabled)
-                        .padding(10)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                let maxDisplayLen = 8000
+                let isTruncated = contentStr.count > maxDisplayLen
+                let displayStr = isTruncated
+                    ? String(contentStr.prefix(maxDisplayLen))
+                    : contentStr
+
+                VStack(spacing: 0) {
+                    ScrollView([.horizontal, .vertical]) {
+                        Text(formatPhaseContent(displayStr, isResponse: isResponse))
+                            .font(.system(.caption, design: .monospaced))
+                            .textSelection(.enabled)
+                            .padding(10)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+
+                    if isTruncated {
+                        HStack(spacing: 6) {
+                            Image(systemName: "exclamationmark.triangle")
+                                .font(.caption2)
+                                .foregroundColor(.orange)
+                            Text("Content truncated (\(contentStr.count / 1024)KB). Use copy button for full content.")
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                            Spacer()
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 4)
+                        .background(Color.orange.opacity(0.06))
+                    }
                 }
                 .background(Color.primary.opacity(0.03))
             } else {
