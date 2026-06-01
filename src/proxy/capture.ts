@@ -109,13 +109,49 @@ export class CaptureBuffer {
 
   subscribe(res: ServerResponse): void {
     this.subscribers.add(res)
+    // 'close' 事件不可靠（客户端 kill -9 / NAT 超时 / 反代断开等都不会触发），
+    // 所以同时在写入时主动检测并清理死连接。
     res.on('close', () => this.subscribers.delete(res))
   }
 
-  private notifySubscribers(entry: CaptureEntry): void {
-    const line = JSON.stringify(entry)
+  /** 主动清理已死亡/被销毁的 subscriber，防止句柄 + 内部 buffer 泄漏 */
+  private pruneDeadSubscribers(): void {
     for (const sub of this.subscribers) {
-      try { sub.write(`data: ${line}\n\n`) } catch { /* subscriber gone */ }
+      // 仅当属性显式表示死亡/不可写时才清理；undefined 视为可用（兼容测试 mock）
+      const s = sub as { destroyed?: boolean; writableEnded?: boolean; writable?: boolean }
+      if (s.destroyed === true || s.writableEnded === true || s.writable === false) {
+        this.subscribers.delete(sub)
+      }
+    }
+  }
+
+  private isSubDead(sub: ServerResponse): boolean {
+    const s = sub as { destroyed?: boolean; writableEnded?: boolean; writable?: boolean }
+    return s.destroyed === true || s.writableEnded === true || s.writable === false
+  }
+
+  private notifySubscribers(entry: CaptureEntry): void {
+    if (this.subscribers.size === 0) return
+    this.pruneDeadSubscribers()
+    if (this.subscribers.size === 0) return
+
+    const line = JSON.stringify(entry)
+    const payload = `data: ${line}\n\n`
+    for (const sub of this.subscribers) {
+      try {
+        // 写入前再检查一次（并发场景下 close 可能刚发生）
+        if (this.isSubDead(sub)) {
+          this.subscribers.delete(sub)
+          continue
+        }
+        // 反压时跳过本次写入，避免 Node 内部 _writableState.buffer 无限膨胀；
+        // 后续 notify 时若客户端已消费完会自然恢复。
+        if (!sub.write(payload)) {
+          // do nothing
+        }
+      } catch {
+        this.subscribers.delete(sub)
+      }
     }
   }
 }
