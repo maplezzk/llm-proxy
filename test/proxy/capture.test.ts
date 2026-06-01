@@ -4,11 +4,14 @@ import { EventEmitter } from 'node:events'
 import type { ServerResponse } from 'node:http'
 import { CaptureBuffer } from '../../src/proxy/capture.js'
 
-function fakeRes(): ServerResponse {
+function fakeRes(overrides: Partial<{ destroyed: boolean; writableEnded: boolean; writable: boolean }> = {}): ServerResponse {
   const ee = new EventEmitter() as any
   ee.writeHead = () => ee
   ee.write = () => true
   ee.end = () => ee
+  ee.destroyed = overrides.destroyed ?? false
+  ee.writableEnded = overrides.writableEnded ?? false
+  ee.writable = overrides.writable ?? true
   // 代理到 EventEmitter 原型方法，避免递归
   const origOn = EventEmitter.prototype.on.bind(ee)
   ee.on = (event: string, cb: (...args: any[]) => void) => { origOn(event, cb); return ee }
@@ -208,6 +211,99 @@ describe('proxy/capture', () => {
 
       assert.ok(w1.includes('"pairId":1'))
       assert.ok(w2.includes('"pairId":1'))
+    })
+  })
+
+  describe('内存泄漏防护（死 subscriber 清理）', () => {
+    it('destroyed=true 的 subscriber 在下次 notify 时被清理', () => {
+      const cap = new CaptureBuffer(100)
+      const dead = fakeRes({ destroyed: true })
+      let writeCount = 0
+      dead.write = () => { writeCount++; return true }
+
+      cap.subscribe(dead)
+      assert.strictEqual((cap as any).subscribers.size, 1)
+
+      cap.startRequest('proxy', 'anthropic', 'claude-3')
+
+      // 已死的 subscriber 必须被清理，且不接收任何写入
+      assert.strictEqual((cap as any).subscribers.size, 0)
+      assert.strictEqual(writeCount, 0)
+    })
+
+    it('writableEnded=true 的 subscriber 在下次 notify 时被清理', () => {
+      const cap = new CaptureBuffer(100)
+      const ended = fakeRes({ writableEnded: true })
+      let writeCount = 0
+      ended.write = () => { writeCount++; return true }
+
+      cap.subscribe(ended)
+      cap.startRequest('proxy', 'openai', 'gpt-4')
+
+      assert.strictEqual((cap as any).subscribers.size, 0)
+      assert.strictEqual(writeCount, 0)
+    })
+
+    it('writable=false 的 subscriber 在下次 notify 时被清理', () => {
+      const cap = new CaptureBuffer(100)
+      const notWritable = fakeRes({ writable: false })
+      let writeCount = 0
+      notWritable.write = () => { writeCount++; return true }
+
+      cap.subscribe(notWritable)
+      cap.startRequest('proxy', 'openai', 'gpt-4')
+
+      assert.strictEqual((cap as any).subscribers.size, 0)
+      assert.strictEqual(writeCount, 0)
+    })
+
+    it('混合健康/死亡 subscriber：只推送给健康的', () => {
+      const cap = new CaptureBuffer(100)
+      const alive = fakeRes()
+      const dead1 = fakeRes({ destroyed: true })
+      const dead2 = fakeRes({ writableEnded: true })
+
+      let aliveWrites = 0
+      alive.write = () => { aliveWrites++; return true }
+      dead1.write = () => { throw new Error('dead1 should not be written') }
+      dead2.write = () => { throw new Error('dead2 should not be written') }
+
+      cap.subscribe(alive)
+      cap.subscribe(dead1)
+      cap.subscribe(dead2)
+      assert.strictEqual((cap as any).subscribers.size, 3)
+
+      cap.startRequest('proxy', 'openai', 'gpt-4')
+
+      // 两个 dead 被清理，healthy 保留
+      assert.strictEqual((cap as any).subscribers.size, 1)
+      assert.strictEqual(aliveWrites, 1)
+    })
+
+    it('write 抛错的 subscriber 在下次 notify 时被清理', () => {
+      const cap = new CaptureBuffer(100)
+      const throwing = fakeRes()
+      throwing.write = () => { throw new Error('socket closed') }
+
+      cap.subscribe(throwing)
+      cap.startRequest('proxy', 'openai', 'gpt-4')
+
+      // 抛错后被清理
+      assert.strictEqual((cap as any).subscribers.size, 0)
+    })
+
+    it('反压时（write 返回 false）跳过本次写入但不清理 subscriber', () => {
+      const cap = new CaptureBuffer(100)
+      const slow = fakeRes()
+      let writes = 0
+      slow.write = () => { writes++; return false }  // 一直反压
+
+      cap.subscribe(slow)
+      cap.startRequest('proxy', 'openai', 'gpt-4')
+
+      // 反压不应当作死亡，仅跳过本次写入
+      assert.strictEqual((cap as any).subscribers.size, 1)
+      assert.strictEqual(writes, 1)
     })
   })
 })
