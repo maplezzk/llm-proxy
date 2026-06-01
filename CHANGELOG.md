@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.16.1](https://github.com/maplezzk/llm-proxy/compare/v0.16.0...v0.16.1) (2026-06-01)
+
+
+### Bug Fixes
+
+* 修复抓包开启时 subscribers 句柄泄漏导致内存持续增长 ([#125](https://github.com/maplezzk/llm-proxy/issues/125)) ([9d5bfe3](https://github.com/maplezzk/llm-proxy/commit/9d5bfe3ea6d6530582e1ef1ca7b894d57c8f3e8a))
+
 ## [0.16.0](https://github.com/maplezzk/llm-proxy/compare/v0.15.1...v0.16.0) (2026-05-30)
 
 
