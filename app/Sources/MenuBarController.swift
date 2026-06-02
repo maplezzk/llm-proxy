@@ -12,6 +12,7 @@ class MenuBarController: NSObject {
     /// 菜单栏显示的端口（从 UserDefaults 读取，用户意图端口）
     private var currentPort: Int = APIClient.storedPort()
     private var pollTimer: Timer?
+    private var updateCheckTimer: Timer?
     private var pendingUpdate: UpdateInfo?
     private var isCheckingUpdate = false
     private var isDownloadingUpdate = false
@@ -873,17 +874,19 @@ class MenuBarController: NSObject {
 
     // MARK: - Update Actions
 
-    /// 应用启动时执行后台更新检查
+    /// 启动时立即检查更新，并启动 5 分钟间隔的定时检查
     @MainActor
     func checkForUpdatesOnLaunch() {
-        // 检查上次更新检查时间（24 小时间隔）
-        let lastCheck = UserDefaults.standard.object(forKey: "last-update-check") as? Date ?? .distantPast
-        if Date().timeIntervalSince(lastCheck) < 24 * 60 * 60 {
-            return
-        }
-
+        // 立即执行一次静默检查
         Task { @MainActor [weak self] in
             await self?.performUpdateCheck(silent: true)
+        }
+
+        // 每 5 分钟自动检查一次更新
+        updateCheckTimer = Timer.scheduledTimer(withTimeInterval: 5 * 60, repeats: true) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                await self?.performUpdateCheck(silent: true)
+            }
         }
     }
 
