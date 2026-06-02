@@ -12,6 +12,7 @@ class MenuBarController: NSObject {
     /// 菜单栏显示的端口（从 UserDefaults 读取，用户意图端口）
     private var currentPort: Int = APIClient.storedPort()
     private var pollTimer: Timer?
+    private var updateCheckTimer: Timer?
     private var pendingUpdate: UpdateInfo?
     private var isCheckingUpdate = false
     private var isDownloadingUpdate = false
@@ -298,43 +299,45 @@ class MenuBarController: NSObject {
         }
         menu.addItem(versionItem)
 
-        if isDownloadingUpdate {
-            // 下载进度行
-            let pct = Int(downloadProgress * 100)
-            let progressText = "\(loc("update.downloading")) \(pct)%"
-            let progressItem = NSMenuItem(title: progressText, action: nil, keyEquivalent: "")
-            progressItem.isEnabled = false
-            if #available(macOS 11.0, *) {
-                progressItem.image = NSImage(systemSymbolName: "arrow.down.circle.dotted", accessibilityDescription: nil)
+        if !isUpdateDismissed() {
+            if isDownloadingUpdate {
+                // 下载进度行
+                let pct = Int(downloadProgress * 100)
+                let progressText = "\(loc("update.downloading")) \(pct)%"
+                let progressItem = NSMenuItem(title: progressText, action: nil, keyEquivalent: "")
+                progressItem.isEnabled = false
+                if #available(macOS 11.0, *) {
+                    progressItem.image = NSImage(systemSymbolName: "arrow.down.circle.dotted", accessibilityDescription: nil)
+                }
+                let attrTitle = NSMutableAttributedString(string: progressText)
+                attrTitle.addAttribute(.foregroundColor, value: NSColor.systemBlue, range: NSRange(location: 0, length: attrTitle.length))
+                progressItem.attributedTitle = attrTitle
+                menu.addItem(progressItem)
+            } else if downloadCompletedURL != nil {
+                // 已下载，可安装
+                let installItem = NSMenuItem(title: loc("menu.installNow"), action: #selector(installDownloadedUpdate), keyEquivalent: "")
+                installItem.target = self
+                if #available(macOS 11.0, *) {
+                    installItem.image = NSImage(systemSymbolName: "arrow.down.circle.fill", accessibilityDescription: nil)
+                }
+                let attrTitle = NSMutableAttributedString(string: loc("menu.installNow"))
+                attrTitle.addAttribute(.foregroundColor, value: NSColor.systemGreen, range: NSRange(location: 0, length: attrTitle.length))
+                attrTitle.addAttribute(.font, value: NSFont.systemFont(ofSize: 13, weight: .semibold), range: NSRange(location: 0, length: attrTitle.length))
+                installItem.attributedTitle = attrTitle
+                menu.addItem(installItem)
+            } else if let update = pendingUpdate {
+                // 有可用更新（未下载）
+                let updateAvailableItem = NSMenuItem(title: loc("menu.updatesAvailable", update.version), action: #selector(downloadAndInstallUpdate), keyEquivalent: "")
+                updateAvailableItem.target = self
+                let attrTitle = NSMutableAttributedString(string: loc("menu.updatesAvailable", update.version))
+                attrTitle.addAttribute(.foregroundColor, value: NSColor.systemOrange, range: NSRange(location: 0, length: attrTitle.length))
+                attrTitle.addAttribute(.font, value: NSFont.systemFont(ofSize: 13, weight: .semibold), range: NSRange(location: 0, length: attrTitle.length))
+                updateAvailableItem.attributedTitle = attrTitle
+                if #available(macOS 11.0, *) {
+                    updateAvailableItem.image = NSImage(systemSymbolName: "arrow.down.circle.fill", accessibilityDescription: nil)
+                }
+                menu.addItem(updateAvailableItem)
             }
-            let attrTitle = NSMutableAttributedString(string: progressText)
-            attrTitle.addAttribute(.foregroundColor, value: NSColor.systemBlue, range: NSRange(location: 0, length: attrTitle.length))
-            progressItem.attributedTitle = attrTitle
-            menu.addItem(progressItem)
-        } else if downloadCompletedURL != nil {
-            // 已下载，可安装
-            let installItem = NSMenuItem(title: loc("menu.installNow"), action: #selector(installDownloadedUpdate), keyEquivalent: "")
-            installItem.target = self
-            if #available(macOS 11.0, *) {
-                installItem.image = NSImage(systemSymbolName: "arrow.down.circle.fill", accessibilityDescription: nil)
-            }
-            let attrTitle = NSMutableAttributedString(string: loc("menu.installNow"))
-            attrTitle.addAttribute(.foregroundColor, value: NSColor.systemGreen, range: NSRange(location: 0, length: attrTitle.length))
-            attrTitle.addAttribute(.font, value: NSFont.systemFont(ofSize: 13, weight: .semibold), range: NSRange(location: 0, length: attrTitle.length))
-            installItem.attributedTitle = attrTitle
-            menu.addItem(installItem)
-        } else if let update = pendingUpdate {
-            // 有可用更新（未下载）
-            let updateAvailableItem = NSMenuItem(title: loc("menu.updatesAvailable", update.version), action: #selector(downloadAndInstallUpdate), keyEquivalent: "")
-            updateAvailableItem.target = self
-            let attrTitle = NSMutableAttributedString(string: loc("menu.updatesAvailable", update.version))
-            attrTitle.addAttribute(.foregroundColor, value: NSColor.systemOrange, range: NSRange(location: 0, length: attrTitle.length))
-            attrTitle.addAttribute(.font, value: NSFont.systemFont(ofSize: 13, weight: .semibold), range: NSRange(location: 0, length: attrTitle.length))
-            updateAvailableItem.attributedTitle = attrTitle
-            if #available(macOS 11.0, *) {
-                updateAvailableItem.image = NSImage(systemSymbolName: "arrow.down.circle.fill", accessibilityDescription: nil)
-            }
-            menu.addItem(updateAvailableItem)
         }
 
         let checkItem = NSMenuItem(title: loc("action.checkForUpdates"), action: #selector(checkForUpdates), keyEquivalent: "")
@@ -873,17 +876,22 @@ class MenuBarController: NSObject {
 
     // MARK: - Update Actions
 
-    /// 应用启动时执行后台更新检查
+    /// 启动时立即检查更新，并启动 5 分钟间隔的定时检查（受自动更新开关控制）
     @MainActor
     func checkForUpdatesOnLaunch() {
-        // 检查上次更新检查时间（24 小时间隔）
-        let lastCheck = UserDefaults.standard.object(forKey: "last-update-check") as? Date ?? .distantPast
-        if Date().timeIntervalSince(lastCheck) < 24 * 60 * 60 {
-            return
+        // 立即执行一次静默检查
+        if isAutoUpdateEnabled() {
+            Task { @MainActor [weak self] in
+                await self?.performUpdateCheck(silent: true)
+            }
         }
 
-        Task { @MainActor [weak self] in
-            await self?.performUpdateCheck(silent: true)
+        // 每 5 分钟自动检查一次更新
+        updateCheckTimer = Timer.scheduledTimer(withTimeInterval: 5 * 60, repeats: true) { [weak self] _ in
+            guard let self, self.isAutoUpdateEnabled() else { return }
+            Task { @MainActor [weak self] in
+                await self?.performUpdateCheck(silent: true)
+            }
         }
     }
 
@@ -923,6 +931,9 @@ class MenuBarController: NSObject {
                     alert.addButton(withTitle: "Cancel")
                     if alert.runModal() == .alertFirstButtonReturn {
                         await performDownloadAndInstall(update)
+                    } else {
+                        // 用户点了 Cancel，24 小时内不再提醒
+                        dismissUpdateReminder(version: update.version)
                     }
                 }
             } else {
@@ -960,6 +971,32 @@ class MenuBarController: NSObject {
         }
     }
 
+    /// 24 小时内是否已延迟过此版本更新提醒
+    private func isUpdateDismissed() -> Bool {
+        let dismissedVersion = UserDefaults.standard.string(forKey: "update-dismissed-version")
+        let dismissedDate = UserDefaults.standard.object(forKey: "update-dismissed-date") as? Date
+        guard let dismissedVersion, let dismissedDate else { return false }
+        // 版本不同（有新版本了），清除延迟状态
+        let latestVersion = pendingUpdate?.version ?? ""
+        if latestVersion != dismissedVersion { return false }
+        return Date().timeIntervalSince(dismissedDate) < 24 * 60 * 60
+    }
+
+    /// 延迟提醒：24 小时内不再提醒此版本更新
+    private func dismissUpdateReminder(version: String) {
+        UserDefaults.standard.set(version, forKey: "update-dismissed-version")
+        UserDefaults.standard.set(Date(), forKey: "update-dismissed-date")
+        rebuildMenu()
+    }
+
+    /// 是否启用自动检查更新（默认启用）
+    private func isAutoUpdateEnabled() -> Bool {
+        if UserDefaults.standard.object(forKey: "llm-proxy-auto-update-enabled") == nil {
+            return true
+        }
+        return UserDefaults.standard.bool(forKey: "llm-proxy-auto-update-enabled")
+    }
+
     /// 安装已下载的更新
     @MainActor @objc func installDownloadedUpdate() {
         guard let localURL = downloadCompletedURL else { return }
@@ -995,9 +1032,12 @@ class MenuBarController: NSObject {
             alert.messageText = loc("update.downloadComplete")
             alert.informativeText = loc("update.installPrompt", update.version)
             alert.addButton(withTitle: loc("action.install"))
-            alert.addButton(withTitle: "Later")
+            alert.addButton(withTitle: loc("action.later24h"))
             if alert.runModal() == .alertFirstButtonReturn {
                 await performInstall(localURL, version: update.version)
+            } else {
+                // 用户选了 Later，24 小时内不再提醒
+                dismissUpdateReminder(version: update.version)
             }
         } catch {
             isDownloadingUpdate = false

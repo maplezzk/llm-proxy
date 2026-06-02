@@ -40,6 +40,7 @@
 "action.retry" = "重试";
 "menu.installNow" = "⬇ 立即安装";
 "update.installFailed" = "安装失败: %@";
+"action.later24h" = "24小时后提醒";
 
 "action.save" = "保存";
 "action.cancel" = "取消";
@@ -244,6 +245,8 @@
 "settings.portInvalid" = "端口号需在 1-65535 之间";
 "settings.proxyKeySaved" = "代理密钥已保存";
 "settings.proxyKeyRemoved" = "代理密钥已移除";
+"settings.autoUpdate" = "自动检查更新";
+"settings.autoUpdateDesc" = "每 5 分钟自动检查更新";
 
 // Menu
 "menu.about" = "关于 LLM Proxy";

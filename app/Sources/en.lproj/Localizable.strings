@@ -39,6 +39,7 @@
 "action.retry" = "Retry";
 "menu.installNow" = "⬇ Install Now";
 "update.installFailed" = "Installation failed: %@";
+"action.later24h" = "Later (24h)";
 "action.save" = "Save";
 "action.cancel" = "Cancel";
 "action.port" = "Port: %@";
@@ -221,6 +222,8 @@
 "settings.portInvalid" = "Port must be 1-65535";
 "settings.proxyKeySaved" = "Proxy key saved";
 "settings.proxyKeyRemoved" = "Proxy key removed";
+"settings.autoUpdate" = "Auto Update Check";
+"settings.autoUpdateDesc" = "Automatically check for updates every 5 minutes";
 "menu.about" = "About LLM Proxy";
 "menu.settings" = "Settings…";
 "menu.hide" = "Hide LLM Proxy";

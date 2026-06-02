@@ -92,6 +92,13 @@ struct SettingsView: View {
 
                 Divider().padding(.horizontal, 24)
 
+                // 自动检查更新
+                settingsSection {
+                    AutoUpdateToggleRow()
+                }
+
+                Divider().padding(.horizontal, 24)
+
                 // 语言
                 settingsSection {
                     settingsRow(
@@ -190,6 +197,38 @@ struct SettingsView: View {
         }
         .padding(.horizontal, 24)
         .padding(.vertical, 14)
+    }
+
+    // MARK: - Auto Update
+
+    private struct AutoUpdateToggleRow: View {
+        @AppStorage("llm-proxy-auto-update-enabled") private var autoUpdateEnabled: Bool = true
+
+        var body: some View {
+            HStack(spacing: 12) {
+                Image(systemName: "arrow.triangle.2.circlepath")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundColor(.white)
+                    .frame(width: 30, height: 30)
+                    .background(Color.teal, in: RoundedRectangle(cornerRadius: 7))
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(loc("settings.autoUpdate"))
+                        .font(.body)
+                    Text(autoUpdateEnabled ? loc("settings.autoUpdateDesc") : loc("settings.autoUpdate"))
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+
+                Spacer()
+
+                Toggle("", isOn: $autoUpdateEnabled)
+                    .toggleStyle(.switch)
+                    .labelsHidden()
+            }
+            .padding(.horizontal, 24)
+            .padding(.vertical, 14)
+        }
     }
 
     // MARK: - Load
