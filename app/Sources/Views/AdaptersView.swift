@@ -35,11 +35,7 @@ struct AdaptersView: View {
                 .buttonStyle(.borderedProminent)
                 .controlSize(.regular)
 
-                Button(action: { Task { await viewModel.load() } }) {
-                    Image(systemName: "arrow.clockwise")
-                }
-                .buttonStyle(.borderless)
-                .disabled(viewModel.isLoading)
+
             }
             .padding(.horizontal, 20)
             .padding(.vertical, 12)

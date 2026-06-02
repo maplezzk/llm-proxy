@@ -7,7 +7,7 @@
 "status.cannotConnect" = "无法连接到 llm-proxy";
 "action.refresh" = "刷新";
 "action.logLevel" = "日志级别: %@";
-"action.openAdmin" = "打开 Admin UI";
+"action.openAdmin" = "打开 Web UI";
 "action.openLogs" = "打开日志目录";
 "action.reloadConfig" = "重载配置";
 "status.configReloaded" = "✅ 配置已重载";

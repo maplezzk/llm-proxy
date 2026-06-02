@@ -7,7 +7,7 @@
 "status.cannotConnect" = "Cannot connect to llm-proxy";
 "action.refresh" = "Refresh";
 "action.logLevel" = "Log Level: %@";
-"action.openAdmin" = "Open Admin UI";
+"action.openAdmin" = "Open Web UI";
 "action.openLogs" = "Open Logs Folder";
 "action.reloadConfig" = "Reload Config";
 "status.configReloaded" = "✅ Config reloaded successfully";
