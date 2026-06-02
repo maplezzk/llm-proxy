@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.16.2](https://github.com/maplezzk/llm-proxy/compare/v0.16.1...v0.16.2) (2026-06-02)
+
+
+### Bug Fixes
+
+* macOS 控制台 UI 多项问题修复 ([#127](https://github.com/maplezzk/llm-proxy/issues/127)) ([5bb003e](https://github.com/maplezzk/llm-proxy/commit/5bb003e96f689869beeb9b73d1e52ad68b8a649a))
+
 ## [0.16.1](https://github.com/maplezzk/llm-proxy/compare/v0.16.0...v0.16.1) (2026-06-01)
 
 
