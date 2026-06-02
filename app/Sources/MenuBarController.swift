@@ -922,8 +922,9 @@ class MenuBarController: NSObject {
                 pendingUpdate = update
                 rebuildMenu()
 
-                // 静默检查时不弹通知，只更新菜单标记
-                if !silent {
+                // 有新版本时弹窗确认下载（静默检查受 24h 延迟限制）
+                let shouldAlert = !silent || !isUpdateDismissed()
+                if shouldAlert {
                     let alert = NSAlert()
                     alert.messageText = loc("update.available")
                     alert.informativeText = loc("update.downloadConfirm", update.version)
