@@ -237,7 +237,7 @@ class MenuBarController: NSObject {
         // 端口设置（子菜单）
         let portItem = NSMenuItem(title: loc("action.port", String(currentPort)), action: nil, keyEquivalent: "")
         if #available(macOS 11.0, *) {
-            portItem.image = NSImage(systemSymbolName: "network", accessibilityDescription: loc("action.port", String(currentPort)))
+            portItem.image = NSImage(systemSymbolName: "number", accessibilityDescription: loc("action.port", String(currentPort)))
         }
         let portMenu = NSMenu()
         // 常用端口快捷选项
@@ -275,7 +275,7 @@ class MenuBarController: NSObject {
         let langLabel = currentLang == "zh" ? "中文" : "English"
         let langItem = NSMenuItem(title: loc("action.language", langLabel), action: nil, keyEquivalent: "")
         if #available(macOS 11.0, *) {
-            langItem.image = NSImage(systemSymbolName: "globe", accessibilityDescription: loc("action.language", langLabel))
+            langItem.image = NSImage(systemSymbolName: "character.book.closed", accessibilityDescription: loc("action.language", langLabel))
         }
         let langMenu = NSMenu()
         for (langCode, langName) in [("zh", "中文"), ("en", "English")] {
@@ -396,6 +396,11 @@ class MenuBarController: NSObject {
     }
 
     @MainActor @objc func openConsole() {
+        if let existing = consoleWindowController, existing.window?.isVisible == true {
+            existing.window?.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            return
+        }
         let controller = ConsoleWindowController()
         consoleWindowController = controller
         controller.show()
@@ -713,6 +718,7 @@ class MenuBarController: NSObject {
 
     @objc func quitApp() {
         stopSync()
+        (NSApp.delegate as? AppDelegate)?.shouldReallyQuit = true
         NSApplication.shared.terminate(nil)
     }
 

@@ -25,8 +25,30 @@ class ConsoleWindowController: NSWindowController {
     func show() {
         guard let window = window else { return }
         setupMainMenu()
+        // 显示 Dock 图标
+        NSApp.setActivationPolicy(.regular)
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+
+        // 窗口关闭时隐藏 Dock 图标
+        NotificationCenter.default.addObserver(
+            forName: NSWindow.willCloseNotification,
+            object: window,
+            queue: .main
+        ) { [weak self] _ in
+            // willClose 时窗口尚未隐藏，延迟到下一个 runloop 再检查
+            DispatchQueue.main.async {
+                self?.windowDidClose()
+            }
+        }
+    }
+
+    private func windowDidClose() {
+        // 所有窗口关闭后恢复为 accessory（仅菜单栏）
+        let visibleWindows = NSApp.windows.filter { $0.isVisible && !$0.className.contains("StatusBar") }
+        if visibleWindows.isEmpty {
+            NSApp.setActivationPolicy(.accessory)
+        }
     }
 
     // MARK: - Main Menu

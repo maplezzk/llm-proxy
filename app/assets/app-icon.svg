@@ -10,7 +10,5 @@
   <!-- Connecting lines (thick, rounded) -->
   <line x1="180" y1="165" x2="332" y2="234" stroke="#a5b4fc" stroke-width="24" stroke-linecap="round"/>
   <line x1="180" y1="347" x2="332" y2="278" stroke="#a5b4fc" stroke-width="24" stroke-linecap="round"/>
-  
-  <!-- Center hub -->
-  <circle cx="256" cy="256" r="28" fill="#c7d2fe"/>
+
 </svg>

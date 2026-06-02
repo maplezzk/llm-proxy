@@ -40,6 +40,7 @@ struct AdapterFormView: View {
                                 Text(type.1).tag(type.0)
                             }
                         }
+                        .labelsHidden()
                         .pickerStyle(.segmented)
                     }
 
@@ -65,7 +66,7 @@ struct AdapterFormView: View {
                             }
                             .pickerStyle(.menu)
                             .labelsHidden()
-                            .frame(maxWidth: 180)
+                            .fixedSize()
 
                             Button(action: { vm.bulkImportModels() }) {
                                 Text(loc("adapter.importFromProvider"))
@@ -185,7 +186,7 @@ struct AdapterFormView: View {
             .buttonStyle(.plain)
             .padding(.top, 16)
         }
-        .padding(8)
+        .padding(.vertical, 8)
         .background(Color(nsColor: .controlBackgroundColor).opacity(0.5))
         .cornerRadius(6)
     }
