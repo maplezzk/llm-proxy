@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.16.3](https://github.com/maplezzk/llm-proxy/compare/v0.16.2...v0.16.3) (2026-06-02)
+
+
+### Bug Fixes
+
+* 定时检查也弹窗提示（受24h延迟限制） ([#131](https://github.com/maplezzk/llm-proxy/issues/131)) ([e071add](https://github.com/maplezzk/llm-proxy/commit/e071adde44430f78a663efc8cde017be3da6974a))
+* 更新检查优化 — 5分钟定时检查 + Later延迟24h + 自动更新开关 ([#129](https://github.com/maplezzk/llm-proxy/issues/129)) ([256186f](https://github.com/maplezzk/llm-proxy/commit/256186fa4274e181d5a64094ca6516ca0409b3aa))
+
 ## [0.16.2](https://github.com/maplezzk/llm-proxy/compare/v0.16.1...v0.16.2) (2026-06-02)
 
 
