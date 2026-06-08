@@ -614,6 +614,232 @@ describe('proxy/translation', () => {
       // 后续 assistant 不应该丢失
       assert.ok(msgs.some((m) => m.role === 'assistant' && m.content === '完成'), '后续 assistant 消息应保留')
     })
+
+    // ---- Bug 1 验证：Anthropic base64 image → OpenAI image_url 必须拼 data URI ----
+    it('Anthropic user message 含 base64 image → OpenAI image_url 拼 data URI 前缀', async () => {
+      const result = await transformInboundRequest('anthropic', openaiRoute, {
+        model: 'claude-sonnet',
+        messages: [
+          {
+            role: 'user',
+            content: [
+              { type: 'text', text: '看这张图' },
+              {
+                type: 'image',
+                source: { type: 'base64', media_type: 'image/png', data: 'iVBORw0KGgo' },
+              },
+            ],
+          },
+        ],
+      })
+      const msgs = result.body.messages as Array<Record<string, unknown>>
+      const userMsg = msgs[0]
+      const parts = userMsg.content as Array<Record<string, unknown>>
+      assert.strictEqual(parts.length, 2)
+      const imgPart = parts[1]
+      assert.strictEqual(imgPart.type, 'image_url')
+      const imageUrl = (imgPart.image_url as Record<string, unknown>).url
+      assert.ok(typeof imageUrl === 'string' && imageUrl.startsWith('data:image/png;base64,'), 'image_url 必须是 data URI')
+      assert.ok((imageUrl as string).endsWith('iVBORw0KGgo'), 'base64 数据应保留')
+    })
+
+    it('Anthropic user message 含 URL image → OpenAI image_url 保留原 URL', async () => {
+      const result = await transformInboundRequest('anthropic', openaiRoute, {
+        model: 'claude-sonnet',
+        messages: [
+          {
+            role: 'user',
+            content: [
+              { type: 'image', source: { type: 'url', url: 'https://example.com/cat.png' } },
+            ],
+          },
+        ],
+      })
+      const msgs = result.body.messages as Array<Record<string, unknown>>
+      const parts = msgs[0].content as Array<Record<string, unknown>>
+      assert.strictEqual(parts[0].type, 'image_url')
+      assert.strictEqual((parts[0].image_url as Record<string, unknown>).url, 'https://example.com/cat.png')
+    })
+
+    // ---- Bug 5 验证：Anthropic tool message 含 image → OpenAI 保留 image_url 块 ----
+    it('Anthropic tool message 含 base64 image → OpenAI tool message 含 image_url 块（不再降级文本）', async () => {
+      const result = await transformInboundRequest('anthropic', openaiRoute, {
+        model: 'claude-sonnet',
+        messages: [
+          { role: 'user', content: 'take a screenshot' },
+          {
+            role: 'assistant',
+            content: [
+              { type: 'text', text: '好的' },
+              { type: 'tool_use', id: 'call_1', name: 'computer', input: { action: 'screenshot' } },
+            ],
+          },
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'tool_result',
+                tool_use_id: 'call_1',
+                content: [
+                  { type: 'text', text: '截图见下' },
+                  { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: '/9j/abc' } },
+                ],
+              },
+            ],
+          },
+        ],
+      })
+      const msgs = result.body.messages as Array<Record<string, unknown>>
+      // 转换后 tool_result 块被转为 OpenAI tool 角色消息，content 是数组以保留 image_url 块
+      const toolMsg = msgs.find((m) => m.role === 'tool')
+      assert.ok(toolMsg, '应产生 tool role 消息')
+      const toolContent = toolMsg!.content
+      assert.ok(Array.isArray(toolContent), 'tool content 应是数组以保留 image_url')
+      const imgPart = (toolContent as Array<Record<string, unknown>>).find((c) => c.type === 'image_url')
+      assert.ok(imgPart, 'tool content 应含 image_url 块')
+      const url = (imgPart!.image_url as Record<string, unknown>).url
+      assert.ok((url as string).startsWith('data:image/jpeg;base64,'), '应拼 data URI')
+      // tool_result 原内容（text 块）也应该在 tool 消息中
+      const textPart = (toolContent as Array<Record<string, unknown>>).find((c) => c.type === 'text')
+      assert.ok(textPart, 'tool content 应保留 text 块')
+    })
+
+    // ---- Bug 3 验证：OpenAI Chat tool message 含 image_url → Anthropic tool_result 用 image 块 ----
+    it('OpenAI Chat tool message 含 image_url 块 → Anthropic tool_result 用 image 块（不再原样转发）', async () => {
+      const result = await transformInboundRequest('openai', anthropicRoute, {
+        model: 'gpt-4o',
+        messages: [
+          { role: 'user', content: 'look' },
+          {
+            role: 'assistant',
+            content: null,
+            tool_calls: [{ id: 'call_1', type: 'function', function: { name: 'computer', arguments: '{}' } }],
+          },
+          {
+            role: 'tool',
+            tool_call_id: 'call_1',
+            content: [
+              { type: 'text', text: '截图如下' },
+              { type: 'image_url', image_url: { url: 'https://example.com/desktop.png' } },
+            ],
+          },
+        ],
+      })
+      const msgs = result.body.messages as Array<Record<string, unknown>>
+      // tool_result 必须在 user 消息中
+      const toolUserMsg = msgs.find((m) =>
+        Array.isArray(m.content) &&
+        (m.content as Array<Record<string, unknown>>).some((c) => c.type === 'tool_result')
+      )
+      assert.ok(toolUserMsg, '应含 tool_result user 消息')
+      const tr = (toolUserMsg!.content as Array<Record<string, unknown>>)
+        .find((c) => c.type === 'tool_result')!
+      const trContent = tr.content as Array<Record<string, unknown>>
+      const imgBlock = trContent.find((c) => c.type === 'image')
+      assert.ok(imgBlock, 'tool_result content 应含 Anthropic image 块')
+      const source = (imgBlock as Record<string, unknown>).source as Record<string, unknown>
+      assert.strictEqual(source.type, 'url')
+      assert.strictEqual(source.url, 'https://example.com/desktop.png')
+      // 不应保留 image_url 块
+      assert.ok(!trContent.some((c) => c.type === 'image_url'), '不应保留 OpenAI 的 image_url 块')
+    })
+
+    it('OpenAI Chat user message 含 image_url 块 → Anthropic user image 块', async () => {
+      const result = await transformInboundRequest('openai', anthropicRoute, {
+        model: 'gpt-4o',
+        messages: [
+          {
+            role: 'user',
+            content: [
+              { type: 'text', text: '看图' },
+              { type: 'image_url', image_url: { url: 'https://example.com/cat.jpg', detail: 'high' } },
+            ],
+          },
+        ],
+      })
+      const msgs = result.body.messages as Array<Record<string, unknown>>
+      assert.strictEqual(msgs[0].role, 'user')
+      const parts = msgs[0].content as Array<Record<string, unknown>>
+      assert.strictEqual(parts.length, 2)
+      assert.strictEqual(parts[1].type, 'image')
+      const source = (parts[1] as Record<string, unknown>).source as Record<string, unknown>
+      assert.strictEqual(source.type, 'url')
+      assert.strictEqual(source.url, 'https://example.com/cat.jpg')
+    })
+
+    // ---- Bug 4 验证：OpenAI Chat user message 含 image_url → Responses input_image ----
+    it('OpenAI Chat user message 含 image_url → Responses input_image（image_url 变 string）', async () => {
+      const result = await transformInboundRequest('openai', {
+        providerName: 'responses-main',
+        providerType: 'openai-responses' as const,
+        apiKey: 'sk-resp-1',
+        apiBase: 'https://api.openai.com',
+        modelId: 'gpt-4o',
+      }, {
+        model: 'gpt-4o',
+        messages: [
+          {
+            role: 'user',
+            content: [
+              { type: 'text', text: '描述图片' },
+              { type: 'image_url', image_url: { url: 'https://example.com/x.png', detail: 'high' } },
+            ],
+          },
+        ],
+      })
+      const input = result.body.input as Array<Record<string, unknown>>
+      const msg = input.find((i) => i.type === 'message' && i.role === 'user')
+      assert.ok(msg)
+      const content = msg!.content as Array<Record<string, unknown>>
+      const imgBlock = content.find((c) => c.type === 'input_image')
+      assert.ok(imgBlock, '应含 input_image 块')
+      assert.strictEqual(imgBlock!.image_url, 'https://example.com/x.png')
+      assert.strictEqual(imgBlock!.detail, 'high')
+    })
+
+    // ---- Bug 2 验证：Responses input_image with file_id 降级为占位文本 ----
+    it('Responses input_image with file_id → Anthropic [image:file_id=xxx] 占位文本', async () => {
+      const result = await transformInboundRequest('openai-responses', anthropicRoute, {
+        model: 'gpt-4o',
+        input: [
+          {
+            type: 'message',
+            role: 'user',
+            content: [
+              { type: 'input_text', text: '看图' },
+              { type: 'input_image', file_id: 'file-abc123' },
+            ],
+          },
+        ],
+      })
+      const msgs = result.body.messages as Array<Record<string, unknown>>
+      // 全是文本块会被 collapse 成字符串
+      const userContent = msgs[0].content
+      const text = typeof userContent === 'string' ? userContent : ''
+      assert.ok(text.includes('[image:file_id=file-abc123]'), '应含 file_id 占位文本')
+    })
+
+    it('Responses input_image with image_url object { url, detail } → Anthropic image URL', async () => {
+      const result = await transformInboundRequest('openai-responses', anthropicRoute, {
+        model: 'gpt-4o',
+        input: [
+          {
+            type: 'message',
+            role: 'user',
+            content: [
+              { type: 'input_image', image_url: { url: 'https://example.com/cat.png', detail: 'high' } },
+            ],
+          },
+        ],
+      })
+      const msgs = result.body.messages as Array<Record<string, unknown>>
+      const content = msgs[0].content as Array<Record<string, unknown>>
+      const imgBlock = content.find((c) => c.type === 'image')
+      assert.ok(imgBlock, '应含 image 块')
+      const source = (imgBlock as Record<string, unknown>).source as Record<string, unknown>
+      assert.strictEqual(source.type, 'url')
+      assert.strictEqual(source.url, 'https://example.com/cat.png')
+    })
   })
 })
 

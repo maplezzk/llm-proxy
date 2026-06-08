@@ -341,13 +341,25 @@ function convertResponsesInputToMessages(input: unknown[]): unknown[] {
           }
           // input_image → image (Anthropic-style)
           if (block.type === 'input_image') {
-            // Responses input_image uses {type:"input_image", image_url:"..."} or {type:"input_image", detail, file_id}
-            // Convert to Anthropic image format
-            const imageUrl = block.image_url as string | undefined
+            // Responses input_image 实际是三种形态：
+            // 1) { image_url: "https://..." 或 "data:..." } （string）
+            // 2) { image_url: { url, detail } }            （object 形式）
+            // 3) { file_id: "file-xxx" }                  （Files API 上传后引用）
+            // 优先用 image_url，无则用 file_id 降级为占位文本
+            const fileId = block.file_id as string | undefined
+            const rawImageUrl = block.image_url
+            let imageUrl: string | undefined
+            if (typeof rawImageUrl === 'string') {
+              imageUrl = rawImageUrl
+            } else if (rawImageUrl && typeof rawImageUrl === 'object') {
+              imageUrl = (rawImageUrl as Record<string, unknown>).url as string | undefined
+            }
             if (imageUrl) {
               return { type: 'image', source: { type: 'url', url: imageUrl } }
             }
-            // If it uses file_id, skip (Anthropic doesn't support file_id directly)
+            if (fileId) {
+              return { type: 'text', text: `[image:file_id=${fileId}]` }
+            }
             return { type: 'text', text: '[image]' }
           }
           // input_file → text placeholder (no direct Chat/Anthropic equivalent)
@@ -418,9 +430,20 @@ function convertResponsesInputToMessages(input: unknown[]): unknown[] {
             return { type: 'text', text: block.text }
           }
           if (block.type === 'input_image') {
-            const imageUrl = block.image_url as string | undefined
+            // 与 user 消息中的 input_image 处理保持一致
+            const fileId = block.file_id as string | undefined
+            const rawImageUrl = block.image_url
+            let imageUrl: string | undefined
+            if (typeof rawImageUrl === 'string') {
+              imageUrl = rawImageUrl
+            } else if (rawImageUrl && typeof rawImageUrl === 'object') {
+              imageUrl = (rawImageUrl as Record<string, unknown>).url as string | undefined
+            }
             if (imageUrl) {
               return { type: 'image', source: { type: 'url', url: imageUrl } }
+            }
+            if (fileId) {
+              return { type: 'text', text: `[image:file_id=${fileId}]` }
             }
             return { type: 'text', text: '[image]' }
           }
@@ -455,6 +478,38 @@ function convertResponsesInputToMessages(input: unknown[]): unknown[] {
     }
   }
   return messages
+}
+
+/**
+ * 把 OpenAI Chat Completions 风格的 image_url 块转成 OpenAI Responses 的 input_image 块。
+ * Chat: { type: "image_url", image_url: { url: "https://..." 或 "data:...", detail: "auto" } }
+ * Responses: { type: "input_image", image_url: "https://..." 或 "data:...", detail: "auto"? }
+ * Responses 的 image_url 字段是 string（Chat 的是 object），detail 是平级属性。
+ * 其它块原样透传。
+ */
+function convertOpenAIChatImageUrlToResponsesInputImage(block: Record<string, unknown>): Record<string, unknown> {
+  if (block.type === 'image_url') {
+    const imageUrl = block.image_url
+    let url: string | undefined
+    let detail: string | undefined
+    if (typeof imageUrl === 'string') {
+      url = imageUrl
+    } else if (imageUrl && typeof imageUrl === 'object') {
+      const obj = imageUrl as Record<string, unknown>
+      url = obj.url as string | undefined
+      detail = obj.detail as string | undefined
+    }
+    if (url) {
+      const result: Record<string, unknown> = {
+        type: 'input_image',
+        image_url: url,
+      }
+      if (detail) result.detail = detail
+      return result
+    }
+    return { type: 'input_text', text: '[image]' }
+  }
+  return block
 }
 
 /**
@@ -542,19 +597,49 @@ function convertMessagesToResponsesInput(messages: unknown[]): unknown[] {
 
         // Emit remaining non-tool_result blocks as message items
         if (otherBlocks.length > 0) {
-          const textBlocks = otherBlocks.filter((b) => b.type === 'text' || b.type === 'input_text')
-          const text = textBlocks.map((b) => b.text ?? '').join('')
-          if (text || otherBlocks.length !== textBlocks.length) {
+          // 转换 Anthropic image 块 和 OpenAI Chat image_url 块 → Responses input_image 块
+          const blocks = (otherBlocks as Array<Record<string, unknown>>).map((b) => {
+            // Anthropic 风格的 image 块
+            if (b.type === 'image' && (b as Record<string, unknown>).source) {
+              const source = (b as Record<string, unknown>).source as Record<string, unknown>
+              if (source.type === 'url' && source.url) {
+                return { type: 'input_image', image_url: source.url as string }
+              }
+              if (source.type === 'base64' && source.data) {
+                const mediaType = (source.media_type as string) || 'image/png'
+                return { type: 'input_image', image_url: `data:${mediaType};base64,${source.data}` }
+              }
+              return { type: 'input_text', text: '[image]' }
+            }
+            // OpenAI Chat 风格的 image_url 块
+            return convertOpenAIChatImageUrlToResponsesInputImage(b)
+          })
+          const textBlocks = blocks.filter((b) => b.type === 'text' || b.type === 'input_text')
+          const text = textBlocks.map((b) => (b.text as string) ?? '').join('')
+          if (text || blocks.length !== textBlocks.length) {
             input.push({
               type: 'message',
               role: m.role ?? 'user',
-              content: otherBlocks,
+              content: blocks,
             })
           }
         }
       } else {
         // user, developer, etc. (non-Anthropic format)
-        input.push({ type: 'message', role: m.role ?? 'user', content: m.content })
+        // content 数组中可能有 OpenAI Chat 风格的 image_url 块，需转成 Responses 的 input_image
+        if (Array.isArray(m.content)) {
+          const blocks = (m.content as Array<Record<string, unknown>>).map(convertOpenAIChatImageUrlToResponsesInputImage)
+          const textBlocks = blocks.filter((b) => b.type === 'text' || b.type === 'input_text')
+          const allText = blocks.every((b) => b.type === 'text' || b.type === 'input_text')
+          if (allText) {
+            // 全部文本 → 用 Responses 的 input_text 块 (更规范)
+            input.push({ type: 'message', role: m.role ?? 'user', content: blocks })
+          } else if (textBlocks.length > 0 || blocks.length > 0) {
+            input.push({ type: 'message', role: m.role ?? 'user', content: blocks })
+          }
+        } else {
+          input.push({ type: 'message', role: m.role ?? 'user', content: m.content })
+        }
       }
     }
   }
@@ -642,6 +727,31 @@ function extractFullAnthropic(body: Record<string, unknown>): FullParams {
   }
 }
 
+/**
+ * 把 OpenAI Chat Completions 风格的 content 块（image_url）转成 Anthropic 风格的 content 块（image）。
+ * Chat API 的 image_url 必须是对象 { url, detail? }，但也兼容裸 string（历史 SDK/代理常见）。
+ * 不识别的块原样透传。
+ */
+function convertOpenAIContentBlockToAnthropic(block: Record<string, unknown>): Record<string, unknown> {
+  if (block.type === 'image_url') {
+    const imageUrl = block.image_url
+    let url: string | undefined
+    if (typeof imageUrl === 'string') {
+      url = imageUrl
+    } else if (imageUrl && typeof imageUrl === 'object') {
+      url = (imageUrl as Record<string, unknown>).url as string | undefined
+    }
+    if (url) {
+      return { type: 'image', source: { type: 'url', url } }
+    }
+    return { type: 'text', text: '[image]' }
+  }
+  if (block.type === 'text') {
+    return { type: 'text', text: (block.text as string) ?? '' }
+  }
+  return block
+}
+
 function convertMessagesToAnthropic(messages: unknown[]): unknown[] {
   const result: unknown[] = []
   let i = 0
@@ -659,9 +769,13 @@ function convertMessagesToAnthropic(messages: unknown[]): unknown[] {
         toolResults.push({
           type: 'tool_result',
           tool_use_id: cur.tool_call_id,
-          content: typeof cur.content === 'string' || Array.isArray(cur.content)
+          // content 可以是字符串、Anthropic 风格 content 数组、OpenAI 风格 content 数组
+          // OpenAI 风格里可能有 image_url 块，需要转成 Anthropic image 块
+          content: typeof cur.content === 'string'
             ? cur.content
-            : JSON.stringify(cur.content),
+            : Array.isArray(cur.content)
+              ? (cur.content as Array<Record<string, unknown>>).map(convertOpenAIContentBlockToAnthropic)
+              : JSON.stringify(cur.content),
         })
         i++
       }
@@ -677,6 +791,19 @@ function convertMessagesToAnthropic(messages: unknown[]): unknown[] {
     }
 
     if (m.role !== 'assistant') {
+      // user / system 消息的 content 数组中可能有 OpenAI Chat 风格的 image_url 块，
+      // 需要转成 Anthropic image 块；其它块原样透传
+      if (Array.isArray(m.content)) {
+        const converted = (m.content as Array<Record<string, unknown>>).map(convertOpenAIContentBlockToAnthropic)
+        // 整条内容中所有块都是 text 时可以压平为字符串（Anthropic 接受 string content）
+        if (converted.every((b) => b.type === 'text')) {
+          result.push({ ...m, content: (converted as Array<Record<string, unknown>>).map((b) => b.text ?? '').join('') })
+        } else {
+          result.push({ ...m, content: converted })
+        }
+        i++
+        continue
+      }
       result.push(m)
       i++
       continue
@@ -763,6 +890,28 @@ function buildAnthropicFromOpenAI(params: FullParams): Record<string, unknown> {
   return body
 }
 
+/**
+ * Anthropic image content block → OpenAI image_url content block.
+ * - source.type === 'url': url 直接透传
+ * - source.type === 'base64': 必须拼成 data:{media_type};base64,{data} 形式
+ *   OpenAI Chat Completions API 的 image_url.url 不接受裸 base64
+ * - 都没有：返回 null（调用方自行降级为占位文本）
+ */
+function convertAnthropicImageToOpenAIImageUrl(block: Record<string, unknown>): Record<string, unknown> | null {
+  const source = block.source as Record<string, unknown> | undefined
+  if (!source) return null
+  const sourceType = source.type as string | undefined
+  if (sourceType === 'base64') {
+    const mediaType = (source.media_type as string) || 'image/png'
+    const data = (source.data as string) ?? ''
+    return { type: 'image_url', image_url: { url: `data:${mediaType};base64,${data}` } }
+  }
+  if (sourceType === 'url' || (source as { url?: unknown }).url) {
+    return { type: 'image_url', image_url: { url: source.url as string } }
+  }
+  return null
+}
+
 function convertMessagesToOpenAI(messages: unknown[]): unknown[] {
   const result: unknown[] = []
   for (const msg of messages) {
@@ -775,30 +924,74 @@ function convertMessagesToOpenAI(messages: unknown[]): unknown[] {
         const otherBlocks = content.filter((b: any) => b.type !== 'tool_result')
         // Emit tool messages for each tool_result
         for (const tr of toolResults as Array<Record<string, unknown>>) {
+          // tool_result.content 可能是：
+          //   - 字符串（直接用）
+          //   - Anthropic 风格 content 数组（text + image 块）→ 转 OpenAI tool 消息时
+          //     单文本时压平为字符串，含 image 时保留为块数组以传递 image_url
+          let toolContent: unknown
+          if (typeof tr.content === 'string') {
+            toolContent = tr.content
+          } else if (Array.isArray(tr.content)) {
+            const converted: Array<Record<string, unknown>> = []
+            for (const b of tr.content as Array<Record<string, unknown>>) {
+              if (b.type === 'image') {
+                const imgPart = convertAnthropicImageToOpenAIImageUrl(b)
+                if (imgPart) {
+                  converted.push(imgPart)
+                  continue
+                }
+                converted.push({ type: 'text', text: '[image]' })
+                continue
+              }
+              if (b.type === 'text') {
+                converted.push({ type: 'text', text: b.text as string })
+                continue
+              }
+              // 其它未知块（如 OpenAI 的 image_url）原样保留
+              converted.push(b)
+            }
+            // 只有单个 text 块时压平为字符串，与 OpenAI tool 消息惯例一致
+            if (converted.length === 1 && converted[0].type === 'text') {
+              toolContent = converted[0].text
+            } else if (converted.length === 0) {
+              toolContent = '[output]'
+            } else {
+              toolContent = converted
+            }
+          } else {
+            toolContent = JSON.stringify(tr.content)
+          }
           result.push({
             role: 'tool',
             tool_call_id: tr.tool_use_id,
-            content: typeof tr.content === 'string' ? tr.content : JSON.stringify(tr.content),
+            content: toolContent,
           })
         }
         // Emit remaining user content if any
         // Convert Anthropic image blocks → OpenAI image_url format
         if (otherBlocks.length > 0) {
-          const parts = otherBlocks.map((b: any) => {
-            if (b.type === 'image' && b.source) {
-              const source = b.source as Record<string, unknown>
-              const url = source.url || source.data
-              return {
-                type: 'image_url',
-                image_url: { url: url as string, ...(source.media_type ? {} : {}) },
+          const parts: Array<Record<string, unknown>> = []
+          for (const b of otherBlocks as Array<Record<string, unknown>>) {
+            if (b.type === 'image') {
+              const imgPart = convertAnthropicImageToOpenAIImageUrl(b)
+              if (imgPart) {
+                parts.push(imgPart)
+                continue
               }
+              // 没 url/base64 → 降级为占位文本（不丢消息）
+              parts.push({ type: 'text', text: '[image]' })
+              continue
             }
-            if (b.type === 'text') return { type: 'text', text: b.text }
-            return b
-          })
+            if (b.type === 'text') {
+              parts.push({ type: 'text', text: b.text as string })
+              continue
+            }
+            // 未知块类型：原样保留
+            parts.push(b)
+          }
           // If single text part, collapse to string
-          if (parts.length === 1 && (parts[0] as Record<string, unknown>).type === 'text') {
-            result.push({ role: 'user', content: (parts[0] as Record<string, unknown>).text })
+          if (parts.length === 1 && parts[0].type === 'text') {
+            result.push({ role: 'user', content: parts[0].text })
           } else {
             result.push({ role: 'user', content: parts })
           }
@@ -807,20 +1000,32 @@ function convertMessagesToOpenAI(messages: unknown[]): unknown[] {
       }
     }
     // Handle tool messages with array content (e.g., computer_call_output screenshots)
-    // Convert image blocks → text for models that don't support image_url in tool messages
+    // OpenAI Chat Completions supports image_url blocks in tool messages (gpt-4-vision+),
+    // so we convert Anthropic image blocks to image_url blocks instead of degrading to text.
     if (m.role === 'tool' && Array.isArray(m.content)) {
       const blocks = m.content as Array<Record<string, unknown>>
-      const textParts: string[] = []
+      const parts: Array<Record<string, unknown>> = []
       for (const b of blocks) {
         if (b.type === 'text') {
-          textParts.push(b.text as string)
+          parts.push({ type: 'text', text: b.text as string })
         } else if (b.type === 'image') {
-          const source = b.source as Record<string, unknown> | undefined
-          if (source?.url) textParts.push(`[image: ${source.url}]`)
-          else textParts.push('[image]')
+          const imgPart = convertAnthropicImageToOpenAIImageUrl(b)
+          if (imgPart) {
+            parts.push(imgPart)
+          } else {
+            // 缺 url/base64 → 降级为占位文本
+            parts.push({ type: 'text', text: '[image]' })
+          }
+        } else {
+          // 未知块类型：原样保留
+          parts.push(b)
         }
       }
-      result.push({ role: 'tool', tool_call_id: m.tool_call_id, content: textParts.join('\n') || '[output]' })
+      if (parts.length === 1 && parts[0].type === 'text') {
+        result.push({ role: 'tool', tool_call_id: m.tool_call_id, content: parts[0].text })
+      } else {
+        result.push({ role: 'tool', tool_call_id: m.tool_call_id, content: parts })
+      }
       continue
     }
     // developer role → system (older Chat Completions APIs don't support "developer")
@@ -1094,6 +1299,19 @@ export async function transformInboundRequest(
     }
   }
 
+  // 扫描 input_image 降级为 file_id 占位文本的条目（image_url/file_id 都不存在，或只有 file_id），
+  // 这些条目在上游会丢失真实图片，需要 warn 提示用户考虑改用 image_url
+  if (logger) {
+    const degradedFileIds = findDegradedFileIdPlaceholders(upstreamBody)
+    if (degradedFileIds.length > 0) {
+      logger.log('request', `图片降级警告: ${degradedFileIds.length} 张图片因 Responses API file_id 无法在跨协议请求中传递`, {
+        fileIds: degradedFileIds,
+        inboundType,
+        providerType: route.providerType,
+      }, 'warn')
+    }
+  }
+
   logger?.log('request', `跨协议转换: ${inboundType} → ${route.providerType}`, {
     originalModel: body.model,
     targetModel: route.modelId,
@@ -1135,6 +1353,36 @@ function ensureThinkingBlocks(messages: Array<Record<string, unknown>>): void {
       content.unshift({ type: 'thinking', thinking: '', signature: '' })
     }
   }
+}
+
+/**
+ * 扫描转换后的请求体，找出 input_image 因 file_id 降级生成的 `[image:file_id=xxx]` 占位文本。
+ * 返回的 file_id 列表用于在 logger 中提示用户：跨协议路径无法传递 Files API 引用，
+ * 上游只会看到文字占位。调用方应在 logger?.log 中 warn 出来。
+ */
+function findDegradedFileIdPlaceholders(body: unknown): string[] {
+  const fileIds: string[] = []
+  const seen = new WeakSet<object>()
+  const visit = (node: unknown): void => {
+    if (!node || typeof node !== 'object') return
+    if (seen.has(node as object)) return
+    seen.add(node as object)
+    if (Array.isArray(node)) {
+      for (const item of node) visit(item)
+      return
+    }
+    const obj = node as Record<string, unknown>
+    if (typeof obj.text === 'string') {
+      const re = /\[image:file_id=([^\]]+)\]/g
+      let m: RegExpExecArray | null
+      while ((m = re.exec(obj.text)) !== null) {
+        fileIds.push(m[1])
+      }
+    }
+    for (const v of Object.values(obj)) visit(v)
+  }
+  visit(body)
+  return fileIds
 }
 
 /**
