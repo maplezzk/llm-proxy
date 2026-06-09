@@ -233,6 +233,7 @@ export async function convertOpenAIStreamToAnthropic(
   let rawLines: string[] = []
   let outLines: string[] = []
   let lastUsage: Record<string, unknown> = {}
+  let messageStarted = false
 
   const writeEvent = (eventType: string, data: Record<string, unknown>): void => {
     const json = JSON.stringify(data)
@@ -285,6 +286,11 @@ export async function convertOpenAIStreamToAnthropic(
       try { parsed = JSON.parse(dataStr) } catch { continue }
       rawLines.push(`[${ts()}] data: ${dataStr}`)
 
+      // 部分模型在每个 chunk 都带 usage，提前捕获
+      if (parsed?.usage) {
+        lastUsage = parsed.usage as Record<string, unknown>
+      }
+
       const choices = parsed.choices as Array<Record<string, unknown>> | undefined
       if (!choices || choices.length === 0) continue
       const choice = choices[0]
@@ -292,7 +298,9 @@ export async function convertOpenAIStreamToAnthropic(
       const finishReason = choice.finish_reason as string | undefined
 
       // On first message: thinking (index=0) + text (index=1) per Anthropic spec
-      if (delta?.role === 'assistant') {
+      // 注意：某些模型（如 step-3.7-flash）每个 chunk 都带 role=assistant，只初始化一次
+      if (!messageStarted && (delta?.role === 'assistant' || delta?.reasoning_content || delta?.content)) {
+        messageStarted = true
         writeEvent('message_start', {
           type: 'message_start',
           message: { id: `msg_${Date.now()}`, type: 'message', role: 'assistant', content: [], model: '', stop_reason: null, stop_sequence: null, usage: { input_tokens: 0, output_tokens: 0 } },
@@ -302,7 +310,7 @@ export async function convertOpenAIStreamToAnthropic(
         thinkingBlockStarted = true
         writeEvent('content_block_start', { type: 'content_block_start', index: 0, content_block: { type: 'thinking', thinking: '', signature: '' } })
         writeEvent('content_block_start', { type: 'content_block_start', index: 1, content_block: { type: 'text', text: '' } })
-        continue
+        // 不 continue — 同一 chunk 可能包含 reasoning_content/content 需要继续处理
       }
 
       // Tool call start
