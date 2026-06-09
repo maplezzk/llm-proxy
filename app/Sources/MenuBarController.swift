@@ -984,6 +984,7 @@ class MenuBarController: NSObject {
     }
 
     /// 延迟提醒：24 小时内不再提醒此版本更新
+    @MainActor
     private func dismissUpdateReminder(version: String) {
         UserDefaults.standard.set(version, forKey: "update-dismissed-version")
         UserDefaults.standard.set(Date(), forKey: "update-dismissed-date")
