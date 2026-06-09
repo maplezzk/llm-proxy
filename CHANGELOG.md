@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.16.4](https://github.com/maplezzk/llm-proxy/compare/v0.16.3...v0.16.4) (2026-06-09)
+
+
+### Bug Fixes
+
+* 修复 OpenAI→Anthropic 流式转换重复 message_start ([#134](https://github.com/maplezzk/llm-proxy/issues/134)) ([c20e633](https://github.com/maplezzk/llm-proxy/commit/c20e633a010e328078b16d855c5901eee26ee928))
+* 修复跨协议转换中图片消息处理的 5 个 bug ([#132](https://github.com/maplezzk/llm-proxy/issues/132)) ([f559747](https://github.com/maplezzk/llm-proxy/commit/f5597473e64cf54f5bc773672e27956d58ee81ab))
+
 ## [0.16.3](https://github.com/maplezzk/llm-proxy/compare/v0.16.2...v0.16.3) (2026-06-02)
 
 
