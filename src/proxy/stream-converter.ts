@@ -325,7 +325,7 @@ export async function convertOpenAIStreamToAnthropic(
         } else if (tc.function && (tc.function as Record<string, unknown>).arguments) {
           writeEvent('content_block_delta', { type: 'content_block_delta', index: contentBlockIndex, delta: { type: 'input_json_delta', partial_json: (tc.function as Record<string, unknown>).arguments as string } })
         }
-        continue
+        // 不 continue — 同一 chunk 可能同时携带 finish_reason
       }
 
       // reasoning_signature → signature_delta
@@ -343,7 +343,7 @@ export async function convertOpenAIStreamToAnthropic(
         writeEvent('content_block_delta', { type: 'content_block_delta', index: 0, delta: { type: 'thinking_delta', thinking: chunk } })
         totalText += chunk
         totalChunks++
-        continue
+        // 不 continue — 同一 chunk 可能同时携带 content（如 step-3.7-flash reasoning 结束时）
       }
 
       // Regular text delta — close thinking block first per Anthropic spec
