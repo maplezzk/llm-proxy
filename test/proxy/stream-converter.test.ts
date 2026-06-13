@@ -201,6 +201,24 @@ describe('proxy/stream-converter', () => {
       assert.ok(output.includes('"text":"Hi there"'), 'text content preserved')
       assert.ok(output.includes('event: message_stop'), '应有 message_stop')
     })
+
+    it('供应商不发送 [DONE] 时也能正确发送 message_stop（如 MiniMax）', async () => {
+      const { chunks, res } = makeResponse()
+      // MiniMax: role+content in same chunk, finish_reason+content in last chunk, no [DONE]
+      const reader = makeReader([
+        'data: {"id":"x","choices":[{"index":0,"delta":{"content":"Hello","role":"assistant"}}],"model":"minimax-m3","object":"chat.completion.chunk"}\n\n',
+        'data: {"id":"x","choices":[{"finish_reason":"stop","index":0,"delta":{"content":" World","role":"assistant"}}],"model":"minimax-m3","object":"chat.completion.chunk"}\n\n',
+      ])
+      await convertOpenAIStreamToAnthropic(reader, res)
+      const output = chunks.join('')
+      // Should have complete Anthropic stream even without [DONE]
+      assert.ok(output.includes('event: message_start'), '应有 message_start')
+      assert.ok(output.includes('"text_delta"'), '应有 text_delta')
+      assert.ok(output.includes('event: content_block_stop'), '应有 content_block_stop')
+      assert.ok(output.includes('event: message_delta'), '应有 message_delta')
+      assert.ok(output.includes('event: message_stop'), '即使无 [DONE] 也应有 message_stop')
+      assert.ok(output.includes('__END__'), '应正常结束响应')
+    })
   })
 
   describe('OpenAI Responses SSE → Anthropic SSE', () => {

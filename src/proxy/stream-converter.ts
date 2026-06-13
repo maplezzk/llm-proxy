@@ -357,7 +357,7 @@ export async function convertOpenAIStreamToAnthropic(
         totalText += delta.content as string
         totalChunks++
         writeEvent('content_block_delta', { type: 'content_block_delta', index: 1, delta: { type: 'text_delta', text: delta.content as string } })
-        continue
+        // 不 continue — 同一 chunk 可能同时携带 finish_reason（如 MiniMax 最后 chunk 同时有 content+finish_reason）
       }
 
       // Finish reason
@@ -387,7 +387,40 @@ export async function convertOpenAIStreamToAnthropic(
     }
   }
 
+  // Stream ended without [DONE] (e.g. MiniMax).
+  // Close any open content blocks and emit final events.
+  if (thinkingBlockStarted) {
+    const sig = thinkingSignature || makeSignature(thinkingText)
+    if (sig) writeEvent('content_block_delta', { type: 'content_block_delta', index: 0, delta: { type: 'signature_delta', signature: sig } })
+    writeEvent('content_block_stop', { type: 'content_block_stop', index: 0 })
+  }
+  // Note: content_block_stop for text block may have been emitted via finish_reason.
+  // If the stream aborted without finish_reason, we skip message_delta too —
+  // but always emit message_stop so the Anthropic client can finalize the stream.
+  writeEvent('message_stop', { type: 'message_stop' })
   res.end()
+
+  logger?.log('request', `流式响应完成 (OpenAI→Anthropic, 无 [DONE])`, {
+    chunks: totalChunks,
+    textLength: totalText.length - thinkingText.length,
+    thinkingLength: thinkingText.length,
+  }, 'debug')
+
+  if (capture && pairId !== undefined) {
+    const sseIn = rawLines.join('\n\n')
+    capture.updateRequest(pairId, 'responseIn', sseIn)
+    capture.updateRequest(pairId, 'responseOut', outLines.join(''))
+  }
+
+  if (Object.keys(lastUsage).length > 0) {
+    return {
+      input_tokens: (lastUsage.input_tokens ?? 0) as number,
+      output_tokens: (lastUsage.output_tokens ?? 0) as number,
+      cache_read_input_tokens: lastUsage.cache_read_input_tokens as number | undefined,
+      cache_creation_input_tokens: lastUsage.cache_creation_input_tokens as number | undefined,
+    }
+  }
+
   return null
 }
 
