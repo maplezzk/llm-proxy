@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.16.5](https://github.com/maplezzk/llm-proxy/compare/v0.16.4...v0.16.5) (2026-06-13)
+
+
+### Bug Fixes
+
+* 修复 OpenAI→Anthropic 流式转换 content+finish_reason 同 chunk 处理及无 [DONE] 补发 message_stop ([#135](https://github.com/maplezzk/llm-proxy/issues/135)) ([bc61dfa](https://github.com/maplezzk/llm-proxy/commit/bc61dfa5a25fa5345f03c95686ebf85ad1e7c536))
+
 ## [0.16.4](https://github.com/maplezzk/llm-proxy/compare/v0.16.3...v0.16.4) (2026-06-09)
 
 
