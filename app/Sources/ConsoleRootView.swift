@@ -16,7 +16,10 @@ struct ConsoleRootView: View {
         .id(langVersion)
         .environment(testCoordinator)
         .onChange(of: testCoordinator.shouldSwitchToTestTab) { _, newValue in
-            if newValue { selectedTab = .test }
+            if newValue {
+                selectedTab = .test
+                testCoordinator.shouldSwitchToTestTab = false
+            }
         }
         .onReceive(NotificationCenter.default.publisher(for: .openSettings)) { _ in
             selectedTab = .settings
