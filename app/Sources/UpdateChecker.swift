@@ -55,6 +55,26 @@ class UpdateChecker {
         mockBaseURL ?? "https://api.github.com"
     }
 
+    /// 写日志到 ~/.llm-proxy/app-launch.log（与 MenuBarController 共用同一文件）
+    private func logUpdate(_ text: String) {
+        let logDir = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".llm-proxy")
+        try? FileManager.default.createDirectory(at: logDir, withIntermediateDirectories: true)
+        let logPath = logDir.appendingPathComponent("app-launch.log").path
+        let fmt = DateFormatter()
+        fmt.dateFormat = "yyyy-MM-dd HH:mm:ss.SSS"
+        let line = "[\(fmt.string(from: Date()))] [UPDATE] \(text)\n"
+        if let handle = FileHandle(forWritingAtPath: logPath) {
+            handle.seekToEndOfFile()
+            if let data = line.data(using: .utf8) { handle.write(data) }
+            handle.closeFile()
+        } else {
+            try? line.write(toFile: logPath, atomically: true, encoding: .utf8)
+        }
+        // 同时写 NSLog 以便从 Console.app 也能查
+        NSLog("[LLMProxy:update] \(text)")
+    }
+
     init(session: URLSession = .shared) {
         self.session = session
     }
@@ -259,7 +279,17 @@ class UpdateChecker {
     /// - Parameter localURL: 已下载的 DMG 文件 URL
     /// - Throws: UpdateError.installationFailed
     func installUpdate(at localURL: URL) async throws {
-        let mountPath = try mountDMG(at: localURL)
+        logUpdate("installUpdate 开始: \(localURL.path)")
+
+        // 关键：先确认 dmg 文件存在。如果不存在（被外部清理、定时清理、或从未下载成功），
+        // 给用户明确错误，避免 hdiutil 报一个莫名其妙的"无此文件或目录"。
+        let dmgPath = localURL.resolvingSymlinksInPath().path
+        guard FileManager.default.fileExists(atPath: dmgPath) else {
+            logUpdate("❌ DMG 文件不存在: \(dmgPath)")
+            throw UpdateError.installationFailed(reason: "DMG 文件已丢失，请重新下载更新（路径: \(dmgPath)）")
+        }
+
+        let mountPath = try mountDMG(at: URL(fileURLWithPath: dmgPath))
         let appInDMG = mountPath.appendingPathComponent("LLMProxy.app")
 
         guard FileManager.default.fileExists(atPath: appInDMG.path) else {
@@ -269,21 +299,34 @@ class UpdateChecker {
 
         let destinationURL = URL(fileURLWithPath: "/Applications/LLMProxy.app")
 
-        // 删除旧版本
+        // 删除旧版本。如果 .app 正在运行，removeItem 会失败（被 mmap 锁定）。
+        // 这种情况需要用户先退出 LLMProxy.app 再重试。
         if FileManager.default.fileExists(atPath: destinationURL.path) {
-            try FileManager.default.removeItem(at: destinationURL)
+            do {
+                try FileManager.default.removeItem(at: destinationURL)
+            } catch {
+                unmountDMG(at: mountPath)
+                logUpdate("❌ 删除旧版本失败（app 可能正在运行）: \(error.localizedDescription)")
+                throw UpdateError.installationFailed(reason: "无法删除旧版本（请先退出 LLMProxy.app）: \(error.localizedDescription)")
+            }
         }
 
         // 用 ditto 复制新版本（保留签名和扩展属性）
-        try await runProcess(
-            executable: "/usr/bin/ditto",
-            arguments: [appInDMG.path, destinationURL.path]
-        )
+        do {
+            try await runProcess(
+                executable: "/usr/bin/ditto",
+                arguments: [appInDMG.path, destinationURL.path]
+            )
+        } catch {
+            // ditto 失败时也要 unmount，避免 mount 残留
+            unmountDMG(at: mountPath)
+            throw error
+        }
 
         // 卸载 DMG
         unmountDMG(at: mountPath)
 
-        // 清理下载的 DMG
+        // 清理下载的 DMG（只在 installUpdate 完全成功后才删；任何中间步骤抛错都不会走到这里）
         try? FileManager.default.removeItem(at: localURL)
 
         // 创建重启 helper 脚本并执行
@@ -294,16 +337,21 @@ class UpdateChecker {
 
     /// 挂载 DMG 并返回挂载路径
     private func mountDMG(at dmgURL: URL) throws -> URL {
+        // 标准化路径：解析 /var -> /private/var 之类的 symlink，
+        // 避免子进程和 FileManager 看到不同 path 字符串
+        let resolvedPath = dmgURL.resolvingSymlinksInPath().path
+        logUpdate("mountDMG: \(resolvedPath)")
+
         // 清除 quarantine 属性，否则 macOS 可能阻止挂载已下载的 DMG
         let xattr = Process()
         xattr.executableURL = URL(fileURLWithPath: "/usr/bin/xattr")
-        xattr.arguments = ["-d", "com.apple.quarantine", dmgURL.path]
+        xattr.arguments = ["-d", "com.apple.quarantine", resolvedPath]
         try? xattr.run()
         xattr.waitUntilExit()
 
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/hdiutil")
-        process.arguments = ["attach", "-nobrowse", "-plist", dmgURL.path]
+        process.arguments = ["attach", "-nobrowse", "-plist", resolvedPath]
 
         let outputPipe = Pipe()
         let errorPipe = Pipe()
@@ -316,6 +364,7 @@ class UpdateChecker {
         guard process.terminationStatus == 0 else {
             let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
             let errorMsg = String(data: errorData, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            logUpdate("❌ hdiutil attach 失败: exit=\(process.terminationStatus), stderr=\(errorMsg), path=\(resolvedPath)")
             throw UpdateError.installationFailed(reason: "hdiutil attach 失败: \(errorMsg)")
         }
 
@@ -355,6 +404,10 @@ class UpdateChecker {
         process.arguments = ["detach", mountPath.path, "-quiet"]
         try? process.run()
         process.waitUntilExit()
+        if process.terminationStatus != 0 {
+            logUpdate("⚠️ hdiutil detach 失败: exit=\(process.terminationStatus), path=\(mountPath.path)（可能 .app 正在运行导致 busy）")
+            // 失败不抛错，调用方自行处理（避免因为 detach 失败导致 dmg 永久残留）
+        }
     }
 
     // MARK: - Restart Helper
@@ -436,8 +489,10 @@ class UpdateChecker {
             return dateA > dateB
         }
 
+        logUpdate("cleanUpOnLaunch 发现 \(dmgFiles.count) 个 dmg，保留最新的 \(sorted.first?.lastPathComponent ?? "nil")")
         // 保留最新的，删除其余
         for file in sorted.dropFirst() {
+            logUpdate("cleanUpOnLaunch 删除 \(file.lastPathComponent)")
             try? FileManager.default.removeItem(at: file)
         }
     }
@@ -451,6 +506,7 @@ class UpdateChecker {
 
         for file in files where file.lastPathComponent.hasSuffix(".dmg") {
             if file.lastPathComponent != keep {
+                logUpdate("cleanOldDownloads 删除 \(file.lastPathComponent)（keep=\(keep)）")
                 try? FileManager.default.removeItem(at: file)
             }
         }
