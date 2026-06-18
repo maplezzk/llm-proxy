@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.16.8](https://github.com/maplezzk/llm-proxy/compare/v0.16.7...v0.16.8) (2026-06-18)
+
+
+### Bug Fixes
+
+* 修复应用内自动更新安装后退出 + 排查日志 + 回归修复 ([#143](https://github.com/maplezzk/llm-proxy/issues/143)) ([80cc817](https://github.com/maplezzk/llm-proxy/commit/80cc81723b5c07439e5a9b09b9ddeb398fb41162))
+
 ## [0.16.7](https://github.com/maplezzk/llm-proxy/compare/v0.16.6...v0.16.7) (2026-06-18)
 
 
