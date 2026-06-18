@@ -1061,8 +1061,8 @@ class MenuBarController: NSObject {
 
     @MainActor
     private func performInstall(_ localURL: URL, version: String) async {
-        // 停止后台服务
-        runCLI("stop")
+        // 同步停止后台 llm-proxy 服务（等 SIGTERM 完成再继续）
+        stopSync()
 
         do {
             try await updateChecker.installUpdate(at: localURL)
@@ -1075,8 +1075,10 @@ class MenuBarController: NSObject {
             return
         }
 
-        // 退出应用（helper 脚本会重启新版本）
-        NSApplication.shared.terminate(nil)
+        // helper 脚本已经启动（sleep 1; open /Applications/LLMProxy.app），
+        // 且后台服务已经 stopSync 停掉了，这里直接强退进程。
+        // NSApplication.shared.terminate 在 LSUIElement 菜单栏应用 + async 上下文不可靠。
+        exit(0)
     }
 
 
