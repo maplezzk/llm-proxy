@@ -77,7 +77,11 @@ ln -s /Applications "$DMG_SRC/Applications"
 
 # Create DMG
 rm -f "$DMG"
-hdiutil create -fs HFS+ -srcfolder "$DMG_SRC" -volname "$APP_NAME" -format UDZO -o "$DMG" 2>/dev/null
+hdiutil create -fs HFS+ -srcfolder "$DMG_SRC" -volname "$APP_NAME" -format UDZO -o "$DMG"
+
+# 验证 DMG 可正常挂载
+hdiutil attach "$DMG" -nobrowse -readonly -quiet
+hdiutil detach "/Volumes/$APP_NAME" -quiet
 
 # Cleanup
 rm -rf "$DMG_SRC"

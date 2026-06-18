@@ -294,18 +294,29 @@ class UpdateChecker {
 
     /// 挂载 DMG 并返回挂载路径
     private func mountDMG(at dmgURL: URL) throws -> URL {
+        // 清除 quarantine 属性，否则 macOS 可能阻止挂载已下载的 DMG
+        let xattr = Process()
+        xattr.executableURL = URL(fileURLWithPath: "/usr/bin/xattr")
+        xattr.arguments = ["-d", "com.apple.quarantine", dmgURL.path]
+        try? xattr.run()
+        xattr.waitUntilExit()
+
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/hdiutil")
         process.arguments = ["attach", "-nobrowse", "-plist", dmgURL.path]
 
         let outputPipe = Pipe()
+        let errorPipe = Pipe()
         process.standardOutput = outputPipe
+        process.standardError = errorPipe
 
         try process.run()
         process.waitUntilExit()
 
         guard process.terminationStatus == 0 else {
-            throw UpdateError.installationFailed(reason: "hdiutil attach 失败")
+            let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
+            let errorMsg = String(data: errorData, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            throw UpdateError.installationFailed(reason: "hdiutil attach 失败: \(errorMsg)")
         }
 
         let outputData = outputPipe.fileHandleForReading.readDataToEndOfFile()
