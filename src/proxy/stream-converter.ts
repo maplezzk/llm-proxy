@@ -233,12 +233,43 @@ export async function convertOpenAIStreamToAnthropic(
   let rawLines: string[] = []
   let outLines: string[] = []
   let lastUsage: Record<string, unknown> = {}
+  let pendingStopReason: string | null = null
   let messageStarted = false
 
   const writeEvent = (eventType: string, data: Record<string, unknown>): void => {
     const json = JSON.stringify(data)
     outLines.push(`[${ts()}] event: ${eventType}\ndata: ${json}\n\n`)
     res.write(`event: ${eventType}\ndata: ${json}\n\n`)
+  }
+
+  // 从 lastUsage (OpenAI 格式) 计算 Anthropic usage 对象。
+  // 注意：OpenAI 的 prompt_tokens 是总输入（含缓存命中），而 Anthropic 的
+  // input_tokens 是不含缓存命中的计费部分，必须减去 cached_tokens 才对称。
+  // （参考反向转换 translation.ts:1812 的 ai + cr）
+  // 另：有些上游在 finish_reason chunk 里不发 usage 或发 0 usage，
+  // 随后单独发一个 choices=[] 的 usage-only chunk，必须采用最新数据。
+  const buildAnthropicUsage = (): Record<string, unknown> => {
+    const promptTokens = (lastUsage.prompt_tokens ?? lastUsage.input_tokens ?? 0) as number
+    const promptDetails = (lastUsage.prompt_tokens_details ?? lastUsage.prompt_cache_details) as Record<string, unknown> | undefined
+    const cachedTokens = (promptDetails?.cached_tokens as number | undefined) ?? 0
+    const usage: Record<string, unknown> = {
+      input_tokens: Math.max(0, promptTokens - cachedTokens),
+      output_tokens: (lastUsage.completion_tokens ?? lastUsage.output_tokens ?? 0) as number,
+    }
+    if (cachedTokens > 0) usage.cache_read_input_tokens = cachedTokens
+    if (lastUsage.prompt_cache_miss_tokens != null) usage.cache_creation_input_tokens = lastUsage.prompt_cache_miss_tokens
+    return usage
+  }
+
+  // 发送 message_delta 事件。仅当有 pendingStopReason 时调用，
+  // 必须在 message_stop 之前发送（Anthropic 协议要求）。
+  const emitMessageDelta = (): void => {
+    if (pendingStopReason === null) return
+    writeEvent('message_delta', {
+      type: 'message_delta',
+      delta: { stop_reason: pendingStopReason, stop_sequence: null },
+      usage: buildAnthropicUsage(),
+    })
   }
 
   let contentBlockIndex = 0
@@ -255,6 +286,7 @@ export async function convertOpenAIStreamToAnthropic(
       if (!line.startsWith('data: ')) continue
       const dataStr = line.slice(6).trim()
       if (dataStr === '[DONE]') {
+        emitMessageDelta()
         writeEvent('message_stop', { type: 'message_stop' })
         res.end()
         logger?.log('request', `流式响应完成 (OpenAI→Anthropic)`, {
@@ -272,11 +304,12 @@ export async function convertOpenAIStreamToAnthropic(
         }
 
         if (Object.keys(lastUsage).length > 0) {
+          const u = buildAnthropicUsage()
           return {
-            input_tokens: (lastUsage.input_tokens ?? 0) as number,
-            output_tokens: (lastUsage.output_tokens ?? 0) as number,
-            cache_read_input_tokens: lastUsage.cache_read_input_tokens as number | undefined,
-            cache_creation_input_tokens: lastUsage.cache_creation_input_tokens as number | undefined,
+            input_tokens: u.input_tokens as number,
+            output_tokens: u.output_tokens as number,
+            cache_read_input_tokens: u.cache_read_input_tokens as number | undefined,
+            cache_creation_input_tokens: u.cache_creation_input_tokens as number | undefined,
           }
         }
         return null
@@ -365,7 +398,7 @@ export async function convertOpenAIStreamToAnthropic(
         const chunkUsage = parsed.usage as Record<string, unknown> | undefined
         if (chunkUsage) lastUsage = chunkUsage
         const reasonMap: Record<string, string> = { stop: 'end_turn', length: 'max_tokens', tool_calls: 'tool_use' }
-        const anthropicReason = reasonMap[finishReason] ?? finishReason
+        pendingStopReason = reasonMap[finishReason] ?? finishReason
         if (thinkingBlockStarted) {
           const sig = thinkingSignature || makeSignature(thinkingText)
           if (sig) writeEvent('content_block_delta', { type: 'content_block_delta', index: 0, delta: { type: 'signature_delta', signature: sig } })
@@ -373,15 +406,8 @@ export async function convertOpenAIStreamToAnthropic(
           thinkingBlockStarted = false
         }
         writeEvent('content_block_stop', { type: 'content_block_stop', index: contentBlockIndex })
-        const usage: Record<string, unknown> = {
-          input_tokens: (lastUsage.prompt_tokens ?? lastUsage.input_tokens ?? 0) as number,
-          output_tokens: (lastUsage.completion_tokens ?? lastUsage.output_tokens ?? 0) as number,
-        }
-        const promptDetails = (lastUsage.prompt_tokens_details ?? lastUsage.prompt_cache_details) as Record<string, unknown> | undefined
-        if (promptDetails?.cached_tokens != null) usage.cache_read_input_tokens = promptDetails.cached_tokens
-        if (lastUsage.prompt_cache_miss_tokens != null) usage.cache_creation_input_tokens = lastUsage.prompt_cache_miss_tokens
-        writeEvent('message_delta', { type: 'message_delta', delta: { stop_reason: anthropicReason, stop_sequence: null }, usage })
-        lastUsage = usage
+        // message_delta 延迟到 [DONE] / 流结束时统一发送，确保能拿到后续
+        // usage-only chunk (choices=[]) 中的最新 usage，避免 0 usage 被错发。
         continue
       }
     }
@@ -397,6 +423,7 @@ export async function convertOpenAIStreamToAnthropic(
   // Note: content_block_stop for text block may have been emitted via finish_reason.
   // If the stream aborted without finish_reason, we skip message_delta too —
   // but always emit message_stop so the Anthropic client can finalize the stream.
+  emitMessageDelta()
   writeEvent('message_stop', { type: 'message_stop' })
   res.end()
 
@@ -413,11 +440,12 @@ export async function convertOpenAIStreamToAnthropic(
   }
 
   if (Object.keys(lastUsage).length > 0) {
+    const u = buildAnthropicUsage()
     return {
-      input_tokens: (lastUsage.input_tokens ?? 0) as number,
-      output_tokens: (lastUsage.output_tokens ?? 0) as number,
-      cache_read_input_tokens: lastUsage.cache_read_input_tokens as number | undefined,
-      cache_creation_input_tokens: lastUsage.cache_creation_input_tokens as number | undefined,
+      input_tokens: u.input_tokens as number,
+      output_tokens: u.output_tokens as number,
+      cache_read_input_tokens: u.cache_read_input_tokens as number | undefined,
+      cache_creation_input_tokens: u.cache_creation_input_tokens as number | undefined,
     }
   }
 
