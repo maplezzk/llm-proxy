@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.16.6](https://github.com/maplezzk/llm-proxy/compare/v0.16.5...v0.16.6) (2026-06-18)
+
+
+### Bug Fixes
+
+* 修复 macOS 自动更新 hdiutil attach 失败 ([#138](https://github.com/maplezzk/llm-proxy/issues/138)) ([963d466](https://github.com/maplezzk/llm-proxy/commit/963d46682861c4de2221d5329e1db9e8db922d30))
+
 ## [0.16.5](https://github.com/maplezzk/llm-proxy/compare/v0.16.4...v0.16.5) (2026-06-17)
 
 
