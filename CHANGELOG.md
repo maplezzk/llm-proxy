@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.16.7](https://github.com/maplezzk/llm-proxy/compare/v0.16.6...v0.16.7) (2026-06-18)
+
+
+### Bug Fixes
+
+* 修复 OpenAI→Anthropic 流式转换 usage 丢失与 cache 计算错误 ([#140](https://github.com/maplezzk/llm-proxy/issues/140)) ([7a1ddd2](https://github.com/maplezzk/llm-proxy/commit/7a1ddd2fca8f15e806b68bf20f1e22dfbb1aa5e3))
+
 ## [0.16.6](https://github.com/maplezzk/llm-proxy/compare/v0.16.5...v0.16.6) (2026-06-18)
 
 
