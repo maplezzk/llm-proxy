@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.17.0](https://github.com/maplezzk/llm-proxy/compare/v0.16.8...v0.17.0) (2026-06-19)
+
+
+### Features
+
+* 外挂识图(非多模态模型识图) + 配置 UI + 菜单栏状态机重构 ([#146](https://github.com/maplezzk/llm-proxy/issues/146)) ([53a5a5a](https://github.com/maplezzk/llm-proxy/commit/53a5a5abd3a30cd13b2a51e8a5d07353182f21c9))
+* 支持 MiniMax thinking.type 透传配置 + 用户配置优先覆盖 ([#148](https://github.com/maplezzk/llm-proxy/issues/148)) ([b3efd73](https://github.com/maplezzk/llm-proxy/commit/b3efd731fa5f4a59bf9b1fd1c03628a3023356ff))
+
+
+### Bug Fixes
+
+* writeConfig 加校验防止保存无效配置 + macOS App 显示完整错误 + 启动失败写日志 ([#145](https://github.com/maplezzk/llm-proxy/issues/145)) ([2c75df4](https://github.com/maplezzk/llm-proxy/commit/2c75df4584104336e35c282706376d851ee545a1))
+
 ## [0.16.8](https://github.com/maplezzk/llm-proxy/compare/v0.16.7...v0.16.8) (2026-06-18)
 
 
