@@ -79,8 +79,14 @@ function validateProviders(config: Config): ValidationError[] {
       // 校验 thinking 配置
       if (model.thinking) {
         if (provider.type === 'anthropic') {
-          if (!model.thinking.budget_tokens || model.thinking.budget_tokens < 0) {
-            errors.push({ field: `providers.${provider.name}.models.${model.id}.thinking.budget_tokens`, message: `Anthropic thinking 模式需要有效的 budget_tokens（正整数）` })
+          if (!model.thinking.budget_tokens && !model.thinking.type) {
+            errors.push({ field: `providers.${provider.name}.models.${model.id}.thinking`, message: `Anthropic thinking 模式需要 budget_tokens 或 type（如 MiniMax adaptive）` })
+          }
+          if (model.thinking.budget_tokens && model.thinking.budget_tokens < 0) {
+            errors.push({ field: `providers.${provider.name}.models.${model.id}.thinking.budget_tokens`, message: `Anthropic thinking budget_tokens 必须为正整数` })
+          }
+          if (model.thinking.type && !['adaptive', 'auto', 'enabled', 'disabled'].includes(model.thinking.type)) {
+            errors.push({ field: `providers.${provider.name}.models.${model.id}.thinking.type`, message: `thinking.type 必须是 adaptive、auto、enabled 或 disabled` })
           }
           if (model.thinking.reasoning_effort) {
             errors.push({ field: `providers.${provider.name}.models.${model.id}.thinking.reasoning_effort`, message: `Anthropic 模型不支持 reasoning_effort` })

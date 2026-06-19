@@ -14,7 +14,7 @@ function interpolateEnvVars(value: string): string {
   })
 }
 
-function parseThinkingConfig(m: { thinking?: { budget_tokens?: number }; reasoning_effort?: string }): import('./types.js').ThinkingConfig | undefined {
+function parseThinkingConfig(m: { thinking?: { budget_tokens?: number; type?: string }; reasoning_effort?: string }): import('./types.js').ThinkingConfig | undefined {
   const tc: import('./types.js').ThinkingConfig = {}
   if (m.thinking?.budget_tokens && m.thinking.budget_tokens > 0) {
     tc.budget_tokens = m.thinking.budget_tokens
@@ -22,7 +22,10 @@ function parseThinkingConfig(m: { thinking?: { budget_tokens?: number }; reasoni
   if (m.reasoning_effort && ['low', 'medium', 'high'].includes(m.reasoning_effort)) {
     tc.reasoning_effort = m.reasoning_effort as 'low' | 'medium' | 'high'
   }
-  if (tc.budget_tokens === undefined && tc.reasoning_effort === undefined) return undefined
+  if (m.thinking?.type && ['adaptive', 'auto', 'enabled', 'disabled'].includes(m.thinking.type)) {
+    tc.type = m.thinking.type
+  }
+  if (tc.budget_tokens === undefined && tc.reasoning_effort === undefined && tc.type === undefined) return undefined
   return tc
 }
 
@@ -88,6 +91,8 @@ export function serializeConfigToYaml(config: Config): string {
       models: p.models.map((m) => ({
         id: m.id,
         ...(m.thinking?.budget_tokens ? { thinking: { budget_tokens: m.thinking.budget_tokens } } : {}),
+        ...(m.thinking?.type && !m.thinking.budget_tokens ? { thinking: { type: m.thinking.type } } : {}),
+        ...(m.thinking?.type && m.thinking.budget_tokens ? { thinking: { budget_tokens: m.thinking.budget_tokens, type: m.thinking.type } } : {}),
         ...(m.thinking?.reasoning_effort ? { reasoning_effort: m.thinking.reasoning_effort } : {}),
       })),
     })),
@@ -99,6 +104,8 @@ export function serializeConfigToYaml(config: Config): string {
         provider: m.provider,
         target_model_id: m.targetModelId,
         ...(m.thinking?.budget_tokens ? { thinking: { budget_tokens: m.thinking.budget_tokens } } : {}),
+        ...(m.thinking?.type && !m.thinking.budget_tokens ? { thinking: { type: m.thinking.type } } : {}),
+        ...(m.thinking?.type && m.thinking.budget_tokens ? { thinking: { budget_tokens: m.thinking.budget_tokens, type: m.thinking.type } } : {}),
         ...(m.thinking?.reasoning_effort ? { reasoning_effort: m.thinking.reasoning_effort } : {}),
       })),
     })),

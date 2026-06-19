@@ -1422,6 +1422,10 @@ function injectThinkingConfig(
     if (!upstreamBody.max_tokens || (upstreamBody.max_tokens as number) < budget) {
       upstreamBody.max_tokens = budget
     }
+  } else if (route.thinking.type) {
+    // 非标准 thinking.type（如 MiniMax adaptive），用于所有 provider type
+    if (upstreamBody.thinking || upstreamBody.reasoning || upstreamBody.reasoning_effort) return
+    upstreamBody.thinking = { type: route.thinking.type }
   }
 
   if ((route.providerType === 'openai' || route.providerType === 'openai-responses') && route.thinking.reasoning_effort) {

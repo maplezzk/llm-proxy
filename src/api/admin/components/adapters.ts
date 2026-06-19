@@ -59,7 +59,7 @@ export function adaptersPage() {
               sourceModelId: m.sourceModelId,
               provider: m.provider,
               targetModelId: m.targetModelId,
-              thinking: m.thinking ? { budget_tokens: m.thinking.budget_tokens } : {},
+              thinking: m.thinking ? { budget_tokens: m.thinking.budget_tokens, type: m.thinking.type } : {},
               reasoning_effort: (m as any).reasoning_effort || '',
             })),
           }
@@ -121,12 +121,16 @@ export function adaptersPage() {
       const validModels = models
         .filter((m: any) => m.sourceModelId.trim() && m.provider && m.targetModelId)
         .map((m: any) => {
-          const base = { sourceModelId: m.sourceModelId, provider: m.provider, targetModelId: m.targetModelId }
+          const base: any = { sourceModelId: m.sourceModelId, provider: m.provider, targetModelId: m.targetModelId }
           if (type === 'anthropic') {
             const bt = parseInt(m.thinking?.budget_tokens, 10)
-            if (bt > 0) (base as any).thinking = { budget_tokens: bt }
+            if (bt > 0) (base as any).thinking = { ...(base.thinking ?? {}), budget_tokens: bt }
           } else if (m.reasoning_effort && ['low', 'medium', 'high'].includes(m.reasoning_effort)) {
             (base as any).thinking = { reasoning_effort: m.reasoning_effort }
+          }
+          // thinking.type 对所有 provider type 生效
+          if (m.thinking?.type && ['adaptive', 'auto', 'enabled', 'disabled'].includes(m.thinking.type)) {
+            (base as any).thinking = { ...((base as any).thinking ?? {}), type: m.thinking.type }
           }
           return base
         })
