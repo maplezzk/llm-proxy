@@ -57,6 +57,7 @@ export function loadConfigFromYaml(filePath: string): Config {
       models: p.models.map((m) => ({
         id: m.id,
         thinking: parseThinkingConfig(m),
+        input: m.input as import('./types.js').InputModality[] | undefined,
       })),
     })),
     adapters: (interpolated.adapters ?? []).map((a) => ({
@@ -70,6 +71,7 @@ export function loadConfigFromYaml(filePath: string): Config {
       })),
     })),
     proxyKey: interpolated.proxy_key,
+    vision: interpolated.vision ? { provider: interpolated.vision.provider, model: interpolated.vision.model, prompt: interpolated.vision.prompt } : undefined,
     logLevel: (['debug','info','warn','error'].includes(interpolated.log_level as string) ? interpolated.log_level : undefined) as Config['logLevel'],
     locale: interpolated.locale,
     port: interpolated.port,
@@ -89,6 +91,7 @@ export function serializeConfigToYaml(config: Config): string {
         id: m.id,
         ...(m.thinking?.budget_tokens ? { thinking: { budget_tokens: m.thinking.budget_tokens } } : {}),
         ...(m.thinking?.reasoning_effort ? { reasoning_effort: m.thinking.reasoning_effort } : {}),
+        ...(m.input?.length ? { input: m.input } : {}),
       })),
     })),
     adapters: (config.adapters ?? []).map((a) => ({
@@ -103,6 +106,7 @@ export function serializeConfigToYaml(config: Config): string {
       })),
     })),
     proxy_key: config.proxyKey,
+    vision: config.vision ? { provider: config.vision.provider, model: config.vision.model, ...(config.vision.prompt ? { prompt: config.vision.prompt } : {}) } : undefined,
     log_level: config.logLevel,
     locale: config.locale,
     port: config.port,

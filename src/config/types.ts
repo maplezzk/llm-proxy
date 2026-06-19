@@ -1,5 +1,8 @@
 export type ProviderType = 'anthropic' | 'openai' | 'openai-responses'
 
+/** 模型支持的输入模态。未配置时视为仅支持文本（向后兼容） */
+export type InputModality = 'text' | 'image' | 'audio' | 'video' | 'file'
+
 export interface ThinkingConfig {
   /** Anthropic: thinking budget tokens (启用 thinking 模式时必填) */
   budget_tokens?: number
@@ -10,6 +13,18 @@ export interface ThinkingConfig {
 export interface Model {
   id: string
   thinking?: ThinkingConfig
+  /** 模型支持的输入模态列表，如 ["text", "image"]。未配置时默认 ["text"] */
+  input?: InputModality[]
+}
+
+/** 外挂多模态识图配置 */
+export interface VisionConfig {
+  /** 识图模型所在的 provider 名称（必须） */
+  provider: string
+  /** 识图模型 ID（必须） */
+  model: string
+  /** 自定义识图提示词，未配置时使用默认值 */
+  prompt?: string
 }
 
 export interface Provider {
@@ -38,6 +53,8 @@ export interface AdapterConfig {
 export interface Config {
   providers: Provider[]
   adapters?: AdapterConfig[]
+  /** 外挂多模态识图配置，为不支持图片的模型提供自动识图能力 */
+  vision?: VisionConfig
   proxyKey?: string
   logLevel?: LogLevel
   locale?: string
@@ -61,7 +78,7 @@ export interface ProviderConfigFile {
   type: ProviderType
   api_key: string
   api_base?: string
-  models: { id: string; thinking?: ThinkingConfigFile; reasoning_effort?: string }[]
+  models: { id: string; thinking?: ThinkingConfigFile; reasoning_effort?: string; input?: string[] }[]
 }
 
 export interface AdapterConfigFile {
@@ -74,6 +91,7 @@ export interface AdapterConfigFile {
 export interface ConfigFile {
   providers: ProviderConfigFile[]
   adapters?: AdapterConfigFile[]
+  vision?: { provider: string; model: string; prompt?: string }
   proxy_key?: string
   log_level?: string
   locale?: string
