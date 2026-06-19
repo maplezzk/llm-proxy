@@ -144,8 +144,24 @@
       "validationName": "请填写名称",
       "validationModels": "请填写至少一个模型",
       "validationApiKey": "请填写 API Key",
+      "inputModalities": "输入模态",
+      "inputModalitiesHint": "勾选模型支持的输入模态。未勾选 image 时，请求中的图片会走外挂识图。",
+      "visionBadgeTitle": "支持图片输入的模型：",
       "validationProviderName": "请先填写供应商名称",
       "keepOriginal": "留空则保留原值"
+    },
+    "vision": {
+      "title": "外挂识图",
+      "desc": "为不支持图片输入的模型提供自动识图能力：请求含图片时，自动调用下方配置的识图模型生成文字描述，再转发给原模型。",
+      "enable": "启用外挂识图",
+      "selectProvider": "选择 Provider",
+      "selectModel": "选择模型",
+      "promptPlaceholder": "可选：自定义识图提示词（留空使用默认）",
+      "noVisionModel": "暂无可用识图模型：请先在 Providers 中为模型勾选“图片”模态",
+      "modelNotImageWarning": "该模型未声明支持图片输入，保存将被拒绝。请先在 Providers 中为该模型勾选“图片”模态。",
+      "saved": "外挂识图已启用",
+      "removed": "外挂识图已禁用",
+      "saveFailed": "保存失败"
     },
     "adapters": {
       "title": "工具适配器映射",

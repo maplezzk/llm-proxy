@@ -101,7 +101,7 @@ function validateProviders(config: Config): ValidationError[] {
         if (!Array.isArray(model.input) || model.input.length === 0) {
           errors.push({ field: `providers.${provider.name}.models.${model.id}.input`, message: `input 必须是非空数组，如 ["text", "image"]` })
         } else {
-          const validModalities = ['text', 'image', 'audio', 'video', 'file']
+          const validModalities = ['text', 'image']
           for (const mod of model.input) {
             if (!validModalities.includes(mod)) {
               errors.push({ field: `providers.${provider.name}.models.${model.id}.input`, message: `input 模态 "${mod}" 无效，支持: ${validModalities.join(', ')}` })

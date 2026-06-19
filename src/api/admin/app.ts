@@ -9,6 +9,7 @@ import { testPanel } from './components/test-panel.js'
 import { adaptersPage } from './components/adapters.js'
 import { proxyKeyForm } from './components/proxy-key.js'
 import { portSettingForm } from './components/port-setting.js'
+import { visionSettingForm } from './components/vision-setting.js'
 import { capturePage } from './components/capture.js'
 
 // Initialize i18n before Alpine components
@@ -28,6 +29,7 @@ Alpine.data('adaptersPage', adaptersPage)
 Alpine.data('testPanel', testPanel)
 Alpine.data('proxyKeyForm', proxyKeyForm)
 Alpine.data('portSettingForm', portSettingForm)
+Alpine.data('visionSettingForm', visionSettingForm)
 Alpine.data('capturePage', capturePage)
 
 ;(window as any).Alpine = Alpine
