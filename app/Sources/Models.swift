@@ -136,7 +136,7 @@ struct ProviderModelDetail: Codable {
 }
 
 struct ThinkingConfig: Codable {
-    let budget_tokens: Int
+    let budget_tokens: Int?
     let type: String?
 }
 
