@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.0](https://github.com/maplezzk/llm-proxy/compare/v0.17.0...v0.18.0) (2026-06-19)
+
+
+### Features
+
+* 外挂识图结果缓存（图片→描述 LRU 缓存）+ tool_result 嵌套图片修复 ([#149](https://github.com/maplezzk/llm-proxy/issues/149)) ([#149](https://github.com/maplezzk/llm-proxy/issues/149)) ([b8fd092](https://github.com/maplezzk/llm-proxy/commit/b8fd092859207e22fc57963cb022a9d264070d8c))
+
 ## [0.17.0](https://github.com/maplezzk/llm-proxy/compare/v0.16.8...v0.17.0) (2026-06-19)
 
 

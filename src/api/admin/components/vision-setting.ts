@@ -7,6 +7,15 @@ interface VisionFormData {
   prompt: string
 }
 
+interface VisionCacheState {
+  enabled: boolean
+  hits: number
+  misses: number
+  size: number
+  maxEntries: number
+  hitRate: number
+}
+
 // 与后端 src/proxy/vision.ts 的 DEFAULT_VISION_PROMPT 保持一致
 const DEFAULT_VISION_PROMPT = '请详细描述这张图片的内容，包括其中的文字、物体、场景、颜色等关键信息。'
 
@@ -16,6 +25,8 @@ export function visionSettingForm() {
     providers: [] as Array<{ name: string; models: Array<{ id: string; input?: string[] }> }>,
     loading: false,
     saving: false,
+    cache: { enabled: false, hits: 0, misses: 0, size: 0, maxEntries: 0, hitRate: 0 } as VisionCacheState,
+    clearing: false,
 
     init() {
       this.load()
@@ -23,11 +34,13 @@ export function visionSettingForm() {
 
     async load() {
       this.loading = true
-      const [visionRes, providersRes] = await Promise.all([
+      const [visionRes, providersRes, cacheRes] = await Promise.all([
         (window as any).Alpine.store('app').fetch('/admin/vision').catch(() => null),
         (window as any).Alpine.store('app').fetch('/admin/config').catch(() => null),
+        (window as any).Alpine.store('app').fetch('/admin/vision-cache/stats').catch(() => null),
       ])
       this.loading = false
+      if (cacheRes?.data) this.cache = cacheRes.data
 
       // 1. 先设 providers（让 <option> 先渲染）
       this.providers = providersRes?.data?.providers || []
@@ -101,6 +114,37 @@ export function visionSettingForm() {
           'error'
         )
       }
+    },
+
+    async clearCache() {
+      if (this.clearing) return
+      if (!window.confirm(i18next.t('admin.vision.cache.clearConfirm'))) return
+      this.clearing = true
+      const res = await (window as any).Alpine.store('app').fetch('/admin/vision-cache/clear', {
+        method: 'POST',
+      }).catch(() => null)
+      this.clearing = false
+      if (res?.success) {
+        this.cache = res.data
+        ;(window as any).Alpine.store('app').toast(i18next.t('admin.vision.cache.cleared'), 'success')
+      } else {
+        ;(window as any).Alpine.store('app').toast(
+          res?.error || i18next.t('admin.vision.cache.clearFailed'),
+          'error'
+        )
+      }
+    },
+
+    formatCacheStats() {
+      if (!this.cache.enabled) return i18next.t('admin.vision.cache.disabled')
+      const rate = (this.cache.hitRate * 100).toFixed(1) + '%'
+      return i18next.t('admin.vision.cache.stats', {
+        hits: this.cache.hits,
+        misses: this.cache.misses,
+        rate,
+        size: this.cache.size,
+        max: this.cache.maxEntries,
+      })
     },
   }
 }

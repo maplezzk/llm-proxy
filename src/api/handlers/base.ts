@@ -196,6 +196,27 @@ export function handleGetTokenStats(ctx: ServerContext, _req: IncomingMessage, r
   json(res, 200, { success: true, data: ctx.tokenTracker.getStats() })
 }
 
+// Vision 缓存统计
+export function handleGetVisionCacheStats(ctx: ServerContext, _req: IncomingMessage, res: ServerResponse): void {
+  if (!ctx.visionCache) {
+    json(res, 200, { success: true, data: { enabled: false, hits: 0, misses: 0, size: 0, maxEntries: 0, hitRate: 0 } })
+    return
+  }
+  const stats = ctx.visionCache.getStats()
+  json(res, 200, { success: true, data: { enabled: true, ...stats } })
+}
+
+// Vision 缓存清空
+export async function handleClearVisionCache(ctx: ServerContext, _req: IncomingMessage, res: ServerResponse): Promise<void> {
+  if (!ctx.visionCache) {
+    json(res, 404, { success: false, error: 'Vision cache not enabled' })
+    return
+  }
+  await ctx.visionCache.clear()
+  ctx.logger.log('system', 'Vision cache cleared')
+  json(res, 200, { success: true, data: ctx.visionCache.getStats() })
+}
+
 export function handleDebugCapturesStatus(ctx: ServerContext, _req: IncomingMessage, res: ServerResponse): void {
   json(res, 200, { success: true, data: { enabled: ctx.capture?.isEnabled() ?? false } })
 }
