@@ -1414,8 +1414,6 @@ function injectThinkingConfig(
   if (!route.thinking) return
 
   if (route.providerType === 'anthropic' && route.thinking.budget_tokens) {
-    // 客户端已设置 thinking 则不覆盖
-    if (upstreamBody.thinking) return
     const budget = route.thinking.budget_tokens
     upstreamBody.thinking = { type: 'enabled', budget_tokens: budget }
     // 确保 max_tokens >= budget_tokens，否则 Anthropic API 会报错
@@ -1424,17 +1422,25 @@ function injectThinkingConfig(
     }
   } else if (route.thinking.type) {
     // 非标准 thinking.type（如 MiniMax adaptive），用于所有 provider type
-    if (upstreamBody.thinking || upstreamBody.reasoning || upstreamBody.reasoning_effort) return
     upstreamBody.thinking = { type: route.thinking.type }
+    // 用户配置优先：清除客户端传的 reasoning/reasoning_effort，避免冲突
+    delete upstreamBody.reasoning
+    delete upstreamBody.reasoning_effort
   }
 
   if ((route.providerType === 'openai' || route.providerType === 'openai-responses') && route.thinking.reasoning_effort) {
-    // 客户端已设置 reasoning 则不覆盖
-    if (upstreamBody.reasoning || upstreamBody.reasoning_effort) return
     if (route.providerType === 'openai-responses') {
       upstreamBody.reasoning = { effort: route.thinking.reasoning_effort }
     } else {
       upstreamBody.reasoning_effort = route.thinking.reasoning_effort
+    }
+    // 用户配置优先：清除客户端传的 thinking（如果是 type 冲突）
+    if (upstreamBody.thinking && typeof upstreamBody.thinking === 'object') {
+      const t = upstreamBody.thinking as Record<string, unknown>
+      // 只清除 type 字段（budget_tokens 不是用户配置的，允许保留）
+      if (t.type && !t.budget_tokens) {
+        delete upstreamBody.thinking
+      }
     }
   }
 }
