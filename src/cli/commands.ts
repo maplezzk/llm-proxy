@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync, unlinkSync, existsSync, mkdirSync } from 'node:fs'
+import { readFileSync, writeFileSync, appendFileSync, unlinkSync, existsSync, mkdirSync } from 'node:fs'
 import { createProxyServer } from '../api/server.js'
 import { ConfigStore } from '../config/store.js'
 import { StatusTracker } from '../status/tracker.js'
@@ -44,6 +44,20 @@ function isProcessRunning(pid: number): boolean {
   }
 }
 
+/** 启动阶段 Logger 尚未创建，写配置加载错误到 ~/.llm-proxy/startup-errors.log */
+function writeConfigErrorLog(configPath: string, error: string): void {
+  try {
+    const logDir = `${process.env.HOME ?? '/tmp'}/.llm-proxy`
+    mkdirSync(logDir, { recursive: true })
+    const logFile = `${logDir}/startup-errors.log`
+    const ts = new Date().toISOString()
+    const line = `[${ts}] 配置加载失败 config=${configPath}\n${error}\n${'─'.repeat(60)}\n`
+    appendFileSync(logFile, line, 'utf-8')
+  } catch {
+    // 写日志失败不阻塞启动流程
+  }
+}
+
 export async function cmdStart(opts: StartOptions): Promise<void> {
   // Default to English; config file's locale field can override to 'zh'
   let { t } = createI18n('en')
@@ -63,7 +77,10 @@ export async function cmdStart(opts: StartOptions): Promise<void> {
       store = await ConfigStore.create(configPath)
       console.error(t('cli.start.configLoaded'))
     } catch (err) {
-      console.error(t('cli.start.configLoadFailed', { error: err instanceof Error ? err.message : String(err) }))
+      const errorMessage = err instanceof Error ? err.message : String(err)
+      console.error(t('cli.start.configLoadFailed', { error: errorMessage }))
+      // 启动阶段 Logger 尚未创建，手动写错误日志到 ~/.llm-proxy/
+      writeConfigErrorLog(configPath, errorMessage)
       process.exit(1)
     }
   }
