@@ -26,7 +26,7 @@ struct ProviderFormView: View {
             // 底部按钮
             formFooter
         }
-        .frame(width: 520, height: 580)
+        .frame(width: 520, height: 640)
         .sheet(isPresented: $viewModel.showPullModelsSheet) {
             pullModelsSheetView
         }
@@ -289,6 +289,32 @@ struct ProviderFormView: View {
                 .labelsHidden()
             }
 
+            // 输入模态勾选（当前仅支持 text 和 image）
+            HStack(spacing: 6) {
+                Text(loc("providers.form.inputModalities"))
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+                ForEach(["text", "image"], id: \.self) { mod in
+                    Toggle(isOn: Binding(
+                        get: { viewModel.formData.models[index].input.contains(mod) },
+                        set: { newValue in
+                            if newValue { viewModel.formData.models[index].input.insert(mod) }
+                            else { viewModel.formData.models[index].input.remove(mod) }
+                            // 至少保留 text
+                            if viewModel.formData.models[index].input.isEmpty {
+                                viewModel.formData.models[index].input.insert("text")
+                            }
+                        }
+                    )) {
+                        Text(modalityIcon(mod))
+                            .font(.system(size: 10))
+                    }
+                    .toggleStyle(.button)
+                    .controlSize(.mini)
+                    .help(loc("providers.form.inputModality." + mod))
+                }
+            }
+
             Spacer()
 
             // 删除按钮
@@ -302,6 +328,16 @@ struct ProviderFormView: View {
         .padding(8)
         .background(Color.primary.opacity(0.04))
         .cornerRadius(6)
+    }
+
+    // MARK: - Modality icon (for input modalities toggles)
+
+    private func modalityIcon(_ mod: String) -> String {
+        switch mod {
+        case "text":  return "T"
+        case "image": return "🖼"
+        default:      return mod
+        }
     }
 
     // MARK: - Footer

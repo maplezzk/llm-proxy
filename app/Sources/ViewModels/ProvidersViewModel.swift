@@ -16,6 +16,7 @@ struct ProviderModelFormData: Identifiable {
     var modelId = ""
     var budgetTokens = ""
     var reasoningEffort = ""
+    var input: Set<String> = ["text"]
 }
 
 // MARK: - ViewModel
@@ -114,10 +115,12 @@ final class ProvidersViewModel {
                 ? [ProviderModelFormData()]
                 : provider.models.map { model in
                     let bt = model.thinking?.budget_tokens ?? 0
+                    let inputSet = Set(model.input ?? ["text"])
                     return ProviderModelFormData(
                         modelId: model.id,
                         budgetTokens: bt > 0 ? String(bt) : "",
-                        reasoningEffort: model.reasoning_effort ?? ""
+                        reasoningEffort: model.reasoning_effort ?? "",
+                        input: inputSet
                     )
                 }
         )
@@ -161,9 +164,14 @@ final class ProvidersViewModel {
             } else if !model.reasoningEffort.isEmpty {
                 thinking = ThinkingInput(budget_tokens: nil, reasoning_effort: model.reasoningEffort)
             }
+            // 输入模态：按设定顺序输出；只要勾选了任何模态（含 text）就发送，让后端能看到用户的意图
+            let allowedModalities: [String] = ["text", "image", "audio", "video", "file"]
+            let selectedModalities = allowedModalities.filter { model.input.contains($0) }
+            let inputField: [String]? = selectedModalities.isEmpty ? nil : selectedModalities
             return ProviderModelInput(
                 id: model.modelId.trimmingCharacters(in: .whitespaces),
-                thinking: thinking
+                thinking: thinking,
+                input: inputField
             )
         }
 

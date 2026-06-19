@@ -17,6 +17,7 @@
 "status.stopping" = "◌ Stopping...";
 "status.restarting" = "◌ Restarting...";
 "status.starting" = "◌ Starting...";
+"status.loading" = "◌ Loading adapters...";
 "error.switchFailed" = "Switch failed: %@";
 "error.setLogLevelFailed" = "Set log level failed: %@";
 "error.startFailed" = "Failed to start service";
@@ -106,6 +107,7 @@
 "providers.form.budgetTokens" = "Budget Tokens";
 "providers.form.budgetTokensHelp" = "Thinking budget tokens for Anthropic models";
 "providers.form.reasoningNone" = "None";
+"providers.form.inputModalities" = "Input";
 "providers.pullModels.title" = "Pull Models from API";
 "providers.pullModels.close" = "Close";
 "providers.pullModels.loading" = "Fetching model list...";
@@ -224,6 +226,19 @@
 "settings.proxyKeyRemoved" = "Proxy key removed";
 "settings.autoUpdate" = "Auto Update Check";
 "settings.autoUpdateDesc" = "Automatically check for updates every 5 minutes";
+"settings.vision" = "Vision Fallback";
+"settings.visionProvider" = "Vision Provider";
+"settings.visionModel" = "Vision Model";
+"settings.visionPrompt" = "Vision Prompt";
+"settings.visionSetup" = "Set up";
+"settings.visionEdit" = "Edit";
+"settings.visionSaved" = "Vision fallback config saved";
+"settings.visionRemoved" = "Vision fallback config removed";
+"settings.visionSheetHint" = "Provide automatic image recognition for models that don't support image input: when a request contains images, the configured vision model is called to generate text descriptions, which are then forwarded to the original model.";
+"settings.visionNoModel" = "No vision-capable model available. Enable image input for a model in Providers first.";
+"settings.visionModelNotImageCapable" = "This model does not declare image input support";
+"settings.visionProviderPlaceholder" = "Select Provider";
+"settings.visionModelPlaceholder" = "Select Model";
 "menu.about" = "About LLM Proxy";
 "menu.settings" = "Settings…";
 "menu.hide" = "Hide LLM Proxy";

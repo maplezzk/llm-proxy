@@ -9,6 +9,7 @@ const RESERVED_ADAPTER_NAMES = new Set(['admin', 'v1', 'messages', 'chat', 'comp
 export function validateConfig(config: Config): ValidationError[] {
   const errors = validateProviders(config)
   errors.push(...validateAdapters(config))
+  errors.push(...validateVision(config))
   if (config.maxBodySize != null) {
     if (!Number.isInteger(config.maxBodySize) || config.maxBodySize < 1) {
       errors.push({ field: 'max_body_size', message: 'max_body_size 必须为正整数（字节数）' })
@@ -94,7 +95,61 @@ function validateProviders(config: Config): ValidationError[] {
           }
         }
       }
+
+      // 校验 input 模态配置
+      if (model.input !== undefined) {
+        if (!Array.isArray(model.input) || model.input.length === 0) {
+          errors.push({ field: `providers.${provider.name}.models.${model.id}.input`, message: `input 必须是非空数组，如 ["text", "image"]` })
+        } else {
+          const validModalities = ['text', 'image']
+          for (const mod of model.input) {
+            if (!validModalities.includes(mod)) {
+              errors.push({ field: `providers.${provider.name}.models.${model.id}.input`, message: `input 模态 "${mod}" 无效，支持: ${validModalities.join(', ')}` })
+            }
+          }
+        }
+      }
     }
+  }
+
+  return errors
+}
+
+/** 校验 vision（外挂识图）配置：provider + model 必须存在且支持图片 */
+function validateVision(config: Config): ValidationError[] {
+  const errors: ValidationError[] = []
+  if (!config.vision) return errors
+
+  if (!config.vision.provider || typeof config.vision.provider !== 'string') {
+    errors.push({ field: 'vision.provider', message: '识图模型的 provider 名称不能为空' })
+    return errors
+  }
+  if (!config.vision.model || typeof config.vision.model !== 'string') {
+    errors.push({ field: 'vision.model', message: '识图模型 ID 不能为空' })
+    return errors
+  }
+
+  // 精确定位 provider
+  const provider = config.providers.find((p) => p.name === config.vision!.provider)
+  if (!provider) {
+    errors.push({ field: 'vision.provider', message: `Provider "${config.vision.provider}" 不存在` })
+    return errors
+  }
+
+  // 精确定位 model
+  const model = provider.models.find((m) => m.id === config.vision!.model)
+  if (!model) {
+    errors.push({ field: 'vision.model', message: `模型 "${config.vision.model}" 不在 provider "${config.vision.provider}" 下` })
+    return errors
+  }
+
+  // 校验识图模型本身支持图片输入
+  if (!model.input?.includes('image')) {
+    errors.push({ field: `vision.model`, message: `识图模型 "${config.vision.model}" 未声明 input: ["image"]，识图模型必须支持图片输入` })
+  }
+
+  if (config.vision.prompt !== undefined && (typeof config.vision.prompt !== 'string' || config.vision.prompt.trim() === '')) {
+    errors.push({ field: 'vision.prompt', message: 'vision.prompt 必须是非空字符串' })
   }
 
   return errors
