@@ -15,8 +15,10 @@ export function handleGetConfig(ctx: ServerContext, _req: IncomingMessage, res: 
         api_base: p.apiBase,
         models: p.models.map((m) => ({
           id: m.id,
-          ...(m.thinking?.budget_tokens ? { thinking: { budget_tokens: m.thinking.budget_tokens } } : {}),
-          ...(m.thinking?.type ? { thinking: { type: m.thinking.type } } : {}),
+          ...(m.thinking ? { thinking: {
+            ...(m.thinking.budget_tokens ? { budget_tokens: m.thinking.budget_tokens } : {}),
+            ...(m.thinking.type ? { type: m.thinking.type } : {}),
+          } } : {}),
           ...(m.thinking?.reasoning_effort ? { reasoning_effort: m.thinking.reasoning_effort } : {}),
           ...(m.input?.length ? { input: m.input } : {}),
         })),
