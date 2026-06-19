@@ -16,6 +16,7 @@ struct ProviderModelFormData: Identifiable {
     var modelId = ""
     var budgetTokens = ""
     var reasoningEffort = ""
+    var thinkingType = ""
     var input: Set<String> = ["text"]
 }
 
@@ -120,6 +121,7 @@ final class ProvidersViewModel {
                         modelId: model.id,
                         budgetTokens: bt > 0 ? String(bt) : "",
                         reasoningEffort: model.reasoning_effort ?? "",
+                        thinkingType: model.thinking?.type ?? "",
                         input: inputSet
                     )
                 }
@@ -159,10 +161,18 @@ final class ProvidersViewModel {
             var thinking: ThinkingInput? = nil
             if formData.type == "anthropic" {
                 if let bt = Int(model.budgetTokens), bt > 0 {
-                    thinking = ThinkingInput(budget_tokens: bt, reasoning_effort: nil)
+                    thinking = ThinkingInput(budget_tokens: bt, reasoning_effort: nil, type: model.thinkingType.isEmpty ? nil : model.thinkingType)
+                } else if !model.thinkingType.isEmpty {
+                    // 仅设置 type（如 MiniMax adaptive）
+                    thinking = ThinkingInput(budget_tokens: nil, reasoning_effort: nil, type: model.thinkingType)
                 }
-            } else if !model.reasoningEffort.isEmpty {
-                thinking = ThinkingInput(budget_tokens: nil, reasoning_effort: model.reasoningEffort)
+            } else {
+                // OpenAI / OpenAI Responses
+                let re: String? = model.reasoningEffort.isEmpty ? nil : model.reasoningEffort
+                let tt: String? = model.thinkingType.isEmpty ? nil : model.thinkingType
+                if re != nil || tt != nil {
+                    thinking = ThinkingInput(budget_tokens: nil, reasoning_effort: re, type: tt)
+                }
             }
             // 输入模态：按设定顺序输出；只要勾选了任何模态（含 text）就发送，让后端能看到用户的意图
             let allowedModalities: [String] = ["text", "image", "audio", "video", "file"]

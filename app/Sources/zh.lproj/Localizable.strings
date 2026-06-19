@@ -119,6 +119,8 @@
 "providers.form.budgetTokens" = "预算 Token";
 "providers.form.budgetTokensHelp" = "Anthropic 模型思考预算 Token 数";
 "providers.form.reasoningNone" = "无";
+"providers.form.thinkingTypeNone" = "默认";
+"providers.form.thinkingTypeHelp" = "thinking.type 透传（如 MiniMax 用 adaptive）";
 "providers.form.inputModalities" = "输入能力";
 
 "providers.pullModels.title" = "从 API 拉取模型列表";
