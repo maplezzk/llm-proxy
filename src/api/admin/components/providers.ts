@@ -59,11 +59,16 @@ export function providersPage() {
             type: p.type,
             apiKey: p.api_key || '',
             apiBase: p.api_base || '',
-            models: (p.models || []).map((m: any) => ({ ...m })),
+            models: (p.models || []).map((m: any) => ({
+              ...m,
+              thinking: m.thinking ?? {},
+              reasoning_effort: (m as any).reasoning_effort ?? '',
+              input: Array.isArray((m as any).input) ? (m as any).input : [],
+            })),
           }
         }
       }
-      if (this.form.models.length === 0) this.form.models.push({ id: '' })
+      if (this.form.models.length === 0) this.addModelRow()
       this.showModal = true
     },
 
