@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.1](https://github.com/maplezzk/llm-proxy/compare/v0.18.0...v0.18.1) (2026-06-19)
+
+
+### Bug Fixes
+
+* 供应商保存时 [object Object] 错误 + macOS APP 错误吞掉 + Web 端 [@change](https://github.com/change) 失效 ([#152](https://github.com/maplezzk/llm-proxy/issues/152)) ([c0131a6](https://github.com/maplezzk/llm-proxy/commit/c0131a6380a6ab01458d79dba9c61b59b2696dfc))
+
 ## [0.18.0](https://github.com/maplezzk/llm-proxy/compare/v0.17.0...v0.18.0) (2026-06-19)
 
 
