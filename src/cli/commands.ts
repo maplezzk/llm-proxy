@@ -8,6 +8,7 @@ import { Logger, type LogLevel } from '../log/logger.js'
 import { createI18n } from '../lib/i18n.js'
 import type { Server } from 'node:http'
 import type { Config } from '../config/types.js'
+import { VisionCache } from '../proxy/vision-cache.js'
 
 const DEFAULT_CONFIG_PATH = `${process.env.HOME ?? '/tmp'}/.llm-proxy/config.yaml`
 const DEFAULT_PID_PATH = '/tmp/llm-proxy.pid'
@@ -106,6 +107,10 @@ export async function cmdStart(opts: StartOptions): Promise<void> {
   const configPort = store.getConfig().config.port
   const port = opts.port ?? configPort ?? DEFAULT_PORT
 
+  // 外挂识图缓存：图片内容 hash → 描述
+  const visionCache = new VisionCache({ filePath: `${logDir}/vision-cache.json` })
+  visionCache.load()
+
   const server = createProxyServer({
     adminHost: host,
     adminPort: port,
@@ -116,11 +121,18 @@ export async function cmdStart(opts: StartOptions): Promise<void> {
     tokenTracker,
     capture,
     logger,
+    visionCache,
   })
 
   process.on('SIGTERM', () => {
     console.error(t('cli.start.sigterm'))
     try { unlinkSync(DEFAULT_PID_PATH) } catch { /* ignore */ }
+    visionCache.flushSync()
+    server.close()
+    process.exit(0)
+  })
+  process.on('SIGINT', () => {
+    visionCache.flushSync()
     server.close()
     process.exit(0)
   })

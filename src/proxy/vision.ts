@@ -17,7 +17,7 @@ import type { RouterResult } from './types.js'
 import type { InboundType } from './translation.js'
 import { routeModelInProvider } from './router.js'
 import { transformInboundRequest } from './translation.js'
-import { sanitizeApiBase } from '../lib/http-utils.js'
+import { computeImageKey, type VisionCache } from './vision-cache.js'
 
 /** 默认识图提示词 */
 const DEFAULT_VISION_PROMPT = '请详细描述这张图片的内容，包括其中的文字、物体、场景、颜色等关键信息。'
@@ -28,12 +28,24 @@ interface ExtractedImage {
   url: string
 }
 
-/** 需要被识图的消息定位信息：消息索引 + 该消息中图片块索引数组 */
+/**
+ * 图片在消息中的精确定位。
+ * 支持两种层级：
+ *   顶层块：content[topIndex] 是 { type: 'image_url' } 等图片块
+ *   嵌套块（tool_result）：content[topIndex].content[nestedIndex] 是图片块
+ */
+interface ImageLocation {
+  /** content 数组索引（顶层图片块），或 tool_result 块的索引（嵌套图片） */
+  topIndex: number
+  /** 嵌套图片在 tool_result.content 中的索引；顶层图片为 -1 */
+  nestedIndex: number
+}
+
+/** 需要被识图的消息定位信息 */
 interface MessageWithImages {
   messageIndex: number
-  /** 图片块在 content 数组中的索引（仅当 content 是数组时） */
-  blockIndices: number[]
-  /** 从各图片块提取出的图片数据 */
+  locations: ImageLocation[]
+  /** 从各图片块提取出的图片数据，与 locations 一一对应 */
   images: ExtractedImage[]
 }
 
@@ -60,25 +72,35 @@ function scanImages(body: Record<string, unknown>, inboundType: InboundType): Me
   if (!Array.isArray(messages)) return result
 
   messages.forEach((msg, messageIndex) => {
-    const role = (msg as Record<string, unknown>).role
-    // Responses API 没有 role，用 type 区分；只有 user 消息和 function_call_output 承载图片
     const content = (msg as Record<string, unknown>).content
     if (typeof content !== 'string' && Array.isArray(content)) {
       const images: ExtractedImage[] = []
-      const blockIndices: number[] = []
+      const locations: ImageLocation[] = []
       content.forEach((block, blockIndex) => {
+        // 1. 直接检测图片块
         const img = extractImageFromBlock(block as Record<string, unknown>, inboundType)
         if (img) {
           images.push(img)
-          blockIndices.push(blockIndex)
+          locations.push({ topIndex: blockIndex, nestedIndex: -1 })
+          return
+        }
+        // 2. 递归检测 tool_result 块中的嵌套图片（Anthropic 协议）
+        const b = block as Record<string, unknown>
+        if (b.type === 'tool_result' && Array.isArray(b.content)) {
+          const nestedContent = b.content as Array<Record<string, unknown>>
+          nestedContent.forEach((nestedBlock, nestedIdx) => {
+            const nestedImg = extractImageFromBlock(nestedBlock, inboundType)
+            if (nestedImg) {
+              images.push(nestedImg)
+              locations.push({ topIndex: blockIndex, nestedIndex: nestedIdx })
+            }
+          })
         }
       })
       if (images.length > 0) {
-        result.push({ messageIndex, blockIndices, images })
+        result.push({ messageIndex, locations, images })
       }
     }
-    // 忽略 role 判断（Responses 的 input[] 可能混入非 message 类型）
-    void role
   })
 
   return result
@@ -133,7 +155,7 @@ function extractImageFromBlock(block: Record<string, unknown>, inboundType: Inbo
 }
 
 /**
- * 调用识图模型，将一组图片转换为文字描述。
+ * 调用识图模型，将单张图片转换为文字描述。
  * 走代理自身路由（routeModel），构造 OpenAI Chat 格式请求，复用 transformInboundRequest 做协议转换。
  */
 async function describeImages(
@@ -141,7 +163,7 @@ async function describeImages(
   visionProvider: string,
   visionModel: string,
   prompt: string,
-  images: ExtractedImage[],
+  image: ExtractedImage,
   logger?: Logger
 ): Promise<string> {
   const visionRoute = routeModelInProvider(store, visionProvider, visionModel)
@@ -156,7 +178,7 @@ async function describeImages(
         role: 'user',
         content: [
           { type: 'text', text: prompt },
-          ...images.map((img) => ({ type: 'image_url', image_url: { url: img.url } })),
+          { type: 'image_url', image_url: { url: image.url } },
         ],
       },
     ],
@@ -165,7 +187,7 @@ async function describeImages(
   const upstream = await transformInboundRequest('openai', visionRoute, visionBody, logger)
 
   logger?.log('request', `调用识图模型: ${visionRoute.providerName}/${visionRoute.modelId}`, {
-    imageCount: images.length,
+    imageCount: 1,
     model: visionRoute.modelId,
   }, 'debug')
 
@@ -267,29 +289,50 @@ function extractDescriptionText(data: Record<string, unknown>, providerType: str
 }
 
 /**
- * 将一条消息中的图片块原地替换为 <image_description> 文本块。
- * 同一条消息的多张图片合并成一次识图请求，结果合并为一个描述块。
+ * 将一条消息中的图片块原地替换为多个 <image_description> 文本块（每张图一个）。
+ * descriptions 长度必须等于 message.blockIndices.length。
  */
 function replaceImagesWithDescription(
   content: unknown[],
   message: MessageWithImages,
-  description: string
+  descriptions: string[]
 ): void {
-  // 将描述文本块替换第一个图片块的位置，其余图片块置为 null（稍后过滤）
-  const firstBlockIndex = message.blockIndices[0]
-  content[firstBlockIndex] = {
-    type: 'text',
-    text: `<image_description>\n${description}\n</image_description>`,
+  if (descriptions.length !== message.locations.length) return
+
+  // 逐张图片替换（从后往前处理避免索引偏移）
+  const indices = [...message.locations.keys()].sort((a, b) => b - a)
+  for (const idx of indices) {
+    const loc = message.locations[idx]
+    const desc = descriptions[idx]
+    const text = desc || ''
+    const descBlock = { type: 'text', text: `<image_description>\n${text}\n</image_description>` }
+
+    if (loc.nestedIndex >= 0) {
+      // tool_result 嵌套图片：替换 tool_result.content 中的图文块
+      const toolBlock = content[loc.topIndex] as Record<string, unknown> | undefined
+      if (!toolBlock || !Array.isArray(toolBlock.content)) continue
+      const nestedContent = toolBlock.content as unknown[]
+      nestedContent.splice(loc.nestedIndex, 1, descBlock)
+    } else {
+      // 顶层图片块：直接替换
+      content.splice(loc.topIndex, 1, descBlock)
+    }
   }
-  // 其余图片块标记为 null，后续过滤掉
-  for (let i = 1; i < message.blockIndices.length; i++) {
-    content[message.blockIndices[i]] = null
-  }
-  // 移除 null 条目
-  // 注意：不能直接修改数组长度，用 splice 逆序删除
+
+  // 最终清理：删除消息 content 层和 tool_result 嵌套中所有残留的图片块
   for (let i = content.length - 1; i >= 0; i--) {
-    if (content[i] === null) {
+    const b = content[i] as Record<string, unknown> | undefined
+    if (b && (b.type === 'image' || b.type === 'image_url' || b.type === 'input_image')) {
       content.splice(i, 1)
+    }
+    if (b && b.type === 'tool_result' && Array.isArray(b.content)) {
+      const nc = b.content as unknown[]
+      for (let j = nc.length - 1; j >= 0; j--) {
+        const nb = nc[j] as Record<string, unknown> | undefined
+        if (nb && (nb.type === 'image' || nb.type === 'image_url' || nb.type === 'input_image')) {
+          nc.splice(j, 1)
+        }
+      }
     }
   }
 }
@@ -314,6 +357,7 @@ export async function processVisionFallback(
   inboundType: InboundType,
   route: RouterResult,
   store: ConfigStore,
+  cache: VisionCache,
   logger?: Logger
 ): Promise<boolean> {
   const { config } = store.getConfig()
@@ -333,25 +377,55 @@ export async function processVisionFallback(
   if (messagesWithImages.length === 0) return false
 
   const prompt = config.vision.prompt || DEFAULT_VISION_PROMPT
+  const totalImages = messagesWithImages.reduce((a, m) => a + m.images.length, 0)
 
-  logger?.log('request', `外挂识图触发: 模型 ${route.modelId} 不支持图片，请求含 ${messagesWithImages.reduce((a, m) => a + m.images.length, 0)} 张图片`, {
+  logger?.log('request', `外挂识图触发: 模型 ${route.modelId} 不支持图片，请求含 ${totalImages} 张图片`, {
     targetModel: route.modelId,
     visionModel: config.vision.model,
     messagesWithImages: messagesWithImages.length,
   }, 'info')
 
-  // 逐条消息处理（同一条消息的多张图片合并为一次识图请求）
+  // 逐张图片独立处理：先查 cache，未命中单独调用识图模型
   for (const msg of messagesWithImages) {
-    const description = await describeImages(store, config.vision.provider, config.vision.model, prompt, msg.images, logger)
+    const descriptions: string[] = new Array(msg.images.length)
 
-    const content = (messages[msg.messageIndex] as Record<string, unknown>).content
-    if (Array.isArray(content)) {
-      replaceImagesWithDescription(content as unknown[], msg, description)
+    for (let j = 0; j < msg.images.length; j++) {
+      const key = computeImageKey(msg.images[j].url)
+      const cached = cache.get(key)
+      if (cached != null) {
+        descriptions[j] = cached
+        continue
+      }
+      // 未命中：调识图模型（单张图片）
+      const desc = await describeImages(
+        store,
+        config.vision.provider,
+        config.vision.model,
+        prompt,
+        msg.images[j],
+        logger
+      )
+      if (desc) {
+        descriptions[j] = desc
+        cache.set(key, desc)
+      }
+    }
+
+    // 替换图片块为描述块
+    const msgContent = (messages[msg.messageIndex] as Record<string, unknown>).content
+    if (Array.isArray(msgContent)) {
+      replaceImagesWithDescription(msgContent as unknown[], msg, descriptions)
+    } else {
+      logger?.log('request', `外挂识图: messages[${msg.messageIndex}] 的 content 不是数组，跳过替换`, {}, 'warn')
     }
   }
 
-  logger?.log('request', `外挂识图完成，已将图片描述注入 ${messagesWithImages.length} 条消息`, {
+  const finalStats = cache.getStats()
+  logger?.log('request', `外挂识图完成，已处理 ${messagesWithImages.length} 条消息中的图片`, {
     visionModel: config.vision.model,
+    cacheHits: finalStats.hits,
+    cacheMisses: finalStats.misses,
+    cacheSize: finalStats.size,
   }, 'info')
 
   return true

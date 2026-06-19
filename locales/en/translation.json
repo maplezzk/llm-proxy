@@ -163,7 +163,17 @@
       "modelNotImageWarning": "This model is not declared as supporting image input. Saving will be rejected. First mark the model as supporting image input in Providers.",
       "saved": "Vision fallback enabled",
       "removed": "Vision fallback disabled",
-      "saveFailed": "Save failed"
+      "saveFailed": "Save failed",
+      "cache": {
+        "title": "Vision Result Cache",
+        "desc": "Cache image descriptions by content. Repeat requests with the same image reuse the cached description without calling the vision model.",
+        "stats": "hits {{hits}} / miss {{misses}} · hit rate {{rate}} · cached {{size}}/{{max}}",
+        "disabled": "Cache not enabled on server",
+        "clear": "Clear Cache",
+        "clearConfirm": "Clear all vision cache? Cached images will be re-recognized on next request.",
+        "cleared": "Vision cache cleared",
+        "clearFailed": "Clear failed"
+      }
     },
     "adapters": {
       "title": "Adapter Mappings",

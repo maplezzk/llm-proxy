@@ -417,6 +417,18 @@ tbody tr:hover td { background: #f8f9fb; }
         </template>
         <button class="btn btn-primary btn-sm" @click="save()" :disabled="saving || (form.enabled && (!form.provider || !form.model))" style="margin-top:10px"
                 x-text="saving ? $t('admin.common.saving') : $t('admin.common.save')"></button>
+
+        <div style="margin-top:14px;padding-top:12px;border-top:1px dashed var(--border)">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+            <div style="font-size:12px;font-weight:600;color:var(--text)">
+              <span style="margin-right:4px">💾</span><span x-text="$t('admin.vision.cache.title')"></span>
+            </div>
+            <button class="btn btn-ghost btn-sm" @click="clearCache()" :disabled="clearing || !cache.enabled || cache.size === 0"
+                    x-text="$t('admin.vision.cache.clear')"></button>
+          </div>
+          <div style="font-size:11px;color:var(--text-muted);margin-bottom:6px" x-text="$t('admin.vision.cache.desc')"></div>
+          <div style="font-size:11px;color:var(--text-muted);font-family:monospace" x-text="formatCacheStats()"></div>
+        </div>
       </div>
     </div>
 
