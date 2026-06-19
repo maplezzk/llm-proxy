@@ -4,11 +4,12 @@ import type { ConfigStore } from '../config/store.js'
 import type { StatusTracker } from '../status/tracker.js'
 import type { TokenTracker } from '../status/token-tracker.js'
 import type { CaptureBuffer } from '../proxy/capture.js'
+import type { VisionCache } from '../proxy/vision-cache.js'
 import type { Logger } from '../log/logger.js'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
-import { handleGetConfig, handleReload, handleHealth, handleStatus, handleGetLogs, handleGetLogLevel, handleSetLogLevel, handleGetLocale, handleSetLocale, handleGetPort, handleSetPort, handleGetAdapters, handleCreateProvider, handleUpdateProvider, handleDeleteProvider, handleCreateAdapter, handleUpdateAdapter, handleDeleteAdapter, handleTestModel, handleTestAdapter, handleListModels, handlePullModels, handleGetProxyKey, handleSetProxyKey, handleGetTokenStats, handleDebugCapturesStatus, handleDebugCaptures, handleDebugCapturesControl, handleDebugCapturesStream, handleGetVision, handleSetVision } from './handlers/index.js'
+import { handleGetConfig, handleReload, handleHealth, handleStatus, handleGetLogs, handleGetLogLevel, handleSetLogLevel, handleGetLocale, handleSetLocale, handleGetPort, handleSetPort, handleGetAdapters, handleCreateProvider, handleUpdateProvider, handleDeleteProvider, handleCreateAdapter, handleUpdateAdapter, handleDeleteAdapter, handleTestModel, handleTestAdapter, handleListModels, handlePullModels, handleGetProxyKey, handleSetProxyKey, handleGetTokenStats, handleDebugCapturesStatus, handleDebugCaptures, handleDebugCapturesControl, handleDebugCapturesStream, handleGetVision, handleSetVision, handleGetVisionCacheStats, handleClearVisionCache } from './handlers/index.js'
 import { handleAnthropicMessages, handleOpenAIChat, handleOpenAIResponses } from '../proxy/handlers.js'
 import { handleAdapterRequest, handleAdapterModels } from '../adapter/handlers.js'
 
@@ -18,6 +19,7 @@ export interface ServerContext {
   tokenTracker: TokenTracker
   logger: Logger
   capture?: CaptureBuffer
+  visionCache?: VisionCache
 }
 
 export interface ServerOptions {
@@ -30,6 +32,7 @@ export interface ServerOptions {
   tokenTracker: TokenTracker
   logger: Logger
   capture?: CaptureBuffer
+  visionCache?: VisionCache
 }
 
 type RouteHandler = (
@@ -95,6 +98,8 @@ const ROUTES: Route[] = [
   { method: 'PUT', pattern: /^\/admin\/port$/, handler: handleSetPort },
   { method: 'GET', pattern: /^\/admin\/vision$/, handler: handleGetVision },
   { method: 'PUT', pattern: /^\/admin\/vision$/, handler: handleSetVision },
+  { method: 'GET', pattern: /^\/admin\/vision-cache\/stats$/, handler: handleGetVisionCacheStats },
+  { method: 'POST', pattern: /^\/admin\/vision-cache\/clear$/, handler: handleClearVisionCache },
   { method: 'GET', pattern: /^\/admin\/proxy-key$/, handler: handleGetProxyKey },
   { method: 'PUT', pattern: /^\/admin\/proxy-key$/, handler: handleSetProxyKey },
   { method: 'GET', pattern: /^\/admin\/token-stats$/, handler: handleGetTokenStats },
@@ -127,7 +132,7 @@ function corsHeaders(res: ServerResponse): void {
 }
 
 export function createProxyServer(opts: ServerOptions): Server {
-  const ctx: ServerContext = { store: opts.store, tracker: opts.tracker, tokenTracker: opts.tokenTracker, logger: opts.logger, capture: opts.capture }
+  const ctx: ServerContext = { store: opts.store, tracker: opts.tracker, tokenTracker: opts.tokenTracker, logger: opts.logger, capture: opts.capture, visionCache: opts.visionCache }
 
   const server = createHttpServer(async (req: IncomingMessage, res: ServerResponse) => {
     corsHeaders(res)

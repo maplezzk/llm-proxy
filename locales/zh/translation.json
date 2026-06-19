@@ -163,7 +163,17 @@
       "modelNotImageWarning": "该模型未声明支持图片输入，保存将被拒绝。请先在 Providers 中为该模型勾选“图片”模态。",
       "saved": "外挂识图已启用",
       "removed": "外挂识图已禁用",
-      "saveFailed": "保存失败"
+      "saveFailed": "保存失败",
+      "cache": {
+        "title": "识图结果缓存",
+        "desc": "按图片内容缓存识图描述：相同图片再次请求时直接复用，避免重复调用识图模型。",
+        "stats": "命中 {{hits}} / 未命中 {{misses}} · 命中率 {{rate}} · 已缓存 {{size}}/{{max}}",
+        "disabled": "服务未启用缓存",
+        "clear": "清空缓存",
+        "clearConfirm": "确定要清空所有识图缓存吗？清空后相同图片会重新识图。",
+        "cleared": "识图缓存已清空",
+        "clearFailed": "清空失败"
+      }
     },
     "adapters": {
       "title": "工具适配器映射",

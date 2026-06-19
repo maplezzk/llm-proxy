@@ -10,6 +10,7 @@ import { readBody } from '../lib/http-utils.js'
 import { transformInboundRequest } from './translation.js'
 import { forwardRequest } from './provider.js'
 import { processVisionFallback } from './vision.js'
+import type { VisionCache } from './vision-cache.js'
 import { t } from '../lib/i18n.js'
 
 export interface ParseResult {
@@ -91,6 +92,7 @@ export interface PipelineContext {
   logger: Logger
   tokenTracker: TokenTracker
   capture?: CaptureBuffer
+  visionCache?: VisionCache
 }
 
 /**
@@ -122,7 +124,8 @@ export async function forwardPipeline(
   try {
     // 外挂识图：目标模型不支持图片时，将图片转换为文字描述
     try {
-      const visionApplied = await processVisionFallback(body, inboundType, route, ctx.store, ctx.logger)
+      // visionCache 在 cli 启动时一定会创建，断言非空避免影响调用方类型
+      const visionApplied = await processVisionFallback(body, inboundType, route, ctx.store, ctx.visionCache!, ctx.logger)
       if (visionApplied) {
         // 识图后 rawBody 已过时，同步更新
         rawBody = JSON.stringify(body)
