@@ -39,6 +39,10 @@ export class ConfigStore {
 
   async writeConfig(config: Config): Promise<void> {
     await this.mutex.run(async () => {
+      const errors = validateConfig(config)
+      if (errors.length > 0) {
+        throw new Error(`配置校验失败:\n${errors.map((e) => `  - ${e.message}`).join('\n')}`)
+      }
       const yaml = serializeConfigToYaml(config)
       writeFileSync(this.configPath, yaml, 'utf-8')
       this.current = config

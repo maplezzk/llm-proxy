@@ -101,6 +101,14 @@ export async function handleUpdateAdapter(ctx: ServerContext, req: IncomingMessa
     max_tokens: max_tokens,
     models: models ?? newConfig.adapters[idx].models,
   }
+
+  // 全量校验（含跨 adapter 去重、provider 引用等）
+  const errs = validateConfig(newConfig)
+  if (errs.length > 0) {
+    json(res, 400, { success: false, error: '校验失败', errors: errs })
+    return
+  }
+
   await ctx.store.writeConfig(newConfig)
   ctx.logger.log('system', 'Update adapter request received', { name: adapterName, newName: finalName, type: type ?? '', modelCount: models?.length })
   ctx.logger.log('system', 'Adapter updated', { name: adapterName })

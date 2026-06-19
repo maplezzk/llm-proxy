@@ -608,16 +608,26 @@ class MenuBarController: NSObject {
             stderrOutput += text
         }
 
-        // 提取关键错误行
+        // 提取错误信息
         let lines = stderrOutput.split(separator: "\n").map(String.init)
-        let errorLine = lines.first(where: { line in
-            line.contains("端口") || line.contains("port") || line.contains("Port") ||
-            line.contains("已被占用") || line.contains("EADDRINUSE") || line.contains("in use") ||
-            line.contains("error") || line.contains("Error") || line.contains("失败") || line.contains("failed")
-        })
 
-        if let err = errorLine, !err.isEmpty {
+        // 端口类错误：短消息，取第一条即可
+        let portError = lines.first(where: { line in
+            line.contains("端口") || line.contains("已被占用") || line.contains("EADDRINUSE") || line.contains("in use")
+        })
+        if let err = portError, !err.isEmpty {
             return err.trimmingCharacters(in: .whitespaces)
+        }
+
+        // 配置/校验/通用错误：返回完整 stderr，保留多行详情（如校验错误列表）
+        let hasError = lines.contains(where: { line in
+            line.contains("error") || line.contains("Error") ||
+            line.contains("失败") || line.contains("failed") ||
+            line.contains("校验")
+        })
+        if hasError {
+            let all = stderrOutput.trimmingCharacters(in: .whitespacesAndNewlines)
+            return all.isEmpty ? "启动失败，服务进程已退出" : all
         }
 
         // 没有找到明显错误行，返回完整 stderr
