@@ -289,6 +289,18 @@ struct ProviderFormView: View {
                 .labelsHidden()
             }
 
+            // thinking.type (对所有 provider type 生效，如 MiniMax adaptive)
+            Picker("", selection: $viewModel.formData.models[index].thinkingType) {
+                Text(loc("providers.form.thinkingTypeNone")).tag("")
+                Text("adaptive").tag("adaptive")
+                Text("auto").tag("auto")
+                Text("enabled").tag("enabled")
+                Text("disabled").tag("disabled")
+            }
+            .frame(width: 100)
+            .labelsHidden()
+            .help(loc("providers.form.thinkingTypeHelp"))
+
             // 输入模态勾选（当前仅支持 text 和 image）
             HStack(spacing: 6) {
                 Text(loc("providers.form.inputModalities"))

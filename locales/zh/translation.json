@@ -122,6 +122,8 @@
       "lowEffort": "低",
       "mediumEffort": "中",
       "highEffort": "高",
+      "thinkingType": "模式",
+      "defaultType": "无",
       "hideKey": "隐藏",
       "showKey": "查看",
       "keepEmptyHint": "留空则保留原值",

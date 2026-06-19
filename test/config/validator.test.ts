@@ -161,7 +161,37 @@ describe('config/validator', () => {
       ],
     }
     const errors = validateConfig(config)
-    assert.ok(errors.some((e) => e.message.includes('有效的 budget_tokens')))
+    assert.ok(errors.some((e) => e.message.includes('budget_tokens 或 type')))
+  })
+
+  it('Anthropic 模型仅 type 配置通过', () => {
+    const config: Config = {
+      providers: [
+        {
+          name: 'p1',
+          type: 'anthropic',
+          apiKey: 'sk-ant-1',
+          models: [{ id: 'MiniMax-M3', thinking: { type: 'adaptive' } }],
+        },
+      ],
+    }
+    const errors = validateConfig(config)
+    assert.strictEqual(errors.length, 0)
+  })
+
+  it('Anthropic 模型无效 type 报错', () => {
+    const config: Config = {
+      providers: [
+        {
+          name: 'p1',
+          type: 'anthropic',
+          apiKey: 'sk-ant-1',
+          models: [{ id: 'MiniMax-M3', thinking: { type: 'invalid' } }],
+        },
+      ],
+    }
+    const errors = validateConfig(config)
+    assert.ok(errors.some((e) => e.message.includes('thinking.type')))
   })
 
   it('Anthropic 模型不能设置 reasoning_effort', () => {

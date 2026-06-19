@@ -18,6 +18,14 @@ const openaiRoute = {
   modelId: 'gpt-4o',
 }
 
+const openaiResponsesRoute = {
+  providerName: 'openai-responses',
+  providerType: 'openai-responses' as const,
+  apiKey: 'sk-openai-1',
+  apiBase: 'https://api.openai.com',
+  modelId: 'o3-mini',
+}
+
 describe('proxy/translation', () => {
   describe('同协议转发', () => {
     it('Anthropic → Anthropic 保真传递 + 替换 model', async () => {
@@ -1410,6 +1418,60 @@ describe('proxy/response-conversion', () => {
       // SHA-256('Hello world') 前16字符
       const expectedSig = '64ec88ca00b268e5'
       assert.strictEqual(thinking.signature, expectedSig, '应自动生成 SHA-256 签名')
+    })
+
+    it('用户配置优先：Anthropic budget_tokens 覆盖客户端 thinking', async () => {
+      const route = { ...anthropicRoute, thinking: { budget_tokens: 8192 } }
+      const result = await transformInboundRequest('anthropic', route, {
+        model: 'claude-sonnet',
+        messages: [{ role: 'user', content: 'hi' }],
+        // 客户端也传了 thinking，应被用户配置覆盖
+        thinking: { type: 'enabled', budget_tokens: 1000 },
+      })
+      assert.deepStrictEqual(result.body.thinking, { type: 'enabled', budget_tokens: 8192 })
+    })
+
+    it('用户配置优先：Anthropic type 覆盖客户端 thinking', async () => {
+      const route = { ...anthropicRoute, thinking: { type: 'enabled' } }
+      const result = await transformInboundRequest('anthropic', route, {
+        model: 'claude-sonnet',
+        messages: [{ role: 'user', content: 'hi' }],
+        // 客户端传了 budget_tokens=1000，type=disabled——应被用户配置的 enabled 覆盖
+        thinking: { type: 'disabled', budget_tokens: 1000 },
+      })
+      assert.deepStrictEqual(result.body.thinking, { type: 'enabled' })
+    })
+
+    it('用户配置优先：thinking.type 覆盖客户端 reasoning_effort（OpenAI）', async () => {
+      const route = { ...openaiRoute, thinking: { type: 'adaptive' } }
+      const result = await transformInboundRequest('openai', route, {
+        model: 'MiniMax-M3',
+        messages: [{ role: 'user', content: 'hi' }],
+        // 客户端也传了 reasoning_effort——应被用户配置的 type 覆盖
+        reasoning_effort: 'low',
+      })
+      assert.deepStrictEqual(result.body.thinking, { type: 'adaptive' })
+      assert.strictEqual(result.body.reasoning_effort, undefined)
+    })
+
+    it('用户配置优先：reasoning_effort 覆盖客户端（OpenAI）', async () => {
+      const route = { ...openaiRoute, thinking: { reasoning_effort: 'high' } }
+      const result = await transformInboundRequest('openai', route, {
+        model: 'o3-mini',
+        messages: [{ role: 'user', content: 'hi' }],
+        reasoning_effort: 'low',
+      })
+      assert.strictEqual(result.body.reasoning_effort, 'high')
+    })
+
+    it('用户配置优先：reasoning_effort 覆盖客户端 reasoning（OpenAI Responses）', async () => {
+      const route = { ...openaiResponsesRoute, thinking: { reasoning_effort: 'high' } }
+      const result = await transformInboundRequest('openai-responses', route, {
+        model: 'o3-mini',
+        input: 'hi',
+        reasoning: { effort: 'low', summary: 'auto' },
+      })
+      assert.deepStrictEqual(result.body.reasoning, { effort: 'high' })
     })
   })
 

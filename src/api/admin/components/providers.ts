@@ -59,11 +59,16 @@ export function providersPage() {
             type: p.type,
             apiKey: p.api_key || '',
             apiBase: p.api_base || '',
-            models: (p.models || []).map((m: any) => ({ ...m })),
+            models: (p.models || []).map((m: any) => ({
+              ...m,
+              thinking: m.thinking ?? {},
+              reasoning_effort: (m as any).reasoning_effort ?? '',
+              input: Array.isArray((m as any).input) ? (m as any).input : [],
+            })),
           }
         }
       }
-      if (this.form.models.length === 0) this.form.models.push({ id: '' })
+      if (this.form.models.length === 0) this.addModelRow()
       this.showModal = true
     },
 
@@ -93,9 +98,13 @@ export function providersPage() {
           const base: Record<string, any> = { id: m.id.trim() }
           if (type === 'anthropic') {
             const bt = parseInt(m.thinking?.budget_tokens, 10)
-            if (bt > 0) base.thinking = { budget_tokens: bt }
+            if (bt > 0) base.thinking = { ...(base.thinking ?? {}), budget_tokens: bt }
           } else if (m.reasoning_effort && ['low', 'medium', 'high'].includes(m.reasoning_effort)) {
             base.thinking = { reasoning_effort: m.reasoning_effort }
+          }
+          // thinking.type 对所有 provider type 生效（如 MiniMax adaptive）
+          if (m.thinking?.type && ['adaptive', 'auto', 'enabled', 'disabled'].includes(m.thinking.type)) {
+            base.thinking = { ...(base.thinking ?? {}), type: m.thinking.type }
           }
           // input 模态：未勾选或仅 text 时不写入；勾选了 image 才序列化
           const inputArr = Array.isArray(m.input) ? m.input.filter((x: string) => ['text', 'image'].includes(x)) : []

@@ -107,6 +107,8 @@
 "providers.form.budgetTokens" = "Budget Tokens";
 "providers.form.budgetTokensHelp" = "Thinking budget tokens for Anthropic models";
 "providers.form.reasoningNone" = "None";
+"providers.form.thinkingTypeNone" = "Default";
+"providers.form.thinkingTypeHelp" = "thinking.type passthrough (MiniMax: adaptive)";
 "providers.form.inputModalities" = "Input";
 "providers.pullModels.title" = "Pull Models from API";
 "providers.pullModels.close" = "Close";

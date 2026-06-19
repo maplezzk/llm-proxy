@@ -146,4 +146,21 @@ adapters:
     const config = loadConfigFromYaml(path)
     assert.strictEqual(config.adapters![0].models[0].thinking?.budget_tokens, 4096)
   })
+
+  it('解析 thinking.type 配置（MiniMax adaptive）', () => {
+    process.env.K = 'sk-minimax-1'
+    const path = writeConfig(`
+providers:
+  - name: minimax
+    type: anthropic
+    api_key: \${K}
+    models:
+      - id: MiniMax-M3
+        thinking:
+          type: adaptive
+    `)
+    const config = loadConfigFromYaml(path)
+    assert.strictEqual(config.providers[0].models[0].thinking?.type, 'adaptive')
+    assert.strictEqual(config.providers[0].models[0].thinking?.budget_tokens, undefined)
+  })
 })

@@ -122,6 +122,8 @@
       "lowEffort": "Low",
       "mediumEffort": "Medium",
       "highEffort": "High",
+      "thinkingType": "Type",
+      "defaultType": "None",
       "hideKey": "Hide",
       "showKey": "Show",
       "keepEmptyHint": "Leave empty to keep current value",
