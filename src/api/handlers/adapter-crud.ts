@@ -4,6 +4,7 @@ import type { Config, AdapterConfig } from '../../config/types.js'
 import { validateConfig } from '../../config/validator.js'
 import { readBody } from '../../lib/http-utils.js'
 import { json } from './index.js'
+import { writeConfigOrRespondError } from './provider-crud.js'
 import { t } from '../../lib/i18n.js'
 
 const ADAPTER_PATH_RE = /^\/admin\/adapters\/([a-zA-Z0-9_-]+)$/
@@ -66,7 +67,8 @@ export async function handleCreateAdapter(ctx: ServerContext, req: IncomingMessa
   const newConfig: Config = structuredClone(config)
   if (!newConfig.adapters) newConfig.adapters = []
   newConfig.adapters.push(newAdapter)
-  await ctx.store.writeConfig(newConfig)
+  const ok = await writeConfigOrRespondError(ctx, newConfig, res)
+  if (!ok) return
   ctx.logger.log('system', 'Create adapter request received', { name, type, modelCount: models.length })
   ctx.logger.log('system', 'Adapter created', { name, type })
   json(res, 200, { success: true, data: { name } })
@@ -109,7 +111,8 @@ export async function handleUpdateAdapter(ctx: ServerContext, req: IncomingMessa
     return
   }
 
-  await ctx.store.writeConfig(newConfig)
+  const ok = await writeConfigOrRespondError(ctx, newConfig, res)
+  if (!ok) return
   ctx.logger.log('system', 'Update adapter request received', { name: adapterName, newName: finalName, type: type ?? '', modelCount: models?.length })
   ctx.logger.log('system', 'Adapter updated', { name: adapterName })
   json(res, 200, { success: true, data: { name: adapterName } })
@@ -130,7 +133,8 @@ export async function handleDeleteAdapter(ctx: ServerContext, req: IncomingMessa
   const newConfig: Config = structuredClone(config)
   if (!newConfig.adapters) { json(res, 500, { success: false, error: '服务器状态异常' }); return }
   newConfig.adapters.splice(idx, 1)
-  await ctx.store.writeConfig(newConfig)
+  const ok = await writeConfigOrRespondError(ctx, newConfig, res)
+  if (!ok) return
   ctx.logger.log('system', 'Delete adapter request received', { name: adapterName })
   ctx.logger.log('system', 'Adapter deleted', { name: adapterName })
   json(res, 200, { success: true, data: { name: adapterName } })

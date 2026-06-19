@@ -1,4 +1,5 @@
 import i18next from 'i18next'
+import { extractError } from './providers.js'
 
 function t(key: string, opts?: Record<string, unknown>): string {
   return i18next.t(key, opts)
@@ -151,7 +152,8 @@ export function adaptersPage() {
         })
       }
       if (!res.success) {
-        toast(res.error || t('admin.adapters.saveFailed'), 'error')
+        const detail = extractError(res, t('admin.adapters.saveFailed')) || t('admin.adapters.saveFailed')
+        toast(detail, 'error')
         return
       }
       toast(this.editingName ? t('admin.adapters.updated') : t('admin.adapters.created'), 'success')
@@ -164,7 +166,8 @@ export function adaptersPage() {
       if (!ok) return
       const res = await (window as any).Alpine.store('app').fetch(`/admin/adapters/${name}`, { method: 'DELETE' })
       if (!res.success) {
-        toast(res.error || t('admin.adapters.deleteFailed'), 'error')
+        const detail = extractError(res, t('admin.adapters.deleteFailed')) || t('admin.adapters.deleteFailed')
+        toast(detail, 'error')
         return
       }
       toast(t('admin.adapters.deleted'), 'success')

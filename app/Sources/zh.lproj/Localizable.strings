@@ -122,6 +122,7 @@
 "providers.form.thinkingTypeNone" = "默认";
 "providers.form.thinkingTypeHelp" = "thinking.type 透传（如 MiniMax 用 adaptive）";
 "providers.form.inputModalities" = "输入能力";
+"providers.form.visionImageLockedHint" = "该模型已在「设置 → 外挂识图」中被指定为识图模型，必须保留 image 勾选（后端会拒绝保存）。如需更换识图模型，请到「设置 → 外挂识图」中修改。";
 
 "providers.pullModels.title" = "从 API 拉取模型列表";
 "providers.pullModels.close" = "关闭";

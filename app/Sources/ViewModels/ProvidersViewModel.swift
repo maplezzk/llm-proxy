@@ -28,6 +28,8 @@ final class ProvidersViewModel {
     // MARK: - List State
     var providers: [ProviderDetail] = []
     var searchText = ""
+    /// 当前识图模型配置（"provider/model"），用于在编辑表单中提示用户不要去掉 image 勾选
+    var visionModelKey: String? = nil
     var isLoading = false
     var errorMessage: String?
     var successMessage: String?
@@ -88,7 +90,20 @@ final class ProvidersViewModel {
         } catch {
             errorMessage = loc("providers.error.loadFailed", error.localizedDescription)
         }
+        // 同时拉取 vision 配置（用于在编辑表单中提示哪些 model 不能去掉 image 勾选）
+        // 拉取失败不影响列表加载
+        if let vision = try? await api.fetchVision() {
+            visionModelKey = "\(vision.provider)/\(vision.model)"
+        } else {
+            visionModelKey = nil
+        }
         isLoading = false
+    }
+
+    /// 判断某个 modelRow 是否是当前识图模型（用于在表单中给出智能提示）
+    func isVisionModelRow(providerName: String, modelId: String) -> Bool {
+        guard let key = visionModelKey else { return false }
+        return key == "\(providerName)/\(modelId)"
     }
 
     // MARK: - Form Actions

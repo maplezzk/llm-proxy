@@ -639,8 +639,8 @@ tbody tr:hover td { background: #f8f9fb; }
             <!-- 输入模态勾选（仅支持 text 和 image，image 未勾选时走外挂识图） -->
             <div style="display:flex;align-items:center;gap:6px;white-space:nowrap;margin-left:6px" :title="$t('admin.providers.inputModalitiesHint')">
               <span class="pm-label" style="font-size:10px;color:var(--accent)" x-text="$t('admin.providers.inputModalities')"></span>
-              <label style="display:inline-flex;align-items:center;gap:2px;font-size:10.5px;cursor:pointer" title="text"><input type="checkbox" :checked="(m.input || []).includes('text')" @change="toggleModality(m, 'text', ($event.target as HTMLInputElement).checked)">T</label>
-              <label style="display:inline-flex;align-items:center;gap:2px;font-size:10.5px;cursor:pointer" title="image"><input type="checkbox" :checked="(m.input || []).includes('image')" @change="toggleModality(m, 'image', ($event.target as HTMLInputElement).checked)">🖼</label>
+              <label style="display:inline-flex;align-items:center;gap:2px;font-size:10.5px;cursor:pointer" title="text"><input type="checkbox" :checked="(m.input || []).includes('text')" @change="toggleModality(m, 'text', $event.target.checked)">T</label>
+              <label style="display:inline-flex;align-items:center;gap:2px;font-size:10.5px;cursor:pointer" title="image"><input type="checkbox" :checked="(m.input || []).includes('image')" @change="toggleModality(m, 'image', $event.target.checked)">🖼</label>
             </div>
             <button class="btn btn-sm btn-danger btn-icon" @click="removeModelRow(i)">✕</button>
           </div>

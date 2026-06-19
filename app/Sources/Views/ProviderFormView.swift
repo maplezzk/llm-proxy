@@ -307,9 +307,16 @@ struct ProviderFormView: View {
                     .font(.caption2)
                     .foregroundColor(.secondary)
                 ForEach(["text", "image"], id: \.self) { mod in
+                    let isVisionLockedRow = mod == "image" && viewModel.isVisionModelRow(providerName: viewModel.formData.name, modelId: viewModel.formData.models[index].modelId)
+                    let isChecked = viewModel.formData.models[index].input.contains(mod)
                     Toggle(isOn: Binding(
-                        get: { viewModel.formData.models[index].input.contains(mod) },
+                        get: { isChecked },
                         set: { newValue in
+                            // vision 模型的 image 勾选被锁：不能取消（后端校验会拒绝）
+                            if isVisionLockedRow && !newValue {
+                                viewModel.errorMessage = loc("providers.form.visionImageLockedHint")
+                                return
+                            }
                             if newValue { viewModel.formData.models[index].input.insert(mod) }
                             else { viewModel.formData.models[index].input.remove(mod) }
                             // 至少保留 text
@@ -318,12 +325,24 @@ struct ProviderFormView: View {
                             }
                         }
                     )) {
-                        Text(modalityIcon(mod))
-                            .font(.system(size: 10))
+                        HStack(spacing: 2) {
+                            Text(modalityIcon(mod))
+                                .font(.system(size: 10))
+                            if isVisionLockedRow {
+                                Image(systemName: "lock.fill")
+                                    .font(.system(size: 8))
+                            }
+                        }
                     }
                     .toggleStyle(.button)
                     .controlSize(.mini)
-                    .help(loc("providers.form.inputModality." + mod))
+                    .help(isVisionLockedRow ? loc("providers.form.visionImageLockedHint") : loc("providers.form.inputModality." + mod))
+                    .overlay(
+                        isVisionLockedRow && isChecked ?
+                        RoundedRectangle(cornerRadius: 4)
+                            .strokeBorder(Color.orange, lineWidth: 1)
+                        : nil
+                    )
                 }
             }
 
@@ -355,23 +374,48 @@ struct ProviderFormView: View {
     // MARK: - Footer
 
     private var formFooter: some View {
-        HStack {
-            Button(loc("action.cancel")) {
-                viewModel.dismissForm()
+        VStack(spacing: 0) {
+            // 错误提示（保存失败时显示）
+            if let error = viewModel.errorMessage {
+                HStack(alignment: .top, spacing: 6) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundColor(.red)
+                        .font(.caption)
+                    Text(error)
+                        .font(.caption)
+                        .foregroundColor(.red)
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    Button(action: { viewModel.dismissError() }) {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundColor(.secondary)
+                            .font(.caption)
+                    }
+                    .buttonStyle(.borderless)
+                }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 8)
+                .background(Color.red.opacity(0.08))
             }
-            .keyboardShortcut(.cancelAction)
 
-            Spacer()
+            HStack {
+                Button(loc("action.cancel")) {
+                    viewModel.dismissForm()
+                }
+                .keyboardShortcut(.cancelAction)
 
-            Button(action: { Task { await viewModel.saveForm() } }) {
-                Text(loc("action.save"))
-                    .frame(minWidth: 60)
+                Spacer()
+
+                Button(action: { Task { await viewModel.saveForm() } }) {
+                    Text(loc("action.save"))
+                        .frame(minWidth: 60)
+                }
+                .keyboardShortcut(.defaultAction)
+                .buttonStyle(.borderedProminent)
+                .disabled(viewModel.formData.name.trimmingCharacters(in: .whitespaces).isEmpty)
             }
-            .keyboardShortcut(.defaultAction)
-            .buttonStyle(.borderedProminent)
-            .disabled(viewModel.formData.name.trimmingCharacters(in: .whitespaces).isEmpty)
+            .padding(.horizontal, 20)
+            .padding(.vertical, 12)
         }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 12)
     }
 }
