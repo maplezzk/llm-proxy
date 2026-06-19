@@ -68,11 +68,21 @@ export function providersPage() {
     },
 
     addModelRow(id?: string) {
-      this.form.models.push({ id: id || '', thinking: {}, reasoning_effort: '' })
+      this.form.models.push({ id: id || '', thinking: {}, reasoning_effort: '', input: [] })
     },
 
     removeModelRow(index: number) {
       this.form.models.splice(index, 1)
+    },
+
+    /** 勾选/取消勾选输入模态（如 image） */
+    toggleModality(m: any, modality: string, checked: boolean) {
+      if (!Array.isArray(m.input)) m.input = []
+      const has = m.input.includes(modality)
+      if (checked && !has) m.input.push(modality)
+      if (!checked && has) m.input = m.input.filter((x: string) => x !== modality)
+      // 至少保留 text
+      if (!m.input.includes('text')) m.input.unshift('text')
     },
 
     async save() {
@@ -91,6 +101,9 @@ export function providersPage() {
           if (m.thinking?.type && ['adaptive', 'auto', 'enabled', 'disabled'].includes(m.thinking.type)) {
             base.thinking = { ...(base.thinking ?? {}), type: m.thinking.type }
           }
+          // input 模态：未勾选或仅 text 时不写入；勾选了 image 才序列化
+          const inputArr = Array.isArray(m.input) ? m.input.filter((x: string) => ['text', 'image'].includes(x)) : []
+          if (inputArr.length > 0) base.input = inputArr
           return base
         })
       if (!name) {

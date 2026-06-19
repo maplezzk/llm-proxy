@@ -115,15 +115,42 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); disp
 @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 
 /* Stats Grid */
-.stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 32px; }
+.stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 24px; }
 .stat {
-  background: var(--surface); border-radius: var(--radius); padding: 18px 20px;
+  position: relative;
+  background: var(--surface); border-radius: 10px; padding: 16px 18px 16px 20px;
   border: 1px solid var(--border);
-  transition: box-shadow 0.15s;
+  overflow: hidden;
+  transition: box-shadow 0.18s, transform 0.18s, border-color 0.18s;
 }
-.stat:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
-.stat .label { font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.03em; margin-bottom: 6px; }
-.stat .value { font-size: 26px; font-weight: 700; letter-spacing: -0.02em; }
+.stat::before {
+  content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px;
+  background: var(--stat-accent, var(--accent)); opacity: 0.85;
+}
+.stat:hover { box-shadow: 0 4px 16px rgba(20,21,26,0.08); transform: translateY(-1px); border-color: #d4d7df; }
+.stat .stat-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.stat .label { font-size: 10.5px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.stat .stat-icon {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 26px; height: 26px; border-radius: 7px; font-size: 14px; line-height: 1;
+  background: var(--stat-accent-bg, var(--accent-bg)); color: var(--stat-accent, var(--accent));
+}
+.stat .value { font-size: 25px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.15; }
+.stat .stat-desc { font-size: 11px; color: var(--text-muted); margin-top: 3px; }
+
+/* Dashboard 配置卡片（代理 Key / 外挂识图） */
+.dash-card {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+  padding: 18px 20px; margin-top: 16px;
+}
+.dash-card .dash-card-title { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+.dash-card .dash-card-title .dc-icon {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 24px; height: 24px; border-radius: 6px; font-size: 13px;
+  background: var(--accent-bg); color: var(--accent);
+}
+.dash-card .dash-card-title h3 { font-size: 13px; font-weight: 600; color: var(--text); }
+.dash-card .dash-card-sub { font-size: 11.5px; color: var(--text-muted); margin-bottom: 12px; line-height: 1.5; }
 
 /* Section */
 .section { margin-bottom: 28px; }
@@ -327,30 +354,69 @@ tbody tr:hover td { background: #f8f9fb; }
          :class="{ active: $store.app.currentTab === 'dashboard' }">
       <div class="stats">
         <template x-for="stat in stats" :key="stat.label">
-          <div class="stat">
-            <div class="label" x-text="stat.label"></div>
+          <div class="stat" :style="{ '--stat-accent': stat.accent }">
+            <div class="stat-head">
+              <div class="label" x-text="stat.label"></div>
+              <span class="stat-icon" x-text="stat.icon"></span>
+            </div>
             <div class="value" :style="{ color: stat.clr }" x-text="stat.value"></div>
           </div>
         </template>
       </div>
-      <div class="stats" style="margin-top:12px" x-show="tokenCards.length">
+      <div class="stats" style="margin-top:14px" x-show="tokenCards.length">
         <template x-for="card in tokenCards" :key="card.label">
-          <div class="stat">
-            <div class="label" x-text="card.label"></div>
+          <div class="stat" :style="{ '--stat-accent': card.accent }">
+            <div class="stat-head">
+              <div class="label" x-text="card.label"></div>
+              <span class="stat-icon" x-text="card.icon"></span>
+            </div>
             <div class="value" :style="{ color: card.clr }" x-text="card.value"></div>
-            <div style="font-size:11px;color:var(--text-muted);margin-top:2px" x-text="card.desc"></div>
+            <div class="stat-desc" x-text="card.desc"></div>
           </div>
         </template>
       </div>
-      <div class="section" style="margin-top:20px" x-data="proxyKeyForm">
-        <div class="section-header"><h3 x-text="$t('admin.dashboard.proxyKey')"></h3></div>
+      <div class="dash-card" x-data="proxyKeyForm">
+        <div class="dash-card-title"><span class="dc-icon">🔑</span><h3 x-text="$t('admin.dashboard.proxyKey')"></h3></div>
+        <div class="dash-card-sub" x-show="hasKey" x-text="$t('admin.dashboard.proxyKeySet')"></div>
+        <div class="dash-card-sub" x-show="!hasKey" x-text="$t('admin.dashboard.proxyKeyNotSet')"></div>
         <div style="display:flex;align-items:center;gap:8px">
-          <input type="password" x-model="key" :placeholder="$t('admin.dashboard.proxyKeyPlaceholder')" style="flex:1;padding:6px 10px;font-size:13px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);color:var(--text)">
+          <input type="password" x-model="key" :placeholder="$t('admin.dashboard.proxyKeyPlaceholder')" style="flex:1;padding:7px 11px;font-size:13px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text)">
           <button class="btn btn-primary btn-sm" @click="save()" :disabled="saving" x-text="saving ? $t('admin.common.saving') : $t('admin.common.save')"></button>
           <button class="btn btn-ghost btn-sm" @click="remove()" :disabled="saving" x-show="hasKey" x-text="$t('admin.common.remove')"></button>
         </div>
-        <div style="font-size:11px;color:var(--text-muted);margin-top:4px" x-show="hasKey" x-text="$t('admin.dashboard.proxyKeySet')"></div>
-        <div style="font-size:11px;color:var(--text-muted);margin-top:4px" x-show="!hasKey" x-text="$t('admin.dashboard.proxyKeyNotSet')"></div>
+      </div>
+      <div class="dash-card" x-data="visionSettingForm">
+        <div class="dash-card-title"><span class="dc-icon">🖼️</span><h3 x-text="$t('admin.vision.title')"></h3></div>
+        <div class="dash-card-sub" x-text="$t('admin.vision.desc')"></div>
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;margin-bottom:8px;cursor:pointer">
+          <input type="checkbox" x-model="form.enabled">
+          <span x-text="$t('admin.vision.enable')"></span>
+        </label>
+        <template x-if="form.enabled">
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <select x-model="form.provider"
+                    style="padding:7px 10px;font-size:13px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text)">
+              <option value="" x-text="$t('admin.vision.selectProvider')"></option>
+              <template x-for="p in providers" :key="p.name">
+                <option :value="p.name" x-text="p.name + (providerHasImage(p) ? ' 🖼' : '')"></option>
+              </template>
+            </select>
+            <select x-model="form.model"
+                    :disabled="!form.provider"
+                    style="padding:7px 10px;font-size:13px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text)">
+              <option value="" x-text="$t('admin.vision.selectModel')"></option>
+              <template x-for="m in availableModels" :key="m.id">
+                <option :value="m.id" x-text="(modelHasImage(m) ? '🖼 ' : '') + m.id"></option>
+              </template>
+            </select>
+            <textarea x-model="form.prompt" rows="2" :placeholder="$t('admin.vision.promptPlaceholder')"
+                      style="padding:7px 11px;font-size:12px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);font-family:inherit;resize:vertical"></textarea>
+            <div style="font-size:11px;color:#d97706;background:#fef3c7;padding:6px 10px;border-radius:6px;margin-top:4px" x-show="form.model && !selectedModelHasImage()" x-text="$t('admin.vision.modelNotImageWarning')"></div>
+            <div style="font-size:11px;color:var(--text-muted)" x-show="providers.length === 0" x-text="$t('admin.vision.noVisionModel')"></div>
+          </div>
+        </template>
+        <button class="btn btn-primary btn-sm" @click="save()" :disabled="saving || (form.enabled && (!form.provider || !form.model))" style="margin-top:10px"
+                x-text="saving ? $t('admin.common.saving') : $t('admin.common.save')"></button>
       </div>
     </div>
 
@@ -472,6 +538,9 @@ tbody tr:hover td { background: #f8f9fb; }
                     <span style="margin-left:6px;font-size:10px;color:var(--accent);cursor:help"
                           :title="p.models.filter((m:any) => m.thinking?.budget_tokens || m.thinking?.type || m.reasoning_effort || m.thinking?.reasoning_effort).map((m:any) => m.id + ' → ' + (m.thinking?.budget_tokens ? 'thinking:'+m.thinking.budget_tokens : m.thinking?.type ? 'type:'+m.thinking.type : 're:'+m.reasoning_effort || m.thinking?.reasoning_effort)).join('\n')">🧠</span>
                   </template>
+                  <template x-if="p.models?.some((m: any) => Array.isArray(m.input) && m.input.includes('image'))">
+                    <span style="margin-left:4px;font-size:10px;cursor:help" :title="$t('admin.providers.visionBadgeTitle') + '\n' + p.models.filter((m:any) => Array.isArray(m.input) && m.input.includes('image')).map((m:any) => m.id).join('\n')">🖼️</span>
+                  </template>
                 </td>
                 <td><span class="badge" :class="p.available ? 'badge-ok' : 'badge-err'" x-text="p.available ? $t('admin.common.normal') : $t('admin.common.error')"></span></td>
                 <td>
@@ -554,6 +623,12 @@ tbody tr:hover td { background: #f8f9fb; }
                 <option value="enabled">enabled</option>
                 <option value="disabled">disabled</option>
               </select>
+            </div>
+            <!-- 输入模态勾选（仅支持 text 和 image，image 未勾选时走外挂识图） -->
+            <div style="display:flex;align-items:center;gap:6px;white-space:nowrap;margin-left:6px" :title="$t('admin.providers.inputModalitiesHint')">
+              <span class="pm-label" style="font-size:10px;color:var(--accent)" x-text="$t('admin.providers.inputModalities')"></span>
+              <label style="display:inline-flex;align-items:center;gap:2px;font-size:10.5px;cursor:pointer" title="text"><input type="checkbox" :checked="(m.input || []).includes('text')" @change="toggleModality(m, 'text', ($event.target as HTMLInputElement).checked)">T</label>
+              <label style="display:inline-flex;align-items:center;gap:2px;font-size:10.5px;cursor:pointer" title="image"><input type="checkbox" :checked="(m.input || []).includes('image')" @change="toggleModality(m, 'image', ($event.target as HTMLInputElement).checked)">🖼</label>
             </div>
             <button class="btn btn-sm btn-danger btn-icon" @click="removeModelRow(i)">✕</button>
           </div>

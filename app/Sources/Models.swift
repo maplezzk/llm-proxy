@@ -128,9 +128,10 @@ struct ProviderModelDetail: Codable {
     let id: String
     let thinking: ThinkingConfig?
     let reasoning_effort: String?
+    let input: [String]?
 
     enum CodingKeys: String, CodingKey {
-        case id, thinking, reasoning_effort
+        case id, thinking, reasoning_effort, input
     }
 }
 
@@ -164,6 +165,7 @@ struct CreateProviderBody: Codable {
 struct ProviderModelInput: Codable {
     let id: String
     let thinking: ThinkingInput?
+    let input: [String]?
 }
 
 struct ThinkingInput: Codable {
@@ -196,6 +198,20 @@ struct TestModelResult: Codable {
     let requestBody: AnyCodable?
     let responseBody: AnyCodable?
     let responseStatus: Int?
+}
+
+// MARK: - Vision Fallback
+
+struct VisionConfig: Codable, Equatable {
+    let provider: String
+    let model: String
+    let prompt: String?
+}
+
+struct VisionResponse: Codable {
+    let success: Bool
+    let data: VisionConfig?
+    let error: String?
 }
 
 // MARK: - Pull Models

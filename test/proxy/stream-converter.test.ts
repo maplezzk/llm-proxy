@@ -219,6 +219,72 @@ describe('proxy/stream-converter', () => {
       assert.ok(output.includes('event: message_stop'), '即使无 [DONE] 也应有 message_stop')
       assert.ok(output.includes('__END__'), '应正常结束响应')
     })
+
+    it('usage-only chunk (choices=[]) 补发 usage 时应正确转发（finish_reason chunk usage 为 0）', async () => {
+      const { chunks, res } = makeResponse()
+      // 模拟上游（如 glm-5.2）：finish_reason chunk 的 usage 是 0，后续单独发一个 usage-only chunk 带真实 usage
+      const reader = makeReader([
+        'data: {"choices":[{"delta":{"role":"assistant"},"index":0}]}\n\n',
+        'data: {"choices":[{"delta":{"content":"Hi"},"index":0}]}\n\n',
+        'data: {"choices":[{"delta":{},"finish_reason":"tool_calls","index":0}],"usage":{"prompt_tokens":0,"completion_tokens":0,"total_tokens":0}}\n\n',
+        'data: {"choices":[],"usage":{"total_tokens":135630,"completion_tokens":1963,"prompt_tokens":133667,"prompt_tokens_details":{"cached_tokens":100000}}}\n\n',
+        'data: [DONE]\n\n',
+      ])
+      await convertOpenAIStreamToAnthropic(reader, res)
+      const output = chunks.join('')
+      // message_delta 应带完整的真实 usage，而非 0
+      const messageDeltaMatch = output.match(/event: message_delta\ndata: (\{[^\n]*\})/)
+      assert.ok(messageDeltaMatch, '应有 message_delta 事件')
+      const delta = JSON.parse(messageDeltaMatch![1])
+      // OpenAI prompt_tokens 是总输入（含 cache），Anthropic input_tokens 不含 cache
+      assert.strictEqual(delta.usage.input_tokens, 33667, 'input_tokens = prompt_tokens - cached_tokens')
+      assert.strictEqual(delta.usage.output_tokens, 1963, 'message_delta usage.output_tokens 应来自 usage-only chunk')
+      assert.strictEqual(delta.usage.cache_read_input_tokens, 100000, 'cached_tokens 应映射为 cache_read_input_tokens')
+      assert.strictEqual(delta.delta.stop_reason, 'tool_use', 'stop_reason 应为 tool_use')
+      // message_delta 应在 message_stop 之前
+      const messageDeltaIdx = output.indexOf('event: message_delta')
+      const messageStopIdx = output.indexOf('event: message_stop')
+      assert.ok(messageDeltaIdx > -1 && messageStopIdx > -1 && messageDeltaIdx < messageStopIdx, 'message_delta 应在 message_stop 之前')
+    })
+
+    it('finish_reason chunk 不带 usage，usage-only chunk 补发', async () => {
+      const { chunks, res } = makeResponse()
+      const reader = makeReader([
+        'data: {"choices":[{"delta":{"role":"assistant"},"index":0}]}\n\n',
+        'data: {"choices":[{"delta":{"content":"ok"},"index":0}]}\n\n',
+        'data: {"choices":[{"delta":{},"finish_reason":"stop","index":0}]}\n\n',
+        'data: {"choices":[],"usage":{"prompt_tokens":154541,"completion_tokens":64,"prompt_tokens_details":{"cached_tokens":153984}}}\n\n',
+        'data: [DONE]\n\n',
+      ])
+      await convertOpenAIStreamToAnthropic(reader, res)
+      const output = chunks.join('')
+      const messageDeltaMatch = output.match(/event: message_delta\ndata: (\{[^\n]*\})/)
+      assert.ok(messageDeltaMatch, '应有 message_delta 事件')
+      const delta = JSON.parse(messageDeltaMatch![1])
+      // prompt_tokens=154541 - cached_tokens=153984 = 557
+      assert.strictEqual(delta.usage.input_tokens, 557, 'input_tokens = prompt_tokens - cached_tokens')
+      assert.strictEqual(delta.usage.cache_read_input_tokens, 153984, 'cache_read_input_tokens 应正确映射')
+      assert.strictEqual(delta.usage.output_tokens, 64, 'output_tokens 应来自 usage-only chunk')
+    })
+
+    it('cached_tokens=0 时 message_delta 不应包含 cache_read_input_tokens 字段', async () => {
+      const { chunks, res } = makeResponse()
+      const reader = makeReader([
+        'data: {"choices":[{"delta":{"role":"assistant"},"index":0}]}\n\n',
+        'data: {"choices":[{"delta":{"content":"ok"},"index":0}]}\n\n',
+        'data: {"choices":[{"delta":{},"finish_reason":"stop","index":0}]}\n\n',
+        'data: {"choices":[],"usage":{"prompt_tokens":100,"completion_tokens":10,"prompt_tokens_details":{"cached_tokens":0}}}\n\n',
+        'data: [DONE]\n\n',
+      ])
+      await convertOpenAIStreamToAnthropic(reader, res)
+      const output = chunks.join('')
+      const messageDeltaMatch = output.match(/event: message_delta\ndata: (\{[^\n]*\})/)
+      assert.ok(messageDeltaMatch, '应有 message_delta 事件')
+      const delta = JSON.parse(messageDeltaMatch![1])
+      assert.strictEqual(delta.usage.input_tokens, 100, 'cached_tokens=0 时 input_tokens = prompt_tokens')
+      assert.strictEqual(delta.usage.output_tokens, 10, 'output_tokens 正确')
+      assert.ok(!('cache_read_input_tokens' in delta.usage), 'cached_tokens=0 时不应输出 cache_read_input_tokens 字段')
+    })
   })
 
   describe('OpenAI Responses SSE → Anthropic SSE', () => {

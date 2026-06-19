@@ -18,9 +18,11 @@ export function handleGetConfig(ctx: ServerContext, _req: IncomingMessage, res: 
           ...(m.thinking?.budget_tokens ? { thinking: { budget_tokens: m.thinking.budget_tokens } } : {}),
           ...(m.thinking?.type ? { thinking: { type: m.thinking.type } } : {}),
           ...(m.thinking?.reasoning_effort ? { reasoning_effort: m.thinking.reasoning_effort } : {}),
+          ...(m.input?.length ? { input: m.input } : {}),
         })),
       })),
       max_body_size: config.maxBodySize,
+      vision: config.vision ?? null,
       adapters: (config.adapters ?? []).map((a) => ({
         name: a.name,
         type: a.type,
@@ -147,6 +149,45 @@ export async function handleSetProxyKey(ctx: ServerContext, req: IncomingMessage
   const verb = body.key ? 'set' : 'removed'
   ctx.logger.log('system', `Proxy API key ${verb}`)
   json(res, 200, { success: true, data: { set: !!body.key } })
+}
+
+// Vision (外挂识图) 配置
+export function handleGetVision(ctx: ServerContext, _req: IncomingMessage, res: ServerResponse): void {
+  const { config } = ctx.store.getConfig()
+  json(res, 200, { success: true, data: config.vision ?? null })
+}
+
+export async function handleSetVision(ctx: ServerContext, req: IncomingMessage, res: ServerResponse): Promise<void> {
+  const body = JSON.parse(await (await import('../../lib/http-utils.js')).readBody(req))
+  const { config } = ctx.store.getConfig()
+  // body.provider / body.model / body.prompt；传 provider 或 model 为空表示清除 vision 配置
+  const provider = (body.provider ?? '').toString().trim()
+  const model = (body.model ?? '').toString().trim()
+  const prompt = (body.prompt ?? '').toString().trim() || undefined
+  const newVision = (provider && model) ? { provider, model, prompt } : undefined
+
+  const { validateConfig } = await import('../../config/validator.js')
+  const trial = { ...config, vision: newVision }
+  const errs = validateConfig(trial)
+  if (errs.length > 0) {
+    json(res, 400, { success: false, error: '校验失败', errors: errs })
+    return
+  }
+
+  const newConfig = {
+    providers: config.providers,
+    adapters: config.adapters,
+    proxyKey: config.proxyKey,
+    vision: newVision,
+    logLevel: config.logLevel,
+    locale: config.locale,
+    port: config.port,
+    maxBodySize: config.maxBodySize,
+    captureMaxSize: config.captureMaxSize,
+  }
+  await ctx.store.writeConfig(newConfig)
+  ctx.logger.log('system', newVision ? `Vision fallback configured: ${newVision.provider}/${newVision.model}` : 'Vision fallback removed')
+  json(res, 200, { success: true, data: newVision ?? null })
 }
 
 export function handleGetTokenStats(ctx: ServerContext, _req: IncomingMessage, res: ServerResponse): void {

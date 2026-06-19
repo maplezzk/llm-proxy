@@ -146,8 +146,24 @@
       "validationName": "Please enter a name",
       "validationModels": "Please add at least one model",
       "validationApiKey": "Please enter an API Key",
+      "inputModalities": "Input",
+      "inputModalitiesHint": "Check the input modalities supported by the model. When image is unchecked, images in requests will be routed through a vision fallback model.",
+      "visionBadgeTitle": "Models with image input:",
       "validationProviderName": "Please enter a provider name first",
       "keepOriginal": "Leave empty to keep original value"
+    },
+    "vision": {
+      "title": "Vision Fallback",
+      "desc": "Provide automatic image recognition for models that don't support image input. When a request contains images, the configured vision model is called to generate a text description, which is then forwarded to the original model.",
+      "enable": "Enable Vision Fallback",
+      "selectProvider": "Select Provider",
+      "selectModel": "Select Model",
+      "promptPlaceholder": "Optional: custom vision prompt (leave empty for default)",
+      "noVisionModel": "No vision-capable model available. First mark a model as supporting image input in Providers.",
+      "modelNotImageWarning": "This model is not declared as supporting image input. Saving will be rejected. First mark the model as supporting image input in Providers.",
+      "saved": "Vision fallback enabled",
+      "removed": "Vision fallback disabled",
+      "saveFailed": "Save failed"
     },
     "adapters": {
       "title": "Adapter Mappings",

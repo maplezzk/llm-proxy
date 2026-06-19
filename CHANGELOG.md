@@ -1,5 +1,34 @@
 # Changelog
 
+## [0.16.8](https://github.com/maplezzk/llm-proxy/compare/v0.16.7...v0.16.8) (2026-06-18)
+
+
+### Bug Fixes
+
+* 修复应用内自动更新安装后退出 + 排查日志 + 回归修复 ([#143](https://github.com/maplezzk/llm-proxy/issues/143)) ([80cc817](https://github.com/maplezzk/llm-proxy/commit/80cc81723b5c07439e5a9b09b9ddeb398fb41162))
+
+## [0.16.7](https://github.com/maplezzk/llm-proxy/compare/v0.16.6...v0.16.7) (2026-06-18)
+
+
+### Bug Fixes
+
+* 修复 OpenAI→Anthropic 流式转换 usage 丢失与 cache 计算错误 ([#140](https://github.com/maplezzk/llm-proxy/issues/140)) ([7a1ddd2](https://github.com/maplezzk/llm-proxy/commit/7a1ddd2fca8f15e806b68bf20f1e22dfbb1aa5e3))
+
+## [0.16.6](https://github.com/maplezzk/llm-proxy/compare/v0.16.5...v0.16.6) (2026-06-18)
+
+
+### Bug Fixes
+
+* 修复 macOS 自动更新 hdiutil attach 失败 ([#138](https://github.com/maplezzk/llm-proxy/issues/138)) ([963d466](https://github.com/maplezzk/llm-proxy/commit/963d46682861c4de2221d5329e1db9e8db922d30))
+
+## [0.16.5](https://github.com/maplezzk/llm-proxy/compare/v0.16.4...v0.16.5) (2026-06-17)
+
+
+### Bug Fixes
+
+* 修复 macOS 控制台供应商测试按钮重复点击不生效 ([#137](https://github.com/maplezzk/llm-proxy/issues/137)) ([d26ce7c](https://github.com/maplezzk/llm-proxy/commit/d26ce7c587f070154eb5ec831ed5e4fd24e81257))
+* 修复 OpenAI→Anthropic 流式转换 content+finish_reason 同 chunk 处理及无 [DONE] 补发 message_stop ([#135](https://github.com/maplezzk/llm-proxy/issues/135)) ([bc61dfa](https://github.com/maplezzk/llm-proxy/commit/bc61dfa5a25fa5345f03c95686ebf85ad1e7c536))
+
 ## [0.16.4](https://github.com/maplezzk/llm-proxy/compare/v0.16.3...v0.16.4) (2026-06-09)
 
 

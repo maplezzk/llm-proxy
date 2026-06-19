@@ -164,6 +164,37 @@ class APIClient {
         return stats
     }
 
+    // MARK: - Vision Fallback
+
+    /// 获取外挂识图配置。返回 nil 表示未启用。
+    func fetchVision() async throws -> VisionConfig? {
+        let url = URL(string: "\(baseURL)/admin/vision")!
+        let (data, _) = try await URLSession.shared.data(from: url)
+        let resp = try JSONDecoder().decode(VisionResponse.self, from: data)
+        guard resp.success else {
+            throw URLError(.cannotParseResponse)
+        }
+        return resp.data
+    }
+
+    /// 设置外挂识图配置。传 nil/空表示禁用。
+    func setVision(provider: String?, model: String?, prompt: String?) async throws {
+        let url = URL(string: "\(baseURL)/admin/vision")!
+        var req = URLRequest(url: url)
+        req.httpMethod = "PUT"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        var body: [String: String] = [:]
+        if let p = provider, !p.isEmpty { body["provider"] = p }
+        if let m = model, !m.isEmpty { body["model"] = m }
+        if let pr = prompt, !pr.isEmpty { body["prompt"] = pr }
+        req.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let (data, _) = try await URLSession.shared.data(for: req)
+        let resp = try JSONDecoder().decode(VisionResponse.self, from: data)
+        guard resp.success else {
+            throw NSError(domain: "Vision", code: 1, userInfo: [NSLocalizedDescriptionKey: resp.error ?? "Unknown error"])
+        }
+    }
+
     // MARK: - Logs
 
     func fetchLogs(limit: Int = 200, before: Int? = nil, level: String? = nil, type: String? = nil, date: String? = nil) async throws -> LogsData {

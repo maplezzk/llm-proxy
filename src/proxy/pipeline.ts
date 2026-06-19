@@ -9,6 +9,7 @@ import type { InboundType } from './translation.js'
 import { readBody } from '../lib/http-utils.js'
 import { transformInboundRequest } from './translation.js'
 import { forwardRequest } from './provider.js'
+import { processVisionFallback } from './vision.js'
 import { t } from '../lib/i18n.js'
 
 export interface ParseResult {
@@ -119,6 +120,24 @@ export async function forwardPipeline(
   }, 'debug')
 
   try {
+    // 外挂识图：目标模型不支持图片时，将图片转换为文字描述
+    try {
+      const visionApplied = await processVisionFallback(body, inboundType, route, ctx.store, ctx.logger)
+      if (visionApplied) {
+        // 识图后 rawBody 已过时，同步更新
+        rawBody = JSON.stringify(body)
+      }
+    } catch (err) {
+      // 识图失败直接报错，不转发原始请求
+      const message = err instanceof Error ? err.message : String(err)
+      ctx.logger.log('request', `外挂识图失败`, { error: message, model: modelName }, 'error')
+      if (!res.headersSent) {
+        res.writeHead(502, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify({ error: { message: `外挂识图失败: ${message}` } }))
+      }
+      return
+    }
+
     const upstream = await transformInboundRequest(inboundType, route, body, ctx.logger)
 
     let pairId: number | undefined

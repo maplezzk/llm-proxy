@@ -22,10 +22,10 @@ export function dashboardPage() {
       const modelCount = providers.reduce((s: number, p: any) => s + (p.models?.length ?? 0), 0)
       const adapters = store.config?.adapters ?? []
       return [
-        { label: t('admin.dashboard.status'), value: ok ? t('admin.common.normal') : t('admin.common.error'), clr: ok ? 'var(--success)' : 'var(--danger)' },
-        { label: t('admin.dashboard.providerCount'), value: providers.length, clr: 'var(--text)' },
-        { label: t('admin.dashboard.modelCount'), value: modelCount, clr: 'var(--text)' },
-        { label: t('admin.dashboard.adapterCount'), value: adapters.length, clr: 'var(--text)' },
+        { label: t('admin.dashboard.status'), value: ok ? t('admin.common.normal') : t('admin.common.error'), clr: ok ? 'var(--success)' : 'var(--danger)', icon: ok ? '✓' : '✕', accent: ok ? 'var(--success)' : 'var(--danger)' },
+        { label: t('admin.dashboard.providerCount'), value: providers.length, clr: 'var(--text)', icon: '◉', accent: 'var(--accent)' },
+        { label: t('admin.dashboard.modelCount'), value: modelCount, clr: 'var(--text)', icon: '▣', accent: '#8b5cf6' },
+        { label: t('admin.dashboard.adapterCount'), value: adapters.length, clr: 'var(--text)', icon: '⇄', accent: '#0ea5e9' },
       ]
     },
 
@@ -41,10 +41,10 @@ export function dashboardPage() {
       // 命中率 = cache_read / 总输入（input_tokens 已归一化为总输入）
       const cacheHitRate = input > 0 ? pct(cacheRead, input) : '0%'
       return [
-        { label: t('admin.dashboard.requests'), value: ts.request_count || 0, clr: 'var(--text)', desc: t('admin.dashboard.today') },
-        { label: t('admin.dashboard.inputTokens'), value: fmtNum(input), clr: 'var(--accent)', desc: `${t('admin.dashboard.output')} ${fmtNum(output)} / ${t('admin.dashboard.total')} ${fmtNum(total)}` },
-        { label: t('admin.dashboard.cacheHits'), value: fmtNum(cacheRead), clr: 'var(--success)', desc: t('admin.dashboard.hitRate', { rate: cacheHitRate }) },
-        { label: t('admin.dashboard.cacheCreation'), value: fmtNum(cacheCreate), clr: 'var(--warn)', desc: t('admin.dashboard.newCacheTokens') },
+        { label: t('admin.dashboard.requests'), value: ts.request_count || 0, clr: 'var(--text)', desc: t('admin.dashboard.today'), icon: '↑↓', accent: 'var(--text-muted)' },
+        { label: t('admin.dashboard.inputTokens'), value: fmtNum(input), clr: 'var(--accent)', desc: `${t('admin.dashboard.output')} ${fmtNum(output)} / ${t('admin.dashboard.total')} ${fmtNum(total)}`, icon: '◈', accent: 'var(--accent)' },
+        { label: t('admin.dashboard.cacheHits'), value: fmtNum(cacheRead), clr: 'var(--success)', desc: t('admin.dashboard.hitRate', { rate: cacheHitRate }), icon: '⚡', accent: 'var(--success)' },
+        { label: t('admin.dashboard.cacheCreation'), value: fmtNum(cacheCreate), clr: 'var(--warn)', desc: t('admin.dashboard.newCacheTokens'), icon: '✷', accent: 'var(--warn)' },
       ]
     },
   }

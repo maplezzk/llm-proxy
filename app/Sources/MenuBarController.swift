@@ -1,5 +1,12 @@
 import AppKit
 
+/// 代理服务的三态状态
+enum ServiceState {
+    case starting   // 启动中（app 刚拉起 / 正在调 CLI 启动）
+    case running    // 运行中
+    case stopped    // 未运行
+}
+
 class MenuBarController: NSObject {
     let statusItem: NSStatusItem
     let client = APIClient()
@@ -7,7 +14,10 @@ class MenuBarController: NSObject {
 
     private var adapters: [Adapter] = []
     private var providers: [Provider] = []
-    private var serviceRunning: Bool = false
+    /// 服务状态（三态：启动中 / 运行中 / 未运行）
+    private var serviceState: ServiceState = .starting
+    /// 便捷判断：服务是否在运行
+    private var isRunning: Bool { serviceState == .running }
     private var currentLogLevel: String = "info"
     /// 菜单栏显示的端口（从 UserDefaults 读取，用户意图端口）
     private var currentPort: Int = APIClient.storedPort()
@@ -31,8 +41,10 @@ class MenuBarController: NSObject {
     }
 
     func buildMenu() {
+        // 初始状态为 .starting，菜单立即显示“启动中”（避免闪现“未运行”/“无法连接”）
+        serviceState = .starting
         Task { @MainActor in
-            await refresh()
+            rebuildMenu()
         }
         // 每 5 秒轮询一次状态
         pollTimer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in
@@ -44,18 +56,24 @@ class MenuBarController: NSObject {
 
     @MainActor
     func refreshStatus() async {
-        do {
-            let health = try await client.fetchHealth()
-            let wasRunning = serviceRunning
-            serviceRunning = health
-            if wasRunning != serviceRunning { rebuildMenu() }
+        let health = (try? await client.fetchHealth()) ?? false
+        let newState: ServiceState = health ? .running : .stopped
+        // 启动中阶段：如果还没检测到运行，保持“启动中”不切成“未运行”（等 autoStart 流程）
+        if serviceState == .starting && newState == .stopped {
             updateStatusIcon()
-        } catch {
-            let wasRunning = serviceRunning
-            serviceRunning = false
-            if wasRunning { rebuildMenu() }
-            updateStatusIcon()
+            return
         }
+        let oldState = serviceState
+        serviceState = newState
+        if oldState != newState {
+            if newState == .running {
+                // 服务刚运行：拉一次完整数据（adapters 等），避免适配器列表为空
+                await refresh()
+            } else {
+                rebuildMenu()
+            }
+        }
+        updateStatusIcon()
     }
 
     @MainActor
@@ -80,7 +98,7 @@ class MenuBarController: NSObject {
             adapters = []
             providers = []
         }
-        serviceRunning = (try? await client.fetchHealth()) ?? false
+        serviceState = ((try? await client.fetchHealth()) ?? false) ? .running : .stopped
         currentLogLevel = (try? await client.fetchLogLevel()) ?? "info"
         // 从服务端同步端口（仅当服务端可达时才更新，不覆盖用户意图）
         if let sp = try? await client.fetchPort() {
@@ -99,11 +117,20 @@ class MenuBarController: NSObject {
 
         // 状态行
         let statusMenuItem = NSMenuItem()
-        let statusText = serviceRunning ? loc("status.running") : loc("status.notRunning")
+        let statusText: String
+        let color: NSColor
+        switch serviceState {
+        case .starting:
+            statusText = loc("status.starting")
+            color = NSColor.systemOrange
+        case .running:
+            statusText = loc("status.running")
+            color = NSColor(srgbRed: 0.20, green: 0.68, blue: 0.30, alpha: 1.0)
+        case .stopped:
+            statusText = loc("status.notRunning")
+            color = .secondaryLabelColor
+        }
         let attrTitle = NSMutableAttributedString(string: statusText)
-        let color: NSColor = serviceRunning
-            ? NSColor(srgbRed: 0.20, green: 0.68, blue: 0.30, alpha: 1.0)
-            : .secondaryLabelColor
         attrTitle.addAttribute(.foregroundColor, value: color, range: NSRange(location: 0, length: attrTitle.length))
         attrTitle.addAttribute(.font, value: NSFont.systemFont(ofSize: 13, weight: .medium), range: NSRange(location: 0, length: attrTitle.length))
         statusMenuItem.attributedTitle = attrTitle
@@ -112,7 +139,7 @@ class MenuBarController: NSObject {
         menu.addItem(.separator())
 
         // 服务控制
-        if serviceRunning {
+        if isRunning {
             let stopItem = NSMenuItem(title: loc("action.stop"), action: #selector(stopService), keyEquivalent: "")
             stopItem.target = self
             if #available(macOS 11.0, *) {
@@ -157,7 +184,8 @@ class MenuBarController: NSObject {
         menu.addItem(.separator())
 
         if adapters.isEmpty {
-            let item = NSMenuItem(title: loc("status.cannotConnect"), action: nil, keyEquivalent: "")
+            let emptyText = serviceState == .starting ? loc("status.loading") : loc("status.cannotConnect")
+            let item = NSMenuItem(title: emptyText, action: nil, keyEquivalent: "")
             item.isEnabled = false
             menu.addItem(item)
         } else {
@@ -462,15 +490,19 @@ class MenuBarController: NSObject {
     /// 应用启动时自动检测并启动代理服务
     @MainActor
     func autoStartIfNeeded() async {
-        // 先刷新状态（buildMenu 已调用 refresh，但确保拿到最新状态）
-        await refresh()
-        if !serviceRunning {
-            NSLog("[LLMProxy] 🔄 服务未运行，自动启动...")
-            runCLI("restart")
-            setTransientStatus(loc("status.starting"))
-            try? await Task.sleep(nanoseconds: 6_000_000_000)
+        // 查一次状态
+        let running = (try? await client.fetchHealth()) ?? false
+        if running {
+            // 服务已在跑：拉取完整数据并重建菜单（“启动中” → “运行中” + 适配器列表）
+            serviceState = .running
             await refresh()
+            return
         }
+        // 服务未运行：保持“启动中”，调 CLI 启动，由轮询检测到后切换为“运行中”
+        NSLog("[LLMProxy] 🔄 服务未运行，自动启动...")
+        serviceState = .starting
+        rebuildMenu()
+        runCLI("restart")
     }
 
     @MainActor
@@ -782,7 +814,7 @@ class MenuBarController: NSObject {
         client.updatePort(newPort)
 
         // 如果服务正在运行，自动重启让新端口生效
-        if serviceRunning {
+        if isRunning {
             rebuildMenu()
             setTransientStatus(loc("status.restarting"))
             let error = await startCLIWithPort("restart", port: newPort)
@@ -1061,8 +1093,8 @@ class MenuBarController: NSObject {
 
     @MainActor
     private func performInstall(_ localURL: URL, version: String) async {
-        // 停止后台服务
-        runCLI("stop")
+        // 同步停止后台 llm-proxy 服务（等 SIGTERM 完成再继续）
+        stopSync()
 
         do {
             try await updateChecker.installUpdate(at: localURL)
@@ -1075,8 +1107,10 @@ class MenuBarController: NSObject {
             return
         }
 
-        // 退出应用（helper 脚本会重启新版本）
-        NSApplication.shared.terminate(nil)
+        // helper 脚本已经启动（sleep 1; open /Applications/LLMProxy.app），
+        // 且后台服务已经 stopSync 停掉了，这里直接强退进程。
+        // NSApplication.shared.terminate 在 LSUIElement 菜单栏应用 + async 上下文不可靠。
+        exit(0)
     }
 
 
