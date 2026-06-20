@@ -306,4 +306,79 @@ describe('proxy/capture', () => {
       assert.strictEqual(writes, 1)
     })
   })
+
+  describe('长时间空闲 subscriber 防护', () => {
+    it('超过空闲阈值的 subscriber 在 pruneStaleSubscribers 时被清理', () => {
+      const cap = new CaptureBuffer(100)
+      const idle = fakeRes()
+      cap.subscribe(idle)
+      assert.strictEqual((cap as any).subscribers.size, 1)
+
+      // 模拟订阅者长时间未活动
+      const meta = (cap as any).subscribers.get(idle)
+      meta.lastSeen = Date.now() - (60 * 1000 + 1000) // 超过 60s
+
+      // 主动调用私有 prune 方法
+      ;(cap as any).pruneStaleSubscribers()
+
+      assert.strictEqual((cap as any).subscribers.size, 0)
+    })
+
+    it('活跃的 subscriber（lastSeen 在阈值内）不被清理', () => {
+      const cap = new CaptureBuffer(100)
+      const active = fakeRes()
+      cap.subscribe(active)
+      const initialSize = (cap as any).subscribers.size
+      assert.strictEqual(initialSize, 1)
+
+      // lastSeen 是刚设置的（Date.now()），不超时
+      ;(cap as any).pruneStaleSubscribers()
+
+      assert.strictEqual((cap as any).subscribers.size, 1)
+    })
+
+    it('同时清除死亡 + 空闲 subscriber', () => {
+      const cap = new CaptureBuffer(100)
+      const dead = fakeRes({ destroyed: true })
+      const stale = fakeRes()
+      const healthy = fakeRes()
+
+      cap.subscribe(dead)
+      cap.subscribe(stale)
+      cap.subscribe(healthy)
+      assert.strictEqual((cap as any).subscribers.size, 3)
+
+      // stale 模拟空闲超时
+      const meta = (cap as any).subscribers.get(stale)
+      meta.lastSeen = Date.now() - 120_000
+
+      ;(cap as any).pruneStaleSubscribers()
+
+      assert.strictEqual((cap as any).subscribers.size, 1)
+    })
+
+    it('notifySubscribers 后更新 lastSeen 防止误清理', () => {
+      const cap = new CaptureBuffer(100)
+      const sub = fakeRes()
+      cap.subscribe(sub)
+
+      // 把 lastSeen 拉远到超时区间
+      const meta = (cap as any).subscribers.get(sub)
+      meta.lastSeen = Date.now() - 120_000
+
+      // 触发一次 notify（lastSeen 会被刷新到 now）
+      cap.startRequest('proxy', 'openai', 'gpt-4')
+
+      // 此时 prune 不应清理该 subscriber
+      ;(cap as any).pruneStaleSubscribers()
+      assert.strictEqual((cap as any).subscribers.size, 1)
+    })
+
+    it('构造函数启动 pruneTimer（unref 不阻止进程退出）', () => {
+      const cap = new CaptureBuffer(100)
+      assert.ok((cap as any).pruneTimer, 'pruneTimer 应已创建')
+      cap.destroy()
+      assert.strictEqual((cap as any).pruneTimer, null, 'destroy 后应清空')
+    })
+  })
 })
