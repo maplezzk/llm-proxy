@@ -19,8 +19,8 @@ function parseThinkingConfig(m: { thinking?: { budget_tokens?: number; type?: st
   if (m.thinking?.budget_tokens && m.thinking.budget_tokens > 0) {
     tc.budget_tokens = m.thinking.budget_tokens
   }
-  if (m.reasoning_effort && ['low', 'medium', 'high'].includes(m.reasoning_effort)) {
-    tc.reasoning_effort = m.reasoning_effort as 'low' | 'medium' | 'high'
+  if (m.reasoning_effort && ['low', 'medium', 'high', 'xhigh', 'max'].includes(m.reasoning_effort)) {
+    tc.reasoning_effort = m.reasoning_effort as 'low' | 'medium' | 'high' | 'xhigh' | 'max'
   }
   if (m.thinking?.type && ['adaptive', 'auto', 'enabled', 'disabled'].includes(m.thinking.type)) {
     tc.type = m.thinking.type

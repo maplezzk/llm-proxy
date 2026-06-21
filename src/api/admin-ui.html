@@ -608,6 +608,16 @@ tbody tr:hover td { background: #f8f9fb; }
                 <input x-model="m.thinking.budget_tokens" type="number" min="0" step="1024"
                        style="width:90px;font-size:10.5px;padding:3px 5px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);color:var(--text)"
                        title="Anthropic extended thinking 的 token 预算，启用后模型会在回答前展示推理过程">
+                <select x-model="m.reasoning_effort"
+                        style="width:75px;font-size:10.5px;padding:3px 3px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);color:var(--text)"
+                        title="Anthropic 也支持用 reasoning_effort 近似控制思考深度，运行时查表映射为 budget_tokens">
+                  <option value="" x-text="$t('admin.providers.defaultEffort')"></option>
+                  <option value="low" x-text="$t('admin.providers.lowEffort')"></option>
+                  <option value="medium" x-text="$t('admin.providers.mediumEffort')"></option>
+                  <option value="high" x-text="$t('admin.providers.highEffort')"></option>
+                  <option value="xhigh" x-text="$t('admin.providers.xhighEffort')"></option>
+                  <option value="max" x-text="$t('admin.providers.maxEffort')"></option>
+                </select>
               </div>
             </template>
             <template x-if="form.type === 'openai' || form.type === 'openai-responses'">
@@ -620,6 +630,8 @@ tbody tr:hover td { background: #f8f9fb; }
                   <option value="low" x-text="$t('admin.providers.lowEffort')"></option>
                   <option value="medium" x-text="$t('admin.providers.mediumEffort')"></option>
                   <option value="high" x-text="$t('admin.providers.highEffort')"></option>
+                  <option value="xhigh" x-text="$t('admin.providers.xhighEffort')"></option>
+                  <option value="max" x-text="$t('admin.providers.maxEffort')"></option>
                 </select>
               </div>
             </template>
@@ -747,7 +759,7 @@ tbody tr:hover td { background: #f8f9fb; }
         <option value="anthropic">Anthropic</option>
       </select>
       <label x-text="$t('admin.adapters.formDefaultMaxTokens')"></label>
-      <input x-model="form.max_tokens" type="number" min="0" step="1" placeholder="4096" style="width:120px">
+      <input x-model="form.max_tokens" type="number" min="0" step="1" placeholder="16384" style="width:120px">
       <span style="font-size:11px;color:var(--text-dim)" x-text="$t('admin.adapters.defaultMaxTokensHint')"></span>
       <label x-text="$t('admin.adapters.formModelMapping')"></label>
       <div class="dynamic-rows">
@@ -776,6 +788,16 @@ tbody tr:hover td { background: #f8f9fb; }
                 <input x-model="m.thinking.budget_tokens" type="number" min="0" step="1024"
                        style="width:80px;font-size:10.5px;padding:3px 5px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);color:var(--text)"
                        title="覆盖目标模型的 thinking budget_tokens">
+                <select x-model="m.reasoning_effort"
+                        style="width:70px;font-size:10.5px;padding:3px 3px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);color:var(--text)"
+                        title="覆盖目标模型的 reasoning_effort（运行时查表映射为 budget_tokens）">
+                  <option value="" x-text="$t('admin.providers.defaultEffort')"></option>
+                  <option value="low" x-text="$t('admin.providers.lowEffort')"></option>
+                  <option value="medium" x-text="$t('admin.providers.mediumEffort')"></option>
+                  <option value="high" x-text="$t('admin.providers.highEffort')"></option>
+                  <option value="xhigh" x-text="$t('admin.providers.xhighEffort')"></option>
+                  <option value="max" x-text="$t('admin.providers.maxEffort')"></option>
+                </select>
               </div>
             </template>
             <template x-if="form.type === 'openai' || form.type === 'openai-responses'">
@@ -788,6 +810,8 @@ tbody tr:hover td { background: #f8f9fb; }
                   <option value="low" x-text="$t('admin.providers.lowEffort')"></option>
                   <option value="medium" x-text="$t('admin.providers.mediumEffort')"></option>
                   <option value="high" x-text="$t('admin.providers.highEffort')"></option>
+                  <option value="xhigh" x-text="$t('admin.providers.xhighEffort')"></option>
+                  <option value="max" x-text="$t('admin.providers.maxEffort')"></option>
                 </select>
               </div>
             </template>

@@ -122,6 +122,8 @@
       "lowEffort": "Low",
       "mediumEffort": "Medium",
       "highEffort": "High",
+      "xhighEffort": "XHigh",
+      "maxEffort": "Max",
       "thinkingType": "Type",
       "defaultType": "None",
       "hideKey": "Hide",

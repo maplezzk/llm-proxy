@@ -161,7 +161,7 @@ describe('config/validator', () => {
       ],
     }
     const errors = validateConfig(config)
-    assert.ok(errors.some((e) => e.message.includes('budget_tokens 或 type')))
+    assert.ok(errors.some((e) => e.message.includes('budget_tokens、reasoning_effort 或 type')))
   })
 
   it('Anthropic 模型仅 type 配置通过', () => {
@@ -194,19 +194,19 @@ describe('config/validator', () => {
     assert.ok(errors.some((e) => e.message.includes('thinking.type')))
   })
 
-  it('Anthropic 模型不能设置 reasoning_effort', () => {
+  it('Anthropic 模型设置 reasoning_effort 通过', () => {
     const config: Config = {
       providers: [
         {
           name: 'p1',
           type: 'anthropic',
           apiKey: 'sk-ant-1',
-          models: [{ id: 'claude-sonnet-4', thinking: { budget_tokens: 8192, reasoning_effort: 'medium' as any } }],
+          models: [{ id: 'claude-sonnet-4', thinking: { reasoning_effort: 'medium' as any } }],
         },
       ],
     }
     const errors = validateConfig(config)
-    assert.ok(errors.some((e) => e.message.includes('不支持 reasoning_effort')))
+    assert.strictEqual(errors.length, 0)
   })
 
   it('OpenAI 模型 valid reasoning_effort 通过', () => {
@@ -224,6 +224,23 @@ describe('config/validator', () => {
     assert.strictEqual(errors.length, 0)
   })
 
+  it('reasoning_effort 支持 xhigh 和 max', () => {
+    for (const value of ['xhigh', 'max']) {
+      const config: Config = {
+        providers: [
+          {
+            name: 'p1',
+            type: 'openai',
+            apiKey: 'sk-openai-1',
+            models: [{ id: 'o3-mini', thinking: { reasoning_effort: value as any } }],
+          },
+        ],
+      }
+      const errors = validateConfig(config)
+      assert.strictEqual(errors.length, 0, `${value} should be valid`)
+    }
+  })
+
   it('OpenAI 模型无效 reasoning_effort 报错', () => {
     const config: Config = {
       providers: [
@@ -236,7 +253,7 @@ describe('config/validator', () => {
       ],
     }
     const errors = validateConfig(config)
-    assert.ok(errors.some((e) => e.message.includes('必须是 low、medium 或 high')))
+    assert.ok(errors.some((e) => e.message.includes('reasoning_effort 必须是 low、medium、high、xhigh 或 max')))
   })
 
   it('OpenAI 模型不能设置 budget_tokens', () => {

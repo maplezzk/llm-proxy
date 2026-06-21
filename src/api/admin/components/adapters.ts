@@ -126,7 +126,11 @@ export function adaptersPage() {
           if (type === 'anthropic') {
             const bt = parseInt(m.thinking?.budget_tokens, 10)
             if (bt > 0) (base as any).thinking = { ...(base.thinking ?? {}), budget_tokens: bt }
-          } else if (m.reasoning_effort && ['low', 'medium', 'high'].includes(m.reasoning_effort)) {
+            // Anthropic 也允许配 reasoning_effort，运行时查表映射为 budget_tokens
+            if (m.reasoning_effort && ['low', 'medium', 'high', 'xhigh', 'max'].includes(m.reasoning_effort)) {
+              (base as any).thinking = { ...((base as any).thinking ?? {}), reasoning_effort: m.reasoning_effort }
+            }
+          } else if (m.reasoning_effort && ['low', 'medium', 'high', 'xhigh', 'max'].includes(m.reasoning_effort)) {
             (base as any).thinking = { reasoning_effort: m.reasoning_effort }
           }
           // thinking.type 对所有 provider type 生效

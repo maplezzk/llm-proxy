@@ -6,8 +6,8 @@ export type InputModality = 'text' | 'image' | 'audio' | 'video' | 'file'
 export interface ThinkingConfig {
   /** Anthropic: thinking budget tokens (启用 thinking 模式时必填) */
   budget_tokens?: number
-  /** OpenAI: reasoning_effort (low | medium | high) */
-  reasoning_effort?: 'low' | 'medium' | 'high'
+  /** OpenAI: reasoning_effort (low | medium | high | xhigh | max) */
+  reasoning_effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max'
   /** thinking.type 透传值（如 MiniMax adaptive），优先级低于 budget_tokens/reasoning_effort */
   type?: string
 }

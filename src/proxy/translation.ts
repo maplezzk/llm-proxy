@@ -3,6 +3,19 @@ import type { Logger } from '../log/logger.js'
 import { createHash } from 'node:crypto'
 import { sanitizeApiBase } from '../lib/http-utils.js'
 
+/**
+ * OpenAI reasoning_effort → Anthropic thinking.budget_tokens 映射表。
+ * 仅在上游是 Anthropic 且未配置 budget_tokens 时生效。
+ * 值参考 Claude 4 系列模型的常见档位：min ≈ 1024，max ≈ 64000。
+ */
+const REASONING_EFFORT_TO_BUDGET: Record<string, number> = {
+  low: 1024,
+  medium: 4096,
+  high: 16384,
+  xhigh: 32768,
+  max: 65536,
+}
+
 // --- CodexToolContext (CCX-style lookup table for namespace/custom tool remapping) ---
 
 interface CodexToolFunctionSpec {
@@ -678,6 +691,13 @@ function resolveReasoning(body: Record<string, unknown>): FullParams['reasoning'
   return undefined
 }
 
+/** 从 FullParams.reasoning 中提取 effort 字符串（跨协议时供 Anthropic 上游查表使用） */
+function extractClientReasoningEffort(reasoning: FullParams['reasoning']): string | undefined {
+  if (!reasoning) return undefined
+  if (typeof reasoning === 'string') return reasoning
+  return reasoning.effort
+}
+
 // --- Full parameter mapping ---
 
 interface FullParams {
@@ -877,7 +897,7 @@ function ensureThinkingBlock(messages: unknown[]): void {
 function buildAnthropicFromOpenAI(params: FullParams): Record<string, unknown> {
   const body: Record<string, unknown> = {
     model: params.model,
-    max_tokens: params.max_tokens ?? 4096,
+    max_tokens: params.max_tokens ?? 16384,
     messages: convertMessagesToAnthropic(params.messages as unknown[]),
   }
   if (params.system) body.system = params.system
@@ -1136,7 +1156,7 @@ function extractFullOpenAIResponses(body: Record<string, unknown>): FullParams {
 function buildAnthropicFromOpenAIResponses(params: FullParams): Record<string, unknown> {
   const body: Record<string, unknown> = {
     model: params.model,
-    max_tokens: params.max_tokens ?? 4096,
+    max_tokens: params.max_tokens ?? 16384,
     messages: convertMessagesToAnthropic(params.messages as unknown[]),
   }
   if (params.system) body.system = params.system
@@ -1282,8 +1302,9 @@ export async function transformInboundRequest(
 
   // max_tokens 二次兜底，处理 builder 中可能遗留的 0
   sanitizeMaxTokens(upstreamBody, route)
-  // 注入 thinking 配置到转换后的请求体
-  injectThinkingConfig(upstreamBody, route)
+  // 注入 thinking 配置到转换后的请求体（跨协议场景下携带客户端的 reasoning_effort）
+  const clientReasoningEffort = extractClientReasoningEffort(params.reasoning)
+  injectThinkingConfig(upstreamBody, route, clientReasoningEffort)
   // 客户端没传 stream 时默认流式
   if (upstreamBody.stream === undefined) {
     upstreamBody.stream = true
@@ -1406,29 +1427,51 @@ function sanitizeMaxTokens(
 /**
  * 根据路由配置的 thinking 参数，注入到上游请求体中。
  * 同协议和跨协议路径都调用此函数。
+ *
+ * 上游是 Anthropic 时，thinking 的 budget_tokens 来源优先级：
+ *   1. route.thinking.budget_tokens（用户配置优先）
+ *   2. route.thinking.reasoning_effort（查表映射）
+ *   3. 客户端请求的 reasoning_effort（仅跨协议路径，查表映射）
+ *
+ * @param clientReasoningEffort 客户端请求里的 reasoning_effort（跨协议时可用）
  */
 function injectThinkingConfig(
   upstreamBody: Record<string, unknown>,
-  route: RouterResult
+  route: RouterResult,
+  clientReasoningEffort?: string
 ): void {
-  if (!route.thinking) return
-
-  if (route.providerType === 'anthropic' && route.thinking.budget_tokens) {
-    const budget = route.thinking.budget_tokens
-    upstreamBody.thinking = { type: 'enabled', budget_tokens: budget }
-    // 确保 max_tokens >= budget_tokens，否则 Anthropic API 会报错
-    if (!upstreamBody.max_tokens || (upstreamBody.max_tokens as number) < budget) {
-      upstreamBody.max_tokens = budget
+  if (route.providerType === 'anthropic') {
+    // 解析 budget_tokens 来源：用户配的 budget_tokens > 用户配的 reasoning_effort > 客户端的 reasoning_effort
+    let budget: number | undefined
+    if (route.thinking?.budget_tokens) {
+      budget = route.thinking.budget_tokens
+    } else if (route.thinking?.reasoning_effort) {
+      budget = REASONING_EFFORT_TO_BUDGET[route.thinking.reasoning_effort]
+    } else if (clientReasoningEffort) {
+      budget = REASONING_EFFORT_TO_BUDGET[clientReasoningEffort]
     }
-  } else if (route.thinking.type) {
-    // 非标准 thinking.type（如 MiniMax adaptive），用于所有 provider type
+
+    if (budget) {
+      upstreamBody.thinking = { type: 'enabled', budget_tokens: budget }
+      // 确保 max_tokens >= budget_tokens，否则 Anthropic API 会报错
+      if (!upstreamBody.max_tokens || (upstreamBody.max_tokens as number) < budget) {
+        upstreamBody.max_tokens = budget
+      }
+    } else if (route.thinking?.type) {
+      // 非标准 thinking.type（如 MiniMax adaptive）
+      upstreamBody.thinking = { type: route.thinking.type }
+      // 用户配置优先：清除客户端传的 reasoning/reasoning_effort，避免冲突
+      delete upstreamBody.reasoning
+      delete upstreamBody.reasoning_effort
+    }
+  } else if (route.thinking?.type) {
+    // 上游不是 Anthropic：thinking.type 透传（适用于 MiniMax adaptive 等）
     upstreamBody.thinking = { type: route.thinking.type }
-    // 用户配置优先：清除客户端传的 reasoning/reasoning_effort，避免冲突
     delete upstreamBody.reasoning
     delete upstreamBody.reasoning_effort
   }
 
-  if ((route.providerType === 'openai' || route.providerType === 'openai-responses') && route.thinking.reasoning_effort) {
+  if ((route.providerType === 'openai' || route.providerType === 'openai-responses') && route.thinking?.reasoning_effort) {
     if (route.providerType === 'openai-responses') {
       upstreamBody.reasoning = { effort: route.thinking.reasoning_effort }
     } else {
