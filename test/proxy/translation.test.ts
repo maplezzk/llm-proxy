@@ -1228,7 +1228,69 @@ describe('proxy/response-conversion', () => {
         messages: [{ role: 'user', content: 'hi' }],
       })
       assert.deepStrictEqual(result.body.thinking, { type: 'enabled', budget_tokens: 8192 })
+      // 客户端未传 max_tokens → builder 兏底 16384，8192 < 16384 不触发 max_tokens 调整
+      assert.strictEqual(result.body.max_tokens, 16384)
+    })
+
+    it('跨协议 OpenAI → Anthropic: 客户端 max_tokens < budget 时被覆盖', async () => {
+      const route = { ...anthropicRoute, thinking: { budget_tokens: 8192 } }
+      const result = await transformInboundRequest('openai', route, {
+        model: 'claude-sonnet',
+        messages: [{ role: 'user', content: 'hi' }],
+        max_tokens: 100,
+      })
+      assert.deepStrictEqual(result.body.thinking, { type: 'enabled', budget_tokens: 8192 })
       assert.strictEqual(result.body.max_tokens, 8192)
+    })
+
+    it('跨协议 Anthropic + reasoning_effort 查表转 budget_tokens', async () => {
+      const route = { ...anthropicRoute, thinking: { reasoning_effort: 'high' } }
+      const result = await transformInboundRequest('openai', route, {
+        model: 'claude-sonnet',
+        messages: [{ role: 'user', content: 'hi' }],
+      })
+      // high → 16384
+      assert.deepStrictEqual(result.body.thinking, { type: 'enabled', budget_tokens: 16384 })
+      // 客户端未传 max_tokens → builder 兏底 16384，刚好等于 budget，不调整
+      assert.strictEqual(result.body.max_tokens, 16384)
+    })
+
+    it('跨协议: 客户端传 reasoning_effort 上游是 Anthropic 时也查表转 budget_tokens', async () => {
+      // route 不配 thinking，客户端传 reasoning_effort=xhigh
+      const route = { ...anthropicRoute }
+      const result = await transformInboundRequest('openai', route, {
+        model: 'claude-sonnet',
+        messages: [{ role: 'user', content: 'hi' }],
+        reasoning_effort: 'xhigh',
+      })
+      // xhigh → 32768
+      assert.deepStrictEqual(result.body.thinking, { type: 'enabled', budget_tokens: 32768 })
+      // 客户端未传 max_tokens → 兏底 16384，16384 < 32768 被覆盖为 budget
+      assert.strictEqual(result.body.max_tokens, 32768)
+    })
+
+    it('跨协议: 客户端 max_tokens < reasoning_effort 映射的 budget 时被覆盖', async () => {
+      const route = { ...anthropicRoute }
+      const result = await transformInboundRequest('openai', route, {
+        model: 'claude-sonnet',
+        messages: [{ role: 'user', content: 'hi' }],
+        reasoning_effort: 'high',
+        max_tokens: 100,
+      })
+      // high → 16384，100 < 16384 被覆盖
+      assert.deepStrictEqual(result.body.thinking, { type: 'enabled', budget_tokens: 16384 })
+      assert.strictEqual(result.body.max_tokens, 16384)
+    })
+
+    it('同协议 Anthropic reasoning_effort 查表转 budget_tokens', async () => {
+      const route = { ...anthropicRoute, thinking: { reasoning_effort: 'max' } }
+      const result = await transformInboundRequest('anthropic', route, {
+        model: 'claude-sonnet',
+        messages: [{ role: 'user', content: 'hi' }],
+      })
+      // max → 65536
+      assert.deepStrictEqual(result.body.thinking, { type: 'enabled', budget_tokens: 65536 })
+      assert.strictEqual(result.body.max_tokens, 65536)
     })
 
     it('跨协议 Anthropic → OpenAI 注入 reasoning_effort', async () => {

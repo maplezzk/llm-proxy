@@ -122,6 +122,8 @@
       "lowEffort": "低",
       "mediumEffort": "中",
       "highEffort": "高",
+      "xhighEffort": "超高",
+      "maxEffort": "最大",
       "thinkingType": "模式",
       "defaultType": "无",
       "hideKey": "隐藏",
