@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.19.0](https://github.com/maplezzk/llm-proxy/compare/v0.18.1...v0.19.0) (2026-06-21)
+
+
+### Features
+
+* max_tokens 兜底 16384 + reasoning_effort 映射 Anthropic budget_tokens ([#155](https://github.com/maplezzk/llm-proxy/issues/155)) ([8b4d3cd](https://github.com/maplezzk/llm-proxy/commit/8b4d3cd19dc53ab03bfc8e949704989ed675584f))
+
+
+### Bug Fixes
+
+* 修复长时间运行的内存泄漏问题 ([#154](https://github.com/maplezzk/llm-proxy/issues/154)) ([86ba876](https://github.com/maplezzk/llm-proxy/commit/86ba876e4ec86d866bf01cb1f91db18199209342))
+
 ## [0.18.1](https://github.com/maplezzk/llm-proxy/compare/v0.18.0...v0.18.1) (2026-06-19)
 
 
