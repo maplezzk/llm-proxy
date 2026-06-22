@@ -248,7 +248,6 @@ export type TranslationKey =
   | 'backend.config.reloadSuccess'
   | 'backend.config.validationErrors'
   | 'backend.config.validationFailed'
-  | 'backend.errors.bodyTooLarge'
   | 'backend.errors.invalidJson'
   | 'backend.errors.readBodyFailed'
   | 'backend.model.adapterTestFailed'

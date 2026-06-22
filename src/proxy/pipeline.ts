@@ -28,22 +28,14 @@ export async function parseAndAuth(
   res: ServerResponse,
   store: ConfigStore,
   logger: Logger,
-  logLabel: string,
-  maxBodyBytes?: number
+  logLabel: string
 ): Promise<ParseResult | null> {
-  // 1. 读取 Body（含大小限制）
-  const effectiveMaxBytes = maxBodyBytes ?? store.getConfig().config.maxBodySize ?? 10_000_000
+  // 1. 读取 Body
   let rawBody: string
   try {
-    rawBody = await readBody(req, effectiveMaxBytes)
+    rawBody = await readBody(req)
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
-    if (message.includes('BODY_TOO_LARGE')) {
-      logger.log('request', `${logLabel} body size limit exceeded`, { logLabel }, 'warn')
-      res.writeHead(413, { 'Content-Type': 'application/json' })
-      res.end(JSON.stringify({ error: { message: t('backend.errors.bodyTooLarge') } }))
-      return null
-    }
     logger.log('request', `${logLabel} failed to read request body`, { logLabel, error: message }, 'warn')
     res.writeHead(400, { 'Content-Type': 'application/json' })
     res.end(JSON.stringify({ error: { message: t('backend.errors.readBodyFailed') } }))

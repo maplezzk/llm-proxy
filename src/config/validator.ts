@@ -10,11 +10,6 @@ export function validateConfig(config: Config): ValidationError[] {
   const errors = validateProviders(config)
   errors.push(...validateAdapters(config))
   errors.push(...validateVision(config))
-  if (config.maxBodySize != null) {
-    if (!Number.isInteger(config.maxBodySize) || config.maxBodySize < 1) {
-      errors.push({ field: 'max_body_size', message: 'max_body_size 必须为正整数（字节数）' })
-    }
-  }
   if (config.port != null) {
     if (!Number.isInteger(config.port) || config.port < 1 || config.port > 65535) {
       errors.push({ field: 'port', message: 'port 必须为 1-65535 之间的整数' })
