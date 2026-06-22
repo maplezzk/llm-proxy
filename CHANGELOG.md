@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.20.0](https://github.com/maplezzk/llm-proxy/compare/v0.19.0...v0.20.0) (2026-06-22)
+
+
+### Features
+
+* 移除请求体大小限制 ([#157](https://github.com/maplezzk/llm-proxy/issues/157)) ([e5f914d](https://github.com/maplezzk/llm-proxy/commit/e5f914d8e500445b5690e5f52dc3a601d8844bf6))
+
 ## [0.19.0](https://github.com/maplezzk/llm-proxy/compare/v0.18.1...v0.19.0) (2026-06-21)
 
 
