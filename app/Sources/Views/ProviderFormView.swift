@@ -254,24 +254,25 @@ struct ProviderFormView: View {
             }
 
             // 模型列表
+            // 使用元素绑定（基于稳定的 UUID），避免按索引捕获导致的删除越界崩溃
             VStack(spacing: 8) {
-                ForEach(viewModel.formData.models.indices, id: \.self) { index in
-                    modelRow(index: index)
+                ForEach($viewModel.formData.models) { $model in
+                    modelRow(model: $model)
                 }
             }
         }
     }
 
-    private func modelRow(index: Int) -> some View {
+    private func modelRow(model: Binding<ProviderModelFormData>) -> some View {
         HStack(spacing: 8) {
             // 模型 ID
-            TextField(loc("providers.form.modelIdPlaceholder"), text: $viewModel.formData.models[index].modelId)
+            TextField(loc("providers.form.modelIdPlaceholder"), text: model.modelId)
                 .textFieldStyle(.roundedBorder)
                 .frame(minWidth: 120)
 
             // Anthropic: budget_tokens
             if viewModel.formData.type == "anthropic" {
-                TextField(loc("providers.form.budgetTokens"), text: $viewModel.formData.models[index].budgetTokens)
+                TextField(loc("providers.form.budgetTokens"), text: model.budgetTokens)
                     .textFieldStyle(.roundedBorder)
                     .frame(width: 80)
                     .help(loc("providers.form.budgetTokensHelp"))
@@ -279,7 +280,7 @@ struct ProviderFormView: View {
 
             // OpenAI: reasoning_effort
             if viewModel.formData.type == "openai" || viewModel.formData.type == "openai-responses" {
-                Picker("", selection: $viewModel.formData.models[index].reasoningEffort) {
+                Picker("", selection: model.reasoningEffort) {
                     Text(loc("providers.form.reasoningNone")).tag("")
                     Text("Low").tag("low")
                     Text("Medium").tag("medium")
@@ -290,7 +291,7 @@ struct ProviderFormView: View {
             }
 
             // thinking.type (对所有 provider type 生效，如 MiniMax adaptive)
-            Picker("", selection: $viewModel.formData.models[index].thinkingType) {
+            Picker("", selection: model.thinkingType) {
                 Text(loc("providers.form.thinkingTypeNone")).tag("")
                 Text("adaptive").tag("adaptive")
                 Text("auto").tag("auto")
@@ -308,13 +309,13 @@ struct ProviderFormView: View {
                     .foregroundColor(.secondary)
                 ForEach(["text", "image"], id: \.self) { mod in
                     Toggle(isOn: Binding(
-                        get: { viewModel.formData.models[index].input.contains(mod) },
+                        get: { model.wrappedValue.input.contains(mod) },
                         set: { newValue in
-                            if newValue { viewModel.formData.models[index].input.insert(mod) }
-                            else { viewModel.formData.models[index].input.remove(mod) }
+                            if newValue { model.wrappedValue.input.insert(mod) }
+                            else { model.wrappedValue.input.remove(mod) }
                             // 至少保留 text
-                            if viewModel.formData.models[index].input.isEmpty {
-                                viewModel.formData.models[index].input.insert("text")
+                            if model.wrappedValue.input.isEmpty {
+                                model.wrappedValue.input.insert("text")
                             }
                         }
                     )) {
@@ -329,8 +330,8 @@ struct ProviderFormView: View {
 
             Spacer()
 
-            // 删除按钮
-            Button(action: { viewModel.removeModelRow(at: index) }) {
+            // 删除按钮：通过 model.id 找到当前元素再删除，避免使用易过时的索引
+            Button(action: { viewModel.removeModelRow(id: model.wrappedValue.id) }) {
                 Image(systemName: "minus.circle")
                     .foregroundColor(.red)
                     .font(.title3)

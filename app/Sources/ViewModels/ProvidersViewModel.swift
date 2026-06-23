@@ -218,6 +218,13 @@ final class ProvidersViewModel {
     }
 
     func removeModelRow(at index: Int) {
+        guard index >= 0 && index < formData.models.count else { return }
+        removeModelRow(id: formData.models[index].id)
+    }
+
+    /// 通过稳定 UUID 删除模型行，避免按索引删除时其它行闭包持有陈旧索引导致越界崩溃
+    func removeModelRow(id: UUID) {
+        guard let index = formData.models.firstIndex(where: { $0.id == id }) else { return }
         guard formData.models.count > 1 else {
             formData.models[0] = ProviderModelFormData()
             return

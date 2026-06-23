@@ -88,8 +88,8 @@ final class ProvidersViewModelTests: XCTestCase {
             api_key: "sk-test",
             api_base: "https://api.test.com",
             models: [
-                ProviderModelDetail(id: "claude-3", thinking: ThinkingConfig(budget_tokens: 1024), reasoning_effort: nil),
-                ProviderModelDetail(id: "claude-2", thinking: nil, reasoning_effort: nil),
+                ProviderModelDetail(id: "claude-3", thinking: ThinkingConfig(budget_tokens: 1024, type: nil), reasoning_effort: nil, input: nil),
+                ProviderModelDetail(id: "claude-2", thinking: nil, reasoning_effort: nil, input: nil),
             ]
         )
         vm.openEditForm(provider)
@@ -159,6 +159,85 @@ final class ProvidersViewModelTests: XCTestCase {
         vm.removeModelRow(at: 0)
         XCTAssertEqual(vm.formData.models.count, 1)
         XCTAssertEqual(vm.formData.models[0].modelId, "gpt-3.5")
+    }
+
+    @MainActor
+    func testRemoveModelRow_byId_middleRow() {
+        // 回归测试：按 UUID 删除中间行，其它行剩余顺序与内容保持不变
+        let vm = ProvidersViewModel()
+        vm.addModelRow()
+        vm.addModelRow()
+        vm.formData.models[0].modelId = "gpt-4"
+        vm.formData.models[1].modelId = "gpt-3.5"
+        vm.formData.models[2].modelId = "o1"
+        let targetId = vm.formData.models[1].id
+        vm.removeModelRow(id: targetId)
+        XCTAssertEqual(vm.formData.models.count, 2)
+        XCTAssertEqual(vm.formData.models[0].modelId, "gpt-4")
+        XCTAssertEqual(vm.formData.models[1].modelId, "o1")
+    }
+
+    @MainActor
+    func testRemoveModelRow_byId_firstRow() {
+        // 回归测试：按 UUID 删除首行，防止以前按索引删除时陈旧索引导致的越界
+        let vm = ProvidersViewModel()
+        vm.addModelRow()
+        vm.addModelRow()
+        vm.formData.models[0].modelId = "a"
+        vm.formData.models[1].modelId = "b"
+        vm.formData.models[2].modelId = "c"
+        let firstId = vm.formData.models[0].id
+        vm.removeModelRow(id: firstId)
+        XCTAssertEqual(vm.formData.models.count, 2)
+        XCTAssertEqual(vm.formData.models.map(\.modelId), ["b", "c"])
+    }
+
+    @MainActor
+    func testRemoveModelRow_byId_lastRow_clearsInsteadOfRemoving() {
+        // 最后一行不能被删空，复用原有语义：仅剩一行时将其清空
+        let vm = ProvidersViewModel()
+        vm.formData.models[0].modelId = "only-one"
+        let onlyId = vm.formData.models[0].id
+        vm.removeModelRow(id: onlyId)
+        XCTAssertEqual(vm.formData.models.count, 1)
+        XCTAssertEqual(vm.formData.models[0].modelId, "")
+    }
+
+    @MainActor
+    func testRemoveModelRow_byId_nonExistent_isNoOp() {
+        // 传入不存在的 id 应安全无副作用（防止崩溃）
+        let vm = ProvidersViewModel()
+        vm.addModelRow()
+        vm.formData.models[0].modelId = "a"
+        vm.formData.models[1].modelId = "b"
+        let snapshot = vm.formData.models.map(\.modelId)
+        vm.removeModelRow(id: UUID())
+        XCTAssertEqual(vm.formData.models.count, 2)
+        XCTAssertEqual(vm.formData.models.map(\.modelId), snapshot)
+    }
+
+    @MainActor
+    func testRemoveModelRow_byId_repeatedDeletesAreSafe() {
+        // 重复删除同一 id 应安全无副作用（模拟老闭包再次触发的场景）
+        let vm = ProvidersViewModel()
+        vm.addModelRow()
+        vm.formData.models[0].modelId = "a"
+        vm.formData.models[1].modelId = "b"
+        let targetId = vm.formData.models[1].id
+        vm.removeModelRow(id: targetId)
+        vm.removeModelRow(id: targetId) // 第二次应无副作用
+        XCTAssertEqual(vm.formData.models.count, 1)
+        XCTAssertEqual(vm.formData.models[0].modelId, "a")
+    }
+
+    @MainActor
+    func testRemoveModelRow_byIndex_invalidIndex_isNoOp() {
+        // 越界索引不应崩溃（防御性）
+        let vm = ProvidersViewModel()
+        vm.formData.models[0].modelId = "only"
+        vm.removeModelRow(at: 99)
+        XCTAssertEqual(vm.formData.models.count, 1)
+        XCTAssertEqual(vm.formData.models[0].modelId, "only")
     }
 
     @MainActor
@@ -393,7 +472,7 @@ final class ProvidersViewModelTests: XCTestCase {
             type: "anthropic",
             api_key: "sk-key",
             api_base: "https://api.test.com",
-            models: [ProviderModelInput(id: "claude-3", thinking: ThinkingInput(budget_tokens: 1024, reasoning_effort: nil))]
+            models: [ProviderModelInput(id: "claude-3", thinking: ThinkingInput(budget_tokens: 1024, reasoning_effort: nil, type: nil), input: nil)]
         )
         let data = try JSONEncoder().encode(body)
         let json = try JSONSerialization.jsonObject(with: data) as! [String: Any]
