@@ -134,8 +134,8 @@ final class AdaptersViewModelTests: XCTestCase {
                 api_key: "sk-xxx",
                 api_base: "https://api.deepseek.com",
                 models: [
-                    ProviderModelDetail(id: "deepseek-chat", thinking: nil, reasoning_effort: nil),
-                    ProviderModelDetail(id: "deepseek-reasoner", thinking: nil, reasoning_effort: "high"),
+                    ProviderModelDetail(id: "deepseek-chat", thinking: nil, reasoning_effort: nil, input: nil),
+                    ProviderModelDetail(id: "deepseek-reasoner", thinking: nil, reasoning_effort: "high", input: nil),
                 ]
             ),
         ]
