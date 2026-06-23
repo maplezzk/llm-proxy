@@ -10,6 +10,41 @@ const toast = (msg: string, type = 'info') =>
 const confirm = (msg: string) =>
   (window as any).Alpine.store('app').confirm(msg)
 
+/**
+ * 从后端响应中提取人类可读的错误消息。
+ * 支持三种格式：
+ * 1. `{success: false, error: "..."}` — 业务错误
+ * 2. `{success: false, error: "...", errors: [{field, message}]}` — 校验错误（带明细）
+ * 3. `{error: {message: "..."}}` — 路由 404 / catch-all 抛错
+ * 4. null / undefined — 返回 null 让调用方自己处理
+ */
+export function extractError(res: any, fallback: string): string | null {
+  if (!res) return null
+  // 格式 3: error 是对象 {message: ...}
+  if (typeof res.error === 'object' && res.error !== null) {
+    if (typeof res.error.message === 'string' && res.error.message) return res.error.message
+    return fallback
+  }
+  // 格式 1/2: error 是字符串
+  if (typeof res.error === 'string' && res.error) {
+    // 格式 2: errors 数组
+    if (Array.isArray(res.errors) && res.errors.length > 0) {
+      const lines = res.errors.map((e: any) => {
+        const field = e.field || ''
+        const msg = e.message || ''
+        return field ? `• ${field}: ${msg}` : `• ${msg}`
+      })
+      return res.error + '\n' + lines.join('\n')
+    }
+    return res.error
+  }
+  // 没有 error 字段但有 errors 数组（理论上不会发生）
+  if (Array.isArray(res.errors) && res.errors.length > 0) {
+    return res.errors.map((e: any) => `• ${e.field || ''}: ${e.message || ''}`).join('\n')
+  }
+  return null
+}
+
 export function providersPage() {
   return {
     providers: [] as any[],
@@ -99,7 +134,11 @@ export function providersPage() {
           if (type === 'anthropic') {
             const bt = parseInt(m.thinking?.budget_tokens, 10)
             if (bt > 0) base.thinking = { ...(base.thinking ?? {}), budget_tokens: bt }
-          } else if (m.reasoning_effort && ['low', 'medium', 'high'].includes(m.reasoning_effort)) {
+            // Anthropic 也允许配 reasoning_effort，运行时查表映射为 budget_tokens
+            if (m.reasoning_effort && ['low', 'medium', 'high', 'xhigh', 'max'].includes(m.reasoning_effort)) {
+              base.thinking = { ...(base.thinking ?? {}), reasoning_effort: m.reasoning_effort }
+            }
+          } else if (m.reasoning_effort && ['low', 'medium', 'high', 'xhigh', 'max'].includes(m.reasoning_effort)) {
             base.thinking = { reasoning_effort: m.reasoning_effort }
           }
           // thinking.type 对所有 provider type 生效（如 MiniMax adaptive）
@@ -136,9 +175,7 @@ export function providersPage() {
         })
       }
       if (!res.success) {
-        const detail = res.errors?.length
-          ? (res.error || t('admin.providers.saveFailed')) + '\n' + res.errors.map((e: any) => '• ' + (e.field || '') + ': ' + e.message).join('\n')
-          : (res.error || t('admin.providers.saveFailed'))
+        const detail = extractError(res, t('admin.providers.saveFailed')) || t('admin.providers.saveFailed')
         toast(detail, 'error')
         return
       }
@@ -152,7 +189,8 @@ export function providersPage() {
       if (!ok) return
       const res = await (window as any).Alpine.store('app').fetch(`/admin/providers/${name}`, { method: 'DELETE' })
       if (!res.success) {
-        toast(res.error || t('admin.providers.deleteFailed'), 'error')
+        const detail = extractError(res, t('admin.providers.deleteFailed')) || t('admin.providers.deleteFailed')
+        toast(detail, 'error')
         return
       }
       toast(t('admin.providers.deleted'), 'success')
@@ -181,7 +219,8 @@ export function providersPage() {
       }).catch(() => null)
 
       if (!res?.success) {
-        this.pullModal = { visible: true, models: [], existing: [], loading: false, error: res?.error || t('admin.providers.pullModelsError') }
+        const detail = extractError(res, t('admin.providers.pullModelsError')) || t('admin.providers.pullModelsError')
+        this.pullModal = { visible: true, models: [], existing: [], loading: false, error: detail }
         return
       }
       const models = (res.data.models || []).map((m: any) => ({

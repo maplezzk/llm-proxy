@@ -10,11 +10,6 @@ export function validateConfig(config: Config): ValidationError[] {
   const errors = validateProviders(config)
   errors.push(...validateAdapters(config))
   errors.push(...validateVision(config))
-  if (config.maxBodySize != null) {
-    if (!Number.isInteger(config.maxBodySize) || config.maxBodySize < 1) {
-      errors.push({ field: 'max_body_size', message: 'max_body_size 必须为正整数（字节数）' })
-    }
-  }
   if (config.port != null) {
     if (!Number.isInteger(config.port) || config.port < 1 || config.port > 65535) {
       errors.push({ field: 'port', message: 'port 必须为 1-65535 之间的整数' })
@@ -80,8 +75,8 @@ function validateProviders(config: Config): ValidationError[] {
       // 校验 thinking 配置
       if (model.thinking) {
         if (provider.type === 'anthropic') {
-          if (!model.thinking.budget_tokens && !model.thinking.type) {
-            errors.push({ field: `providers.${provider.name}.models.${model.id}.thinking`, message: `Anthropic thinking 模式需要 budget_tokens 或 type（如 MiniMax adaptive）` })
+          if (!model.thinking.budget_tokens && !model.thinking.type && !model.thinking.reasoning_effort) {
+            errors.push({ field: `providers.${provider.name}.models.${model.id}.thinking`, message: `Anthropic thinking 模式需要 budget_tokens、reasoning_effort 或 type（如 MiniMax adaptive）` })
           }
           if (model.thinking.budget_tokens && model.thinking.budget_tokens < 0) {
             errors.push({ field: `providers.${provider.name}.models.${model.id}.thinking.budget_tokens`, message: `Anthropic thinking budget_tokens 必须为正整数` })
@@ -89,12 +84,13 @@ function validateProviders(config: Config): ValidationError[] {
           if (model.thinking.type && !['adaptive', 'auto', 'enabled', 'disabled'].includes(model.thinking.type)) {
             errors.push({ field: `providers.${provider.name}.models.${model.id}.thinking.type`, message: `thinking.type 必须是 adaptive、auto、enabled 或 disabled` })
           }
-          if (model.thinking.reasoning_effort) {
-            errors.push({ field: `providers.${provider.name}.models.${model.id}.thinking.reasoning_effort`, message: `Anthropic 模型不支持 reasoning_effort` })
+          // reasoning_effort 对 Anthropic 也允许：运行时自动查表映射成 budget_tokens
+          if (model.thinking.reasoning_effort && !['low', 'medium', 'high', 'xhigh', 'max'].includes(model.thinking.reasoning_effort)) {
+            errors.push({ field: `providers.${provider.name}.models.${model.id}.thinking.reasoning_effort`, message: `reasoning_effort 必须是 low、medium、high、xhigh 或 max` })
           }
         } else if (provider.type === 'openai' || provider.type === 'openai-responses') {
-          if (model.thinking.reasoning_effort && !['low', 'medium', 'high'].includes(model.thinking.reasoning_effort)) {
-            errors.push({ field: `providers.${provider.name}.models.${model.id}.thinking.reasoning_effort`, message: `OpenAI reasoning_effort 必须是 low、medium 或 high` })
+          if (model.thinking.reasoning_effort && !['low', 'medium', 'high', 'xhigh', 'max'].includes(model.thinking.reasoning_effort)) {
+            errors.push({ field: `providers.${provider.name}.models.${model.id}.thinking.reasoning_effort`, message: `OpenAI reasoning_effort 必须是 low、medium、high、xhigh 或 max` })
           }
           if (model.thinking.budget_tokens) {
             errors.push({ field: `providers.${provider.name}.models.${model.id}.thinking.budget_tokens`, message: `OpenAI 模型不支持 budget_tokens，请使用 reasoning_effort` })

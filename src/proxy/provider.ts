@@ -38,7 +38,8 @@ async function forwardPassthroughStream(
   upstreamType: 'anthropic' | 'openai' | 'openai-responses',
   logger?: Logger,
   capture?: CaptureBuffer,
-  pairId?: number
+  pairId?: number,
+  signal?: AbortSignal
 ): Promise<StreamUsage | null> {
   const decoder = new TextDecoder()
   let buffer = ''
@@ -48,6 +49,10 @@ async function forwardPassthroughStream(
   let openaiUsage: Record<string, unknown> | null = null
 
   while (true) {
+    if (signal?.aborted) {
+      try { await reader.cancel() } catch { /* best effort */ }
+      break
+    }
     const { done, value } = await reader.read()
     if (done) {
       res.end()
@@ -291,6 +296,20 @@ export async function forwardRequest(
 
     const reader = response.body.getReader()
 
+    // 客户端断连防护：监听 res.close 事件，在客户端提前断开时主动 cancel 上游 reader，
+    // 释放上游 HTTP 连接 + 防止 converter 循环持续占用内存。
+    // 仅在 res 未由我们自己 end 的情况下触发（避免正常结束时误 cancel）。
+    const abortController = new AbortController()
+    let clientDisconnected = false
+    res.on('close', () => {
+      if (!res.writableEnded && !clientDisconnected) {
+        clientDisconnected = true
+        req.logger?.log('request', `客户端断连，取消上游流`, { url: maskUrl(req.url) }, 'debug')
+        abortController.abort()
+        reader.cancel().catch(() => { /* best effort */ })
+      }
+    })
+
     if (needsConversion) {
       let usage: StreamUsage | null = null
       res.writeHead(200, {
@@ -301,23 +320,23 @@ export async function forwardRequest(
       })
       if (req.upstreamType === 'anthropic') {
         if (req.inboundType === 'openai') {
-          usage = await convertAnthropicStreamToOpenAI(reader, res, req.logger, req.capture, req.pairId)
+          usage = await convertAnthropicStreamToOpenAI(reader, res, req.logger, req.capture, req.pairId, abortController.signal)
         } else if (req.inboundType === 'openai-responses') {
           const originalTools = req.originalBody?.tools as unknown[] | undefined
-          usage = await convertAnthropicStreamToOpenAIResponses(reader, res, req.logger, req.capture, req.pairId, originalTools)
+          usage = await convertAnthropicStreamToOpenAIResponses(reader, res, req.logger, req.capture, req.pairId, originalTools, abortController.signal)
         }
       } else if (req.upstreamType === 'openai') {
         if (req.inboundType === 'anthropic') {
-          usage = await convertOpenAIStreamToAnthropic(reader, res, req.logger, req.capture, req.pairId)
+          usage = await convertOpenAIStreamToAnthropic(reader, res, req.logger, req.capture, req.pairId, abortController.signal)
         } else if (req.inboundType === 'openai-responses') {
           const originalTools = req.originalBody?.tools as unknown[] | undefined
-          usage = await convertOpenAIStreamToOpenAIResponses(reader, res, req.logger, req.capture, req.pairId, originalTools)
+          usage = await convertOpenAIStreamToOpenAIResponses(reader, res, req.logger, req.capture, req.pairId, originalTools, abortController.signal)
         }
       } else { // openai-responses
         if (req.inboundType === 'anthropic') {
-          usage = await convertOpenAIResponsesStreamToAnthropic(reader, res, req.logger, req.capture, req.pairId)
+          usage = await convertOpenAIResponsesStreamToAnthropic(reader, res, req.logger, req.capture, req.pairId, abortController.signal)
         } else if (req.inboundType === 'openai') {
-          usage = await convertOpenAIResponsesStreamToOpenAI(reader, res, req.logger, req.capture, req.pairId)
+          usage = await convertOpenAIResponsesStreamToOpenAI(reader, res, req.logger, req.capture, req.pairId, abortController.signal)
         }
       }
       // Record token usage from streaming response
@@ -339,7 +358,7 @@ export async function forwardRequest(
       })
 
       const usage = await forwardPassthroughStream(
-        reader, res, req.upstreamType, req.logger, req.capture, req.pairId
+        reader, res, req.upstreamType, req.logger, req.capture, req.pairId, abortController.signal
       )
       // Record token usage from passthrough streaming response
       if (usage && req.tokenTracker && req.providerName) {

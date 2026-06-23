@@ -6,6 +6,37 @@ import { readBody } from '../../lib/http-utils.js'
 import { json } from './index.js'
 import { t } from '../../lib/i18n.js'
 
+/**
+ * writeConfig 在校验失败时会 throw（防 race condition 期间配置被改）。
+ * 这里包一层 catch，转成统一的 400 响应。
+ * 错误 message 格式是 "配置校验失败:\n  - msg1\n  - msg2"
+ *
+ * 返回 true = 写入成功，handler 可继续 200 响应
+ * 返回 false = 已发出 400 响应，handler 应直接 return
+ */
+export async function writeConfigOrRespondError(
+  ctx: ServerContext,
+  newConfig: Config,
+  res: ServerResponse
+): Promise<boolean> {
+  try {
+    await ctx.store.writeConfig(newConfig)
+    return true
+  } catch (err: any) {
+    const message = err?.message || String(err)
+    // 尝试从 message 拆出明细行（"配置校验失败:\n  - msg1\n  - msg2"）
+    const lines = message.split('\n').map((l: string) => l.replace(/^\s*-\s*/, '').trim()).filter(Boolean)
+    const detailLines = lines.slice(1) // 去掉首行 "配置校验失败:" 作为 prefix
+    const errors = detailLines.map((msg: string) => ({ field: '', message: msg }))
+    if (errors.length > 0) {
+      json(res, 400, { success: false, error: lines[0] || '校验失败', errors })
+    } else {
+      json(res, 400, { success: false, error: message })
+    }
+    return false
+  }
+}
+
 function configFromProvider(provider: Provider): Config {
   return { providers: [provider], adapters: [] }
 }
@@ -37,7 +68,8 @@ export async function handleCreateProvider(ctx: ServerContext, req: IncomingMess
 
   const newConfig: Config = structuredClone(config)
   newConfig.providers.push(newProvider)
-  await ctx.store.writeConfig(newConfig)
+  const ok = await writeConfigOrRespondError(ctx, newConfig, res)
+  if (!ok) return
   ctx.logger.log('system', 'Create provider request received', { name, type, apiBase: api_base })
   ctx.logger.log('system', 'Provider created', { name, type })
   json(res, 200, { success: true, data: { name } })
@@ -90,7 +122,8 @@ export async function handleUpdateProvider(ctx: ServerContext, req: IncomingMess
     }
   }
 
-  await ctx.store.writeConfig(newConfig)
+  const ok = await writeConfigOrRespondError(ctx, newConfig, res)
+  if (!ok) return
   ctx.logger.log('system', 'Update provider request received', { name: providerName, newName: finalName, type: type ?? '', apiBase: api_base })
   ctx.logger.log('system', 'Provider updated', { name: finalName, previously: providerName !== finalName ? providerName : undefined })
   json(res, 200, { success: true, data: { name: finalName } })
@@ -116,7 +149,8 @@ export async function handleDeleteProvider(ctx: ServerContext, req: IncomingMess
 
   const newConfig: Config = structuredClone(config)
   newConfig.providers.splice(idx, 1)
-  await ctx.store.writeConfig(newConfig)
+  const ok = await writeConfigOrRespondError(ctx, newConfig, res)
+  if (!ok) return
   ctx.logger.log('system', 'Delete provider request received', { name: providerName })
   ctx.logger.log('system', 'Provider deleted', { name: providerName })
   json(res, 200, { success: true, data: { name: providerName } })

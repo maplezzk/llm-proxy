@@ -23,7 +23,6 @@ export function handleGetConfig(ctx: ServerContext, _req: IncomingMessage, res: 
           ...(m.input?.length ? { input: m.input } : {}),
         })),
       })),
-      max_body_size: config.maxBodySize,
       vision: config.vision ?? null,
       adapters: (config.adapters ?? []).map((a) => ({
         name: a.name,
@@ -77,7 +76,7 @@ export async function handleSetLogLevel(ctx: ServerContext, req: IncomingMessage
     return
   }
   const { config } = ctx.store.getConfig()
-  const newConfig = { providers: config.providers, adapters: config.adapters, proxyKey: config.proxyKey, logLevel: level, maxBodySize: config.maxBodySize }
+  const newConfig = { providers: config.providers, adapters: config.adapters, proxyKey: config.proxyKey, logLevel: level }
   await ctx.store.writeConfig(newConfig)
   ctx.logger.setLevel(level)
   ctx.logger.log('system', `Log level changed to ${level} (persisted)`, { level })
@@ -102,7 +101,6 @@ export async function handleSetLocale(ctx: ServerContext, req: IncomingMessage, 
     adapters: config.adapters,
     proxyKey: config.proxyKey,
     logLevel: config.logLevel,
-    maxBodySize: config.maxBodySize,
     locale,
   }
   await ctx.store.writeConfig(newConfig)
@@ -130,7 +128,6 @@ export async function handleSetPort(ctx: ServerContext, req: IncomingMessage, re
     logLevel: config.logLevel,
     locale: config.locale,
     port: port || undefined,
-    maxBodySize: config.maxBodySize,
     captureMaxSize: config.captureMaxSize,
   }
   await ctx.store.writeConfig(newConfig)
@@ -146,7 +143,7 @@ export function handleGetProxyKey(_ctx: ServerContext, _req: IncomingMessage, re
 export async function handleSetProxyKey(ctx: ServerContext, req: IncomingMessage, res: ServerResponse): Promise<void> {
   const body = JSON.parse(await (await import('../../lib/http-utils.js')).readBody(req))
   const { config } = ctx.store.getConfig()
-  const newConfig = { providers: config.providers, adapters: config.adapters, proxyKey: body.key || undefined, logLevel: config.logLevel, maxBodySize: config.maxBodySize }
+  const newConfig = { providers: config.providers, adapters: config.adapters, proxyKey: body.key || undefined, logLevel: config.logLevel }
   await ctx.store.writeConfig(newConfig)
   const verb = body.key ? 'set' : 'removed'
   ctx.logger.log('system', `Proxy API key ${verb}`)
@@ -184,7 +181,6 @@ export async function handleSetVision(ctx: ServerContext, req: IncomingMessage, 
     logLevel: config.logLevel,
     locale: config.locale,
     port: config.port,
-    maxBodySize: config.maxBodySize,
     captureMaxSize: config.captureMaxSize,
   }
   await ctx.store.writeConfig(newConfig)

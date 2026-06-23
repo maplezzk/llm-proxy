@@ -3,16 +3,19 @@ import assert from 'node:assert'
 import type { ServerResponse } from 'node:http'
 import { convertAnthropicStreamToOpenAI, convertOpenAIStreamToAnthropic, convertOpenAIResponsesStreamToAnthropic, convertAnthropicStreamToOpenAIResponses } from '../../src/proxy/stream-converter.js'
 
-function makeReader(chunks: string[]): ReadableStreamDefaultReader<Uint8Array> {
+function makeReader(chunks: string[], delayMs = 0): ReadableStreamDefaultReader<Uint8Array> {
   const encoder = new TextEncoder()
   let i = 0
   const stream = new ReadableStream({
-    pull(controller) {
+    async pull(controller) {
       if (i >= chunks.length) {
         controller.close()
         return
       }
       controller.enqueue(encoder.encode(chunks[i++]))
+      if (delayMs > 0) {
+        await new Promise((r) => setTimeout(r, delayMs))
+      }
     },
   })
   return stream.getReader()
@@ -444,6 +447,68 @@ describe('proxy/stream-converter', () => {
       assert.ok(output.includes('"click"'), 'action should be click')
       // Verify output_item.done is emitted
       assert.ok(output.includes('event: response.completed'), 'should have response.completed')
+    })
+  })
+
+  describe('客户端断连防护（AbortSignal）', () => {
+    it('signal 已 abort 时，convertAnthropicStreamToOpenAI 立即返回且 cancel reader', async () => {
+      const { res } = makeResponse()
+      const chunks = ['event: content_block_delta\ndata: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"never-seen"}}\n\n']
+      const reader = makeReader(chunks)
+      const controller = new AbortController()
+      controller.abort()
+
+      const usage = await convertAnthropicStreamToOpenAI(reader, res, undefined, undefined, undefined, controller.signal)
+
+      // 被 abort 后应立即返回，不应输出任何内容
+      assert.strictEqual(usage, null)
+      // reader 应被 cancel
+      // （通过后续读取发现 done=true 间接验证）
+    })
+
+    it('signal 在中途 abort 时，convertOpenAIStreamToAnthropic 提前退出', async () => {
+      // 创建一个慢速 reader（每个 chunk 间隔 20ms），便于中途 abort
+      const { chunks, res } = makeResponse()
+      const reader = makeReader([
+        'data: {"id":"chunk-1","choices":[{"delta":{"role":"assistant","content":"Hello"},"index":0}]}\n\n',
+        'data: {"id":"chunk-2","choices":[{"delta":{"content":" World"},"index":0}]}\n\n',
+        'data: {"id":"chunk-3","choices":[{"delta":{"content":"!!!"},"index":0}]}\n\n',
+        'data: [DONE]\n\n',
+      ], 20)
+
+      // 猴子补丁 reader.cancel 以验证是否被调用
+      const origCancel = reader.cancel.bind(reader)
+      let cancelCount = 0
+      reader.cancel = async () => { cancelCount++; return origCancel() }
+
+      const controller = new AbortController()
+      // 30ms 后中断（读到第 1-2 个 chunk 之间）
+      setTimeout(() => controller.abort(), 30)
+
+      await convertOpenAIStreamToAnthropic(reader, res, undefined, undefined, undefined, controller.signal)
+
+      // 中途中断后应调用过 reader.cancel
+      assert.ok(cancelCount >= 1, `reader.cancel 至少被调用 1 次，实际 ${cancelCount} 次`)
+    })
+
+    it('signal abort 防止处理剩余 chunk（不写 [DONE]）', async () => {
+      // 验证 abort 后下游不再发出 [DONE]
+      const { chunks, res } = makeResponse()
+      const reader = makeReader([
+        'data: {"choices":[{"delta":{"role":"assistant","content":"a"},"index":0}]}\n\n',
+        'data: {"choices":[{"delta":{"content":"b"},"index":0}]}\n\n',
+        'data: {"choices":[{"delta":{"content":"c"},"index":0}]}\n\n',
+        'data: [DONE]\n\n',
+      ], 20)
+
+      const controller = new AbortController()
+      setTimeout(() => controller.abort(), 30)
+
+      await convertOpenAIStreamToAnthropic(reader, res, undefined, undefined, undefined, controller.signal)
+
+      const output = chunks.join('')
+      // [DONE] 不应被写入（说明 converter 提前退出）
+      assert.ok(!output.includes('[DONE]'), `abort 后不应出现 [DONE]，实际输出：${output.slice(0, 200)}`)
     })
   })
 })

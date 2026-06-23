@@ -110,6 +110,7 @@
 "providers.form.thinkingTypeNone" = "Default";
 "providers.form.thinkingTypeHelp" = "thinking.type passthrough (MiniMax: adaptive)";
 "providers.form.inputModalities" = "Input";
+"providers.form.visionImageLockedHint" = "This model is set as the vision model in Settings, so it must keep image input enabled (backend validation would reject saving). To change the vision model, go to Settings → Vision Model.";
 "providers.pullModels.title" = "Pull Models from API";
 "providers.pullModels.close" = "Close";
 "providers.pullModels.loading" = "Fetching model list...";

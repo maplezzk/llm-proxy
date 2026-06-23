@@ -64,6 +64,52 @@ struct ProvidersView: View {
         } message: {
             Text(loc("providers.delete.message", viewModel.deleteTargetName ?? ""))
         }
+        // 顶层 toast：错误 / 成功提示（form 外也能看到）
+        .overlay(alignment: .top) {
+            VStack(spacing: 6) {
+                if let error = viewModel.errorMessage, !viewModel.showForm {
+                    toastView(text: error, color: .red, icon: "exclamationmark.triangle.fill") {
+                        viewModel.dismissError()
+                    }
+                }
+                if let success = viewModel.successMessage {
+                    toastView(text: success, color: .green, icon: "checkmark.circle.fill") {
+                        viewModel.dismissSuccess()
+                    }
+                }
+            }
+            .padding(.top, 12)
+            .padding(.horizontal, 20)
+        }
+    }
+
+    // MARK: - Toast
+
+    private func toastView(text: String, color: Color, icon: String, onClose: @escaping () -> Void) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: icon)
+                .foregroundColor(color)
+                .font(.body)
+            Text(text)
+                .font(.callout)
+                .foregroundColor(.primary)
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Button(action: onClose) {
+                Image(systemName: "xmark.circle.fill")
+                    .foregroundColor(.secondary)
+            }
+            .buttonStyle(.borderless)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .strokeBorder(color.opacity(0.4), lineWidth: 1)
+        )
+        .shadow(color: .black.opacity(0.1), radius: 4, y: 2)
+        .transition(.move(edge: .top).combined(with: .opacity))
     }
 
     // MARK: - Card List

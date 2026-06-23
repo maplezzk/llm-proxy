@@ -36,13 +36,26 @@ export class CaptureBuffer {
   private nextId = 1
   private nextPairId = 1
   private maxSize: number
-  private subscribers: Set<ServerResponse> = new Set()
+  /**
+   * 抓包 SSE 订阅者集合。
+   * 使用 Map<ServerResponse, { lastSeen }> 跟踪每个订阅者的最近活跃时间，
+   * 以便后续 pruneStaleSubscribers() 主动剔除长时间无活动的死连接。
+   */
+  private subscribers: Map<ServerResponse, { lastSeen: number }> = new Map()
+  /** 订阅者空闲超时（毫秒）——超过此时长无活动则从集合中移除 */
+  private subscriberIdleTimeoutMs = 60_000
+  /** 定期清理周期（毫秒） */
+  private subscriberPruneIntervalMs = 30_000
+  private pruneTimer: NodeJS.Timeout | null = null
   /** pairId → CaptureEntry 的快速索引 */
   private entryMap: Map<number, CaptureEntry> = new Map()
   private _enabled = false
 
   constructor(maxSize = 100) {
     this.maxSize = maxSize
+    // 启动定期清理定时器（unref 不阻止进程退出）
+    this.pruneTimer = setInterval(() => this.pruneStaleSubscribers(), this.subscriberPruneIntervalMs)
+    if (typeof this.pruneTimer.unref === 'function') this.pruneTimer.unref()
   }
 
   isEnabled(): boolean {
@@ -108,7 +121,7 @@ export class CaptureBuffer {
   }
 
   subscribe(res: ServerResponse): void {
-    this.subscribers.add(res)
+    this.subscribers.set(res, { lastSeen: Date.now() })
     // 'close' 事件不可靠（客户端 kill -9 / NAT 超时 / 反代断开等都不会触发），
     // 所以同时在写入时主动检测并清理死连接。
     res.on('close', () => this.subscribers.delete(res))
@@ -116,10 +129,26 @@ export class CaptureBuffer {
 
   /** 主动清理已死亡/被销毁的 subscriber，防止句柄 + 内部 buffer 泄漏 */
   private pruneDeadSubscribers(): void {
-    for (const sub of this.subscribers) {
+    for (const sub of this.subscribers.keys()) {
       // 仅当属性显式表示死亡/不可写时才清理；undefined 视为可用（兼容测试 mock）
       const s = sub as { destroyed?: boolean; writableEnded?: boolean; writable?: boolean }
       if (s.destroyed === true || s.writableEnded === true || s.writable === false) {
+        this.subscribers.delete(sub)
+      }
+    }
+  }
+
+  /**
+   * 清理长时间无活动的 subscriber。
+   * close 事件不可靠，部分场景（如反代超时中断、NAT 重建）下永远不会触发。
+   * 定期清理可保证即使完全静默断开也能被回收，避免句柄和缓冲区累积泄漏。
+   */
+  private pruneStaleSubscribers(): void {
+    const now = Date.now()
+    for (const [sub, meta] of this.subscribers) {
+      const s = sub as { destroyed?: boolean; writableEnded?: boolean; writable?: boolean }
+      const dead = s.destroyed === true || s.writableEnded === true || s.writable === false
+      if (dead || now - meta.lastSeen > this.subscriberIdleTimeoutMs) {
         this.subscribers.delete(sub)
       }
     }
@@ -137,7 +166,8 @@ export class CaptureBuffer {
 
     const line = JSON.stringify(entry)
     const payload = `data: ${line}\n\n`
-    for (const sub of this.subscribers) {
+    const now = Date.now()
+    for (const [sub, meta] of this.subscribers) {
       try {
         // 写入前再检查一次（并发场景下 close 可能刚发生）
         if (this.isSubDead(sub)) {
@@ -149,9 +179,19 @@ export class CaptureBuffer {
         if (!sub.write(payload)) {
           // do nothing
         }
+        meta.lastSeen = now
       } catch {
         this.subscribers.delete(sub)
       }
     }
+  }
+
+  /** 释放定时器等资源（测试用） */
+  destroy(): void {
+    if (this.pruneTimer) {
+      clearInterval(this.pruneTimer)
+      this.pruneTimer = null
+    }
+    this.subscribers.clear()
   }
 }

@@ -173,5 +173,16 @@ export function createProxyServer(opts: ServerOptions): Server {
     res.end(JSON.stringify({ error: { message: 'Not found' } }))
   })
 
+  // 超时配置：防止空闲 socket/请求无限期占用堆、防止句柄累积泄漏。
+  // - keepAliveTimeout: keep-alive 连接上两个请求之间的最大间隔（默认 5000ms）
+  // - headersTimeout: 从 TCP 建连到接收完请求头的最大时长（默认 60000ms）
+  // - requestTimeout: 接收完整请求（头 + body）的最大时长（默认 300000ms）
+  // - timeout: socket 空闲超时，0 = 不超时（LLM 代理需支持长流式响应，不能在此处设上限）
+  // 取值参考 Node.js 默认值并显式声明，贴合 LLM 代理场景。
+  server.keepAliveTimeout = 30_000   // 30s
+  server.headersTimeout = 60_000     // 60s
+  server.requestTimeout = 300_000    // 5min
+  server.timeout = 0                 // 不限时（流式响应可能持续数分钟）
+
   return server
 }

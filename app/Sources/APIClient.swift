@@ -14,6 +14,55 @@ class APIClient {
         return stored > 0 ? stored : 9000
     }
 
+    // MARK: - 统一错误解析
+
+    /// 从后端错误响应里提取人类可读的消息，支持三种格式：
+    /// 1. `{"success": false, "error": "..."}`         — 手写错误
+    /// 2. `{"success": false, "error": "校验失败", "errors": [{"field":"...","message":"..."}]}` — 校验错误（带明细）
+    /// 3. `{"error": {"message": "..."}}`             — 通用 catch-all
+    /// 解析失败时回退到 "HTTP <statusCode>"
+    static func extractErrorMessage(data: Data, statusCode: Int) -> String {
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return "HTTP \(statusCode)"
+        }
+        // 格式 3: error 是对象 {message: ...}
+        if let errObj = json["error"] as? [String: Any],
+           let msg = errObj["message"] as? String,
+           !msg.isEmpty {
+            return msg
+        }
+        // 格式 1/2: error 是字符串
+        let topError = (json["error"] as? String) ?? ""
+        // 格式 2: errors 数组
+        if let errs = json["errors"] as? [[String: Any]] {
+            let lines = errs.compactMap { e -> String? in
+                guard let msg = e["message"] as? String, !msg.isEmpty else { return nil }
+                let field = (e["field"] as? String) ?? ""
+                return field.isEmpty ? "• \(msg)" : "• \(field): \(msg)"
+            }
+            if !lines.isEmpty {
+                let prefix = topError.isEmpty ? "校验失败" : topError
+                return prefix + "\n" + lines.joined(separator: "\n")
+            }
+        }
+        if !topError.isEmpty { return topError }
+        return "HTTP \(statusCode)"
+    }
+
+    /// 校验 HTTP 响应：非 2xx 时抛出带后端错误信息的 NSError
+    static func validate(data: Data, response: URLResponse, context: String) throws {
+        guard let http = response as? HTTPURLResponse else {
+            throw NSError(domain: "APIClient", code: 0, userInfo: [NSLocalizedDescriptionKey: "无效的响应"])
+        }
+        guard (200..<300).contains(http.statusCode) else {
+            let msg = extractErrorMessage(data: data, statusCode: http.statusCode)
+            throw NSError(
+                domain: "APIClient", code: http.statusCode,
+                userInfo: [NSLocalizedDescriptionKey: "[\(context)] \(msg)"]
+            )
+        }
+    }
+
     /// 更新 baseURL（端口变更时调用）
     func updatePort(_ port: Int) {
         UserDefaults.standard.set(port, forKey: "llm-proxy-port")
@@ -35,10 +84,8 @@ class APIClient {
         req.httpMethod = "PUT"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = try JSONSerialization.data(withJSONObject: ["level": level])
-        let (_, resp) = try await URLSession.shared.data(for: req)
-        guard let http = resp as? HTTPURLResponse, http.statusCode == 200 else {
-            throw URLError(.badServerResponse)
-        }
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        try Self.validate(data: data, response: resp, context: "setLogLevel")
     }
 
     func fetchHealth() async throws -> Bool {
@@ -67,10 +114,8 @@ class APIClient {
         let url = URL(string: "\(baseURL)/admin/config/reload")!
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
-        let (_, resp) = try await URLSession.shared.data(for: req)
-        guard let http = resp as? HTTPURLResponse, http.statusCode == 200 else {
-            throw URLError(.badServerResponse)
-        }
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        try Self.validate(data: data, response: resp, context: "reloadConfig")
     }
 
     func updateAdapter(_ adapter: Adapter, mappings: [UpdateModelMapping]) async throws {
@@ -80,10 +125,8 @@ class APIClient {
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         let body = UpdateAdapterBody(name: adapter.name, type: adapter.type, models: mappings)
         req.httpBody = try JSONEncoder().encode(body)
-        let (_, resp) = try await URLSession.shared.data(for: req)
-        guard let http = resp as? HTTPURLResponse, http.statusCode == 200 else {
-            throw URLError(.badServerResponse)
-        }
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        try Self.validate(data: data, response: resp, context: "updateAdapter")
     }
 
     func fetchLocale() async throws -> String {
@@ -102,10 +145,8 @@ class APIClient {
         req.httpMethod = "PUT"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = try JSONSerialization.data(withJSONObject: ["locale": locale])
-        let (_, resp) = try await URLSession.shared.data(for: req)
-        guard let http = resp as? HTTPURLResponse, http.statusCode == 200 else {
-            throw URLError(.badServerResponse)
-        }
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        try Self.validate(data: data, response: resp, context: "setLocale")
     }
 
     func fetchProxyKey() async throws -> Bool {
@@ -122,10 +163,8 @@ class APIClient {
         req.httpMethod = "PUT"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = try JSONSerialization.data(withJSONObject: ["key": key ?? ""])
-        let (_, resp) = try await URLSession.shared.data(for: req)
-        guard let http = resp as? HTTPURLResponse, http.statusCode == 200 else {
-            throw URLError(.badServerResponse)
-        }
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        try Self.validate(data: data, response: resp, context: "setProxyKey")
     }
 
     func fetchPort() async throws -> Int? {
@@ -146,10 +185,8 @@ class APIClient {
             bodyDict["port"] = p
         }
         req.httpBody = try JSONSerialization.data(withJSONObject: bodyDict)
-        let (_, resp) = try await URLSession.shared.data(for: req)
-        guard let http = resp as? HTTPURLResponse, http.statusCode == 200 else {
-            throw URLError(.badServerResponse)
-        }
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        try Self.validate(data: data, response: resp, context: "setPort")
     }
 
     // MARK: - Token Stats
@@ -232,9 +269,7 @@ class APIClient {
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = try JSONSerialization.data(withJSONObject: ["enabled": enabled, "clear": clear])
         let (data, resp) = try await URLSession.shared.data(for: req)
-        guard let http = resp as? HTTPURLResponse, http.statusCode == 200 else {
-            throw URLError(.badServerResponse)
-        }
+        try Self.validate(data: data, response: resp, context: "setCaptureControl")
         let result = try JSONDecoder().decode(CaptureControlResponse.self, from: data)
         return result.data?.enabled ?? false
     }
@@ -260,10 +295,8 @@ class APIClient {
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         let body = CreateProviderBody(name: name, type: type, api_key: apiKey, api_base: apiBase, models: models)
         req.httpBody = try JSONEncoder().encode(body)
-        let (_, resp) = try await URLSession.shared.data(for: req)
-        guard let http = resp as? HTTPURLResponse, http.statusCode == 200 else {
-            throw URLError(.badServerResponse)
-        }
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        try Self.validate(data: data, response: resp, context: "createProvider")
     }
 
     func updateProvider(name: String, type: String, apiKey: String, apiBase: String, models: [ProviderModelInput]) async throws {
@@ -273,20 +306,16 @@ class APIClient {
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         let body = UpdateProviderBody(name: name, type: type, api_key: apiKey, api_base: apiBase, models: models)
         req.httpBody = try JSONEncoder().encode(body)
-        let (_, resp) = try await URLSession.shared.data(for: req)
-        guard let http = resp as? HTTPURLResponse, http.statusCode == 200 else {
-            throw URLError(.badServerResponse)
-        }
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        try Self.validate(data: data, response: resp, context: "updateProvider")
     }
 
     func deleteProvider(name: String) async throws {
         let url = URL(string: "\(baseURL)/admin/providers/\(name)")!
         var req = URLRequest(url: url)
         req.httpMethod = "DELETE"
-        let (_, resp) = try await URLSession.shared.data(for: req)
-        guard let http = resp as? HTTPURLResponse, http.statusCode == 200 else {
-            throw URLError(.badServerResponse)
-        }
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        try Self.validate(data: data, response: resp, context: "deleteProvider")
     }
 
     func pullModels(providerName: String, type: String, apiKey: String = "", apiBase: String = "") async throws -> PullModelsData {
@@ -299,9 +328,7 @@ class APIClient {
         if !apiBase.isEmpty { body["api_base"] = apiBase }
         req.httpBody = try JSONSerialization.data(withJSONObject: body)
         let (data, resp) = try await URLSession.shared.data(for: req)
-        guard let http = resp as? HTTPURLResponse, http.statusCode == 200 else {
-            throw URLError(.badServerResponse)
-        }
+        try Self.validate(data: data, response: resp, context: "pullModels")
         let result = try JSONDecoder().decode(PullModelsResponse.self, from: data)
         guard result.success, let modelsData = result.data else {
             throw URLError(.cannotParseResponse)
@@ -323,9 +350,7 @@ class APIClient {
         ]
         req.httpBody = try JSONSerialization.data(withJSONObject: body)
         let (data, resp) = try await URLSession.shared.data(for: req)
-        guard let http = resp as? HTTPURLResponse, http.statusCode == 200 else {
-            throw URLError(.badServerResponse)
-        }
+        try Self.validate(data: data, response: resp, context: "testProvider")
         let result = try JSONDecoder().decode(TestModelResponse.self, from: data)
         guard result.success, let testResult = result.data else {
             throw URLError(.cannotParseResponse)
@@ -342,20 +367,16 @@ class APIClient {
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         let body = UpdateAdapterBody(name: name, type: type, models: models)
         req.httpBody = try JSONEncoder().encode(body)
-        let (_, resp) = try await URLSession.shared.data(for: req)
-        guard let http = resp as? HTTPURLResponse, http.statusCode == 200 else {
-            throw URLError(.badServerResponse)
-        }
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        try Self.validate(data: data, response: resp, context: "createAdapter")
     }
 
     func deleteAdapter(name: String) async throws {
         let url = URL(string: "\(baseURL)/admin/adapters/\(name)")!
         var req = URLRequest(url: url)
         req.httpMethod = "DELETE"
-        let (_, resp) = try await URLSession.shared.data(for: req)
-        guard let http = resp as? HTTPURLResponse, http.statusCode == 200 else {
-            throw URLError(.badServerResponse)
-        }
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        try Self.validate(data: data, response: resp, context: "deleteAdapter")
     }
 
     func testAdapter(name: String, modelId: String) async throws -> TestModelResult {
@@ -365,9 +386,7 @@ class APIClient {
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = try JSONSerialization.data(withJSONObject: ["adapterName": name, "modelId": modelId])
         let (data, resp) = try await URLSession.shared.data(for: req)
-        guard let http = resp as? HTTPURLResponse, http.statusCode == 200 else {
-            throw URLError(.badServerResponse)
-        }
+        try Self.validate(data: data, response: resp, context: "testAdapter")
         let result = try JSONDecoder().decode(TestModelResponse.self, from: data)
         guard result.success, let testResult = result.data else {
             throw URLError(.cannotParseResponse)

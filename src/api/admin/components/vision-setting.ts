@@ -1,4 +1,5 @@
 import i18next from 'i18next'
+import { extractError } from './providers.js'
 
 interface VisionFormData {
   enabled: boolean
@@ -109,10 +110,8 @@ export function visionSettingForm() {
           'success'
         )
       } else {
-        ;(window as any).Alpine.store('app').toast(
-          res?.error || i18next.t('admin.vision.saveFailed'),
-          'error'
-        )
+        const detail = extractError(res, i18next.t('admin.vision.saveFailed')) || i18next.t('admin.vision.saveFailed')
+        ;(window as any).Alpine.store('app').toast(detail, 'error')
       }
     },
 
@@ -128,10 +127,8 @@ export function visionSettingForm() {
         this.cache = res.data
         ;(window as any).Alpine.store('app').toast(i18next.t('admin.vision.cache.cleared'), 'success')
       } else {
-        ;(window as any).Alpine.store('app').toast(
-          res?.error || i18next.t('admin.vision.cache.clearFailed'),
-          'error'
-        )
+        const detail = extractError(res, i18next.t('admin.vision.cache.clearFailed')) || i18next.t('admin.vision.cache.clearFailed')
+        ;(window as any).Alpine.store('app').toast(detail, 'error')
       }
     },
 

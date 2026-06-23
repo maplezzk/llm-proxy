@@ -1,4 +1,5 @@
 import i18next from 'i18next'
+import { extractError } from './providers.js'
 
 function t(key: string, opts?: Record<string, unknown>): string {
   return i18next.t(key, opts)
@@ -125,7 +126,11 @@ export function adaptersPage() {
           if (type === 'anthropic') {
             const bt = parseInt(m.thinking?.budget_tokens, 10)
             if (bt > 0) (base as any).thinking = { ...(base.thinking ?? {}), budget_tokens: bt }
-          } else if (m.reasoning_effort && ['low', 'medium', 'high'].includes(m.reasoning_effort)) {
+            // Anthropic 也允许配 reasoning_effort，运行时查表映射为 budget_tokens
+            if (m.reasoning_effort && ['low', 'medium', 'high', 'xhigh', 'max'].includes(m.reasoning_effort)) {
+              (base as any).thinking = { ...((base as any).thinking ?? {}), reasoning_effort: m.reasoning_effort }
+            }
+          } else if (m.reasoning_effort && ['low', 'medium', 'high', 'xhigh', 'max'].includes(m.reasoning_effort)) {
             (base as any).thinking = { reasoning_effort: m.reasoning_effort }
           }
           // thinking.type 对所有 provider type 生效
@@ -151,7 +156,8 @@ export function adaptersPage() {
         })
       }
       if (!res.success) {
-        toast(res.error || t('admin.adapters.saveFailed'), 'error')
+        const detail = extractError(res, t('admin.adapters.saveFailed')) || t('admin.adapters.saveFailed')
+        toast(detail, 'error')
         return
       }
       toast(this.editingName ? t('admin.adapters.updated') : t('admin.adapters.created'), 'success')
@@ -164,7 +170,8 @@ export function adaptersPage() {
       if (!ok) return
       const res = await (window as any).Alpine.store('app').fetch(`/admin/adapters/${name}`, { method: 'DELETE' })
       if (!res.success) {
-        toast(res.error || t('admin.adapters.deleteFailed'), 'error')
+        const detail = extractError(res, t('admin.adapters.deleteFailed')) || t('admin.adapters.deleteFailed')
+        toast(detail, 'error')
         return
       }
       toast(t('admin.adapters.deleted'), 'success')

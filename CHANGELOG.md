@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.20.0](https://github.com/maplezzk/llm-proxy/compare/v0.19.0...v0.20.0) (2026-06-22)
+
+
+### Features
+
+* 移除请求体大小限制 ([#157](https://github.com/maplezzk/llm-proxy/issues/157)) ([e5f914d](https://github.com/maplezzk/llm-proxy/commit/e5f914d8e500445b5690e5f52dc3a601d8844bf6))
+
+## [0.19.0](https://github.com/maplezzk/llm-proxy/compare/v0.18.1...v0.19.0) (2026-06-21)
+
+
+### Features
+
+* max_tokens 兜底 16384 + reasoning_effort 映射 Anthropic budget_tokens ([#155](https://github.com/maplezzk/llm-proxy/issues/155)) ([8b4d3cd](https://github.com/maplezzk/llm-proxy/commit/8b4d3cd19dc53ab03bfc8e949704989ed675584f))
+
+
+### Bug Fixes
+
+* 修复长时间运行的内存泄漏问题 ([#154](https://github.com/maplezzk/llm-proxy/issues/154)) ([86ba876](https://github.com/maplezzk/llm-proxy/commit/86ba876e4ec86d866bf01cb1f91db18199209342))
+
+## [0.18.1](https://github.com/maplezzk/llm-proxy/compare/v0.18.0...v0.18.1) (2026-06-19)
+
+
+### Bug Fixes
+
+* 供应商保存时 [object Object] 错误 + macOS APP 错误吞掉 + Web 端 [@change](https://github.com/change) 失效 ([#152](https://github.com/maplezzk/llm-proxy/issues/152)) ([c0131a6](https://github.com/maplezzk/llm-proxy/commit/c0131a6380a6ab01458d79dba9c61b59b2696dfc))
+
 ## [0.18.0](https://github.com/maplezzk/llm-proxy/compare/v0.17.0...v0.18.0) (2026-06-19)
 
 

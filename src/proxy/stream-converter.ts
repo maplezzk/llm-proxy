@@ -34,6 +34,18 @@ function makeSignature(thinkingText: string): string {
   return createHash('sha256').update(thinkingText).digest('hex').slice(0, 16)
 }
 
+/**
+ * 检查 signal 是否已 abort，若是则取消 reader 并返回 true。
+ * 在每个流式转换循环顶部调用，及早释放上游 TCP 连接、退出循环。
+ */
+async function abortAndCancel(signal: AbortSignal | undefined, reader: ReadableStreamDefaultReader<Uint8Array>): Promise<boolean> {
+  if (signal?.aborted) {
+    try { await reader.cancel() } catch { /* best effort */ }
+    return true
+  }
+  return false
+}
+
 // --- Anthropic SSE → OpenAI SSE ---
 
 export async function convertAnthropicStreamToOpenAI(
@@ -41,7 +53,8 @@ export async function convertAnthropicStreamToOpenAI(
   res: ServerResponse,
   logger?: Logger,
   capture?: CaptureBuffer,
-  pairId?: number
+  pairId?: number,
+  signal?: AbortSignal
 ): Promise<StreamUsage | null> {
   const decoder = new TextDecoder()
   const acc = newAccumulator()
@@ -61,6 +74,7 @@ export async function convertAnthropicStreamToOpenAI(
   }
 
   while (true) {
+    if (await abortAndCancel(signal, reader)) break
     const { done, value } = await reader.read()
     if (done) break
     buffer += decoder.decode(value, { stream: true })
@@ -219,7 +233,8 @@ export async function convertOpenAIStreamToAnthropic(
   res: ServerResponse,
   logger?: Logger,
   capture?: CaptureBuffer,
-  pairId?: number
+  pairId?: number,
+  signal?: AbortSignal
 ): Promise<StreamUsage | null> {
   const decoder = new TextDecoder()
   let buffer = ''
@@ -275,6 +290,7 @@ export async function convertOpenAIStreamToAnthropic(
   let contentBlockIndex = 0
 
   while (true) {
+    if (await abortAndCancel(signal, reader)) break
     const { done, value } = await reader.read()
     if (done) break
     buffer += decoder.decode(value, { stream: true })
@@ -459,7 +475,8 @@ export async function convertOpenAIResponsesStreamToAnthropic(
   res: ServerResponse,
   logger?: Logger,
   capture?: CaptureBuffer,
-  pairId?: number
+  pairId?: number,
+  signal?: AbortSignal
 ): Promise<StreamUsage | null> {
   const decoder = new TextDecoder()
   const acc = newAccumulator()
@@ -483,6 +500,7 @@ export async function convertOpenAIResponsesStreamToAnthropic(
   }
 
   while (true) {
+    if (await abortAndCancel(signal, reader)) break
     const { done, value } = await reader.read()
     if (done) break
     buffer += decoder.decode(value, { stream: true })
@@ -704,7 +722,8 @@ export async function convertAnthropicStreamToOpenAIResponses(
   logger?: Logger,
   capture?: CaptureBuffer,
   pairId?: number,
-  originalTools?: unknown[]
+  originalTools?: unknown[],
+  signal?: AbortSignal
 ): Promise<StreamUsage | null> {
   const decoder = new TextDecoder()
   const acc = newAccumulator()
@@ -942,6 +961,7 @@ export async function convertAnthropicStreamToOpenAIResponses(
   }
 
   while (true) {
+    if (await abortAndCancel(signal, reader)) break
     const { done, value } = await reader.read()
     if (done) {
       if (buffer.trim()) {
@@ -1004,7 +1024,8 @@ export async function convertOpenAIStreamToOpenAIResponses(
   logger?: Logger,
   capture?: CaptureBuffer,
   pairId?: number,
-  originalTools?: unknown[]
+  originalTools?: unknown[],
+  signal?: AbortSignal
 ): Promise<StreamUsage | null> {
   const decoder = new TextDecoder()
   let buffer = ''
@@ -1044,6 +1065,7 @@ export async function convertOpenAIStreamToOpenAIResponses(
   }
 
   while (true) {
+    if (await abortAndCancel(signal, reader)) break
     const { done, value } = await reader.read()
     if (done) break
     buffer += decoder.decode(value, { stream: true })
@@ -1264,7 +1286,8 @@ export async function convertOpenAIResponsesStreamToOpenAI(
   res: ServerResponse,
   logger?: Logger,
   capture?: CaptureBuffer,
-  pairId?: number
+  pairId?: number,
+  signal?: AbortSignal
 ): Promise<StreamUsage | null> {
   const decoder = new TextDecoder()
   let buffer = ''
@@ -1285,6 +1308,7 @@ export async function convertOpenAIResponsesStreamToOpenAI(
   }
 
   while (true) {
+    if (await abortAndCancel(signal, reader)) break
     const { done, value } = await reader.read()
     if (done) break
     buffer += decoder.decode(value, { stream: true })
