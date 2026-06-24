@@ -11,7 +11,6 @@ import {
   LinearScale,
   Tooltip,
   Legend,
-  Filler,
   type ChartConfiguration,
 } from 'chart.js'
 
@@ -21,7 +20,7 @@ Chart.register(
   BarController, BarElement,
   DoughnutController, ArcElement,
   CategoryScale, LinearScale,
-  Tooltip, Legend, Filler,
+  Tooltip, Legend,
 )
 
 export interface TimelinePoint {
