@@ -201,9 +201,13 @@ class APIClient {
         return stats
     }
 
-    /// 获取 N 天趋势折线图数据
-    func fetchTokenTimeline(days: Int = 30) async throws -> [TimelinePoint] {
-        let url = URL(string: "\(baseURL)/admin/token-stats/timeline?days=\(days)")!
+    /// 获取趋势折线图数据（支持天数或自定义日期范围）
+    func fetchTokenTimeline(days: Int = 30, startDate: String? = nil, endDate: String? = nil) async throws -> [TimelinePoint] {
+        var query = "days=\(days)"
+        if let s = startDate, let e = endDate {
+            query = "startDate=\(s)&endDate=\(e)"
+        }
+        let url = URL(string: "\(baseURL)/admin/token-stats/timeline?\(query)")!
         let (data, _) = try await URLSession.shared.data(from: url)
         let resp = try JSONDecoder().decode(ArrayResponse<TimelinePoint>.self, from: data)
         guard resp.success else { throw URLError(.cannotParseResponse) }
@@ -214,8 +218,12 @@ class APIClient {
     /// - Parameters:
     ///   - dimension: provider / adapter / model
     ///   - range: today / 7d / 30d / all
-    func fetchTokenBreakdown(dimension: String, range: String = "today") async throws -> [UsageBucket] {
-        let url = URL(string: "\(baseURL)/admin/token-stats/breakdown?dimension=\(dimension)&range=\(range)")!
+    func fetchTokenBreakdown(dimension: String, range: String = "today", startDate: String? = nil, endDate: String? = nil) async throws -> [UsageBucket] {
+        var query = "dimension=\(dimension)&range=\(range)"
+        if let s = startDate, let e = endDate {
+            query = "dimension=\(dimension)&startDate=\(s)&endDate=\(e)"
+        }
+        let url = URL(string: "\(baseURL)/admin/token-stats/breakdown?\(query)")!
         let (data, _) = try await URLSession.shared.data(from: url)
         let resp = try JSONDecoder().decode(ArrayResponse<UsageBucket>.self, from: data)
         guard resp.success else { throw URLError(.cannotParseResponse) }
