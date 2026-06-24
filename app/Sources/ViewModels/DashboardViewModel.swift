@@ -75,34 +75,25 @@ final class DashboardViewModel {
 
     // MARK: - Data Loading
 
-    /// 拉取所有 Dashboard 数据
+    /// 拉取所有 Dashboard 数据，并发跑以压低首屏延迟
     @MainActor
     func load() async {
         isLoading = true
         errorMessage = nil
 
-        do {
-            health = try await client.fetchHealth()
-        } catch {
-            health = false
-        }
+        // 并发启动 4 个独立请求，谁先回谁先写状态
+        async let healthTask = client.fetchHealth()
+        async let configTask = client.fetchConfig()
+        async let tokenStatsTask = client.fetchTokenStats()
+        async let chartsTask: Void = loadCharts()
 
-        do {
-            config = try await client.fetchConfig().data
-        } catch {
-            // 保持上次 config，不覆盖为 nil
-        }
-
-        do {
-            tokenStats = try await client.fetchTokenStats()
-        } catch {
-            // 保持上次 tokenStats，不覆盖为 nil
-        }
+        // 写入状态（哪个请求先回就先 await 哪个，但启动是并发的）
+        if let h = try? await healthTask { health = h }
+        if let c = try? await configTask { config = c.data }
+        if let s = try? await tokenStatsTask { tokenStats = s }
+        _ = await chartsTask
 
         isLoading = false
-
-        // 同步加载图表数据（与主数据并行）
-        await loadCharts()
     }
 
     /// 加载图表数据（timeline/breakdown/db-info）

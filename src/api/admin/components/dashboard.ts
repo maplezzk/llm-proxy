@@ -57,9 +57,10 @@ export function dashboardPage() {
 
     // ========== 生命周期 ==========
     init() {
+      // 同步创建 3 个 chart 实例，避免后续 polling 反复 destroy+new 引发 ctx null race
+      this.ensureCharts()
       this.loadCharts()
       // 每次 dashboard 数据刷新时同步图表（每 10 秒一次）
-      // 这里订阅 store 的 tokenStats 变化不优雅，改成在外部 store 主动调用
       const store = (window as any).Alpine.store('app')
       const orig = store.loadDashboard.bind(store)
       store.loadDashboard = async () => {
@@ -96,41 +97,128 @@ export function dashboardPage() {
       this.renderCharts()
     },
 
+    /**
+     * 确保 3 个 chart 实例存在。幂等：重复调用不会 destroy 已有实例。
+     * 关键：第一次创建后，后续数据更新走 chart.update()，避免 destroy+new 导致的
+     * animation frame race（Chart.js 内部 _update 跑到一半时 ctx 被清空 → TypeError）。
+     */
+    ensureCharts() {
+      const tlCanvas = document.getElementById('chart-timeline') as HTMLCanvasElement | null
+      if (tlCanvas && !this._timelineChart) {
+        this._timelineChart = new Chart(tlCanvas, buildTimelineConfig(this.timeline))
+      }
+      const bdCanvas = document.getElementById('chart-breakdown') as HTMLCanvasElement | null
+      if (bdCanvas && !this._breakdownChart) {
+        this._breakdownChart = new Chart(bdCanvas, buildBreakdownConfig(this.breakdownDimension, this.breakdown))
+      }
+      const pieCanvas = document.getElementById('chart-pie') as HTMLCanvasElement | null
+      if (pieCanvas && !this._pieChart) {
+        const today = (window as any).Alpine.store('app').tokenStats?.today
+        if (today && (today.input_tokens + today.output_tokens) > 0) {
+          this._pieChart = new Chart(pieCanvas, buildBreakdownPieConfig(today))
+        } else {
+          this._pieChart = new Chart(pieCanvas, buildBreakdownPieConfig({
+            input_tokens: 0, output_tokens: 0,
+            cache_read_input_tokens: 0, cache_creation_input_tokens: 0,
+          }))
+        }
+      }
+    },
+
     renderCharts() {
       const today = (window as any).Alpine.store('app').tokenStats?.today
-      this.renderTimelineChart()
-      this.renderBreakdownChart()
-      this.renderPieChart(today)
+      // canvas 可能已被替换（如 x-if 切换），重新创建（仅限实例不存在的情况）
+      this.ensureCharts()
+      this.updateTimelineChart()
+      this.updateBreakdownChart()
+      this.updatePieChart(today)
     },
 
-    renderTimelineChart() {
-      const canvas = document.getElementById('chart-timeline') as HTMLCanvasElement | null
-      if (!canvas) return
-      this._timelineChart?.destroy()
-      this._timelineChart = new Chart(canvas, buildTimelineConfig(this.timeline))
+    /** 刷新折线图数据（in-place update，不重建实例） */
+    updateTimelineChart() {
+      const chart = this._timelineChart
+      const canvas = chart?.canvas as HTMLCanvasElement | undefined
+      if (!chart || !canvas?.isConnected) {
+        this._timelineChart = null
+        this.ensureCharts()
+        return
+      }
+      const config = buildTimelineConfig(this.timeline)
+      chart.data.labels = config.data.labels
+      chart.data.datasets.forEach((ds, i) => {
+        const newDs = config.data.datasets[i]
+        if (newDs) {
+          ds.data = newDs.data as any
+          // line dataset 上才有 pointRadius，强制设置避免 TS 错误
+          (ds as any).pointRadius = newDs.pointRadius
+        }
+      })
+      try {
+        chart.update('none')  // 'none' = 跳过动画，避免 _update race
+      } catch {
+        // chart 实例已销毁（页面跳转、组件卸载），静默忽略
+        this._timelineChart = null
+      }
     },
 
-    renderBreakdownChart() {
-      const canvas = document.getElementById('chart-breakdown') as HTMLCanvasElement | null
-      if (!canvas) return
-      this._breakdownChart?.destroy()
-      this._breakdownChart = new Chart(canvas, buildBreakdownConfig(this.breakdownDimension, this.breakdown))
+    /** 刷新柱状图数据 */
+    updateBreakdownChart() {
+      const chart = this._breakdownChart
+      const canvas = chart?.canvas as HTMLCanvasElement | undefined
+      if (!chart || !canvas?.isConnected) {
+        this._breakdownChart = null
+        this.ensureCharts()
+        return
+      }
+      const config = buildBreakdownConfig(this.breakdownDimension, this.breakdown)
+      chart.data.labels = config.data.labels
+      chart.data.datasets.forEach((ds, i) => {
+        const newDs = config.data.datasets[i]
+        if (newDs) {
+          ds.data = newDs.data as any
+          ds.backgroundColor = newDs.backgroundColor
+        }
+      })
+      try {
+        chart.update('none')
+      } catch {
+        this._breakdownChart = null
+      }
     },
 
-    renderPieChart(today: any) {
-      const canvas = document.getElementById('chart-pie') as HTMLCanvasElement | null
-      if (!canvas) return
-      this._pieChart?.destroy()
-      // 饼图优先展示今日结构；如果今日为空但有 7d 数据，按当前范围展示 provider 占比
+    /** 刷新环形图：今日优先，否则展示 provider 分布 */
+    updatePieChart(today: any) {
+      const chart = this._pieChart
+      const canvas = chart?.canvas as HTMLCanvasElement | undefined
+      if (!chart || !canvas?.isConnected) {
+        this._pieChart = null
+        this.ensureCharts()
+        return
+      }
+      // 选择数据源：今日结构 vs provider 占比 vs 全 0
+      let config
       if (today && (today.input_tokens + today.output_tokens) > 0) {
-        this._pieChart = new Chart(canvas, buildBreakdownPieConfig(today))
+        config = buildBreakdownPieConfig(today)
       } else if (this.breakdown.length > 0 && this.breakdownDimension === 'provider') {
-        this._pieChart = new Chart(canvas, buildProviderPieConfig(this.breakdown))
+        config = buildProviderPieConfig(this.breakdown)
       } else {
-        this._pieChart = new Chart(canvas, buildBreakdownPieConfig({
+        config = buildBreakdownPieConfig({
           input_tokens: 0, output_tokens: 0,
           cache_read_input_tokens: 0, cache_creation_input_tokens: 0,
-        }))
+        })
+      }
+      chart.data.labels = config.data.labels
+      chart.data.datasets.forEach((ds, i) => {
+        const newDs = config.data.datasets[i]
+        if (newDs) {
+          ds.data = newDs.data as any
+          ds.backgroundColor = newDs.backgroundColor
+        }
+      })
+      try {
+        chart.update('none')
+      } catch {
+        this._pieChart = null
       }
     },
 
