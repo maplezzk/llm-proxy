@@ -298,6 +298,7 @@ export class UsageStore {
    * 获取 dashboard 兼容结构：today / history / byProvider
    */
   getStats(): TokenStats {
+    const t0 = process.hrtime.bigint()
     const today = this.today
     const todayRow = this.db.prepare(`
       SELECT
@@ -344,7 +345,7 @@ export class UsageStore {
       }
     }
 
-    return {
+    const result = {
       today: {
         date: today,
         input_tokens: todayRow.input_tokens,
@@ -356,6 +357,9 @@ export class UsageStore {
       history: historyRows,
       byProvider,
     }
+    const elapsed = Number(process.hrtime.bigint() - t0) / 1e6
+    this.logger?.log('system', `UsageStore.getStats`, { durationMs: Math.round(elapsed * 100) / 100 }, 'debug')
+    return result
   }
 
   /**
@@ -363,6 +367,7 @@ export class UsageStore {
    * 返回从最早到最近的每日数据点（按 date ASC），缺失日期补 0。
    */
   getTimeline(days: number): TimelinePoint[] {
+    const t0 = process.hrtime.bigint()
     const today = this.today
     const rows = this.db.prepare(`
       SELECT
@@ -388,6 +393,8 @@ export class UsageStore {
       const r = map.get(dateStr)
       result.push(r ?? { date: dateStr, input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0, request_count: 0 })
     }
+    const elapsed = Number(process.hrtime.bigint() - t0) / 1e6
+    this.logger?.log('system', `UsageStore.getTimeline(${days}d)`, { days, returned: result.length, durationMs: Math.round(elapsed * 100) / 100 }, 'debug')
     return result
   }
 
@@ -396,6 +403,7 @@ export class UsageStore {
    * @param range 'today' | '7d' | '30d' | 'all'
    */
   getBreakdown(dimension: 'provider' | 'adapter' | 'model', range: 'today' | '7d' | '30d' | 'all' = 'today'): UsageBucket[] {
+    const t0 = process.hrtime.bigint()
     const col = dimension === 'provider' ? 'provider' : dimension === 'adapter' ? 'adapter' : 'model'
     let where = ''
     const params: unknown[] = []
@@ -426,6 +434,8 @@ export class UsageStore {
         if (!r.key) r.key = '(direct proxy)'
       }
     }
+    const elapsed = Number(process.hrtime.bigint() - t0) / 1e6
+    this.logger?.log('system', `UsageStore.getBreakdown`, { dimension, range, returned: rows.length, durationMs: Math.round(elapsed * 100) / 100 }, 'debug')
     return rows
   }
 

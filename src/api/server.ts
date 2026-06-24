@@ -157,6 +157,15 @@ export function createProxyServer(opts: ServerOptions): Server {
     const url = req.url ?? '/'
     const method = req.method ?? 'GET'
 
+    // 跳过高频健康检查和 SSE 长连接，避免日志刷屏
+    const skipLog = url === '/admin/health' || url.startsWith('/admin/capture/stream') || url === '/v1/models'
+
+    // Dashboard 相关端点默认记 info，其他端点 debug（避免 log 刷屏）
+    const isDashboard = url.startsWith('/admin/') && !skipLog
+    const baseLevel: 'info' | 'debug' = isDashboard ? 'info' : 'debug'
+
+    const startedAt = process.hrtime.bigint()
+
     for (const route of ROUTES) {
       if (route.method === method && route.pattern.test(url)) {
         try {
@@ -169,12 +178,22 @@ export function createProxyServer(opts: ServerOptions): Server {
             res.end(JSON.stringify({ error: { message } }))
           }
         }
+        if (!skipLog) {
+          const elapsedMs = Number(process.hrtime.bigint() - startedAt) / 1e6
+          const status = res.statusCode || 200
+          const level = status >= 500 ? 'error' : status >= 400 ? 'warn' : baseLevel
+          ctx.logger.log('request', `${method} ${url}`, { method, url, status, durationMs: Math.round(elapsedMs * 100) / 100 }, level)
+        }
         return
       }
     }
 
     res.writeHead(404, { 'Content-Type': 'application/json' })
     res.end(JSON.stringify({ error: { message: 'Not found' } }))
+    if (!skipLog) {
+      const elapsedMs = Number(process.hrtime.bigint() - startedAt) / 1e6
+      ctx.logger.log('request', `${method} ${url}`, { method, url, status: 404, durationMs: Math.round(elapsedMs * 100) / 100 }, 'warn')
+    }
   })
 
   // 超时配置：防止空闲 socket/请求无限期占用堆、防止句柄累积泄漏。
