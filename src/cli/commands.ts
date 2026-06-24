@@ -45,6 +45,34 @@ function isProcessRunning(pid: number): boolean {
   }
 }
 
+/**
+ * 注册 SIGTERM/SIGINT 关闭 handler。
+ * 关键约束：Node.js 注册 signal listener 后，默认自动退出行为被移除。
+ * 每一步必须 try-catch，保证最后 process.exit(0) 一定执行，
+ * 否则进程残留（菜单栏 stopSync 退出后，Node.js 进程会变成孤儿）。
+ *
+ * 抽成独立函数便于单测：验证即使中间步骤抛错，仍会调用 process.exit。
+ */
+export function installShutdownHandlers(opts: {
+  server: Server
+  visionCache: { flushSync(): void }
+  t: (key: string) => string
+  pidPath?: string
+  signalTarget?: NodeJS.Signals[] | '*'
+}): void {
+  const pidPath = opts.pidPath ?? DEFAULT_PID_PATH
+  const shutdown = () => {
+    try { console.error(opts.t('cli.start.sigterm')) } catch { /* ignore */ }
+    try { unlinkSync(pidPath) } catch { /* ignore */ }
+    try { opts.visionCache.flushSync() } catch { /* ignore */ }
+    try { opts.server.close() } catch { /* ignore */ }
+    process.exit(0)
+  }
+  const target = opts.signalTarget ?? ['SIGTERM', 'SIGINT']
+  if (target === '*' || target.includes('SIGTERM')) process.on('SIGTERM', shutdown)
+  if (target === '*' || target.includes('SIGINT')) process.on('SIGINT', shutdown)
+}
+
 /** 启动阶段 Logger 尚未创建，写配置加载错误到 ~/.llm-proxy/startup-errors.log */
 function writeConfigErrorLog(configPath: string, error: string): void {
   try {
@@ -124,18 +152,11 @@ export async function cmdStart(opts: StartOptions): Promise<void> {
     visionCache,
   })
 
-  process.on('SIGTERM', () => {
-    console.error(t('cli.start.sigterm'))
-    try { unlinkSync(DEFAULT_PID_PATH) } catch { /* ignore */ }
-    visionCache.flushSync()
-    server.close()
-    process.exit(0)
-  })
-  process.on('SIGINT', () => {
-    visionCache.flushSync()
-    server.close()
-    process.exit(0)
-  })
+  // Node.js 文档：注册 SIGTERM/SIGINT listener 后，默认自动退出行为被移除，
+  // 进程能否退出完全取决于 handler 是否调用 process.exit。
+  // 因此每一步都必须 try-catch 包住，保证最后 process.exit(0) 一定执行，
+  // 否则进程残留（菜单栏 stopSync 退出后，Node.js 进程会变成孤儿）。
+  installShutdownHandlers({ server, visionCache, t })
 
   logger.log('system', t('cli.start.started', { host, port, config: configPath }), { host, port, config: configPath })
 
