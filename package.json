@@ -43,7 +43,9 @@
     "prebuild": "npm run generate:i18n-types"
   },
   "dependencies": {
+    "@types/better-sqlite3": "^7.6.13",
     "alpinejs": "^3.15.11",
+    "better-sqlite3": "^12.11.1",
     "chart.js": "^4.5.1",
     "i18next": "^26.0.8",
     "yaml": "^2.8.0"
