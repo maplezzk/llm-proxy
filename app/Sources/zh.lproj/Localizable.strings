@@ -230,12 +230,41 @@
 "dashboard.empty" = "暂无数据";
 "dashboard.loading" = "加载中...";
 
+// Dashboard 用量图表
+"dashboard.usage.trendTitle" = "Token 用量趋势";
+"dashboard.usage.trendDesc" = "输入/输出/缓存命中/缓存创建 按日聚合";
+"dashboard.usage.breakdownTitle" = "分维度对比";
+"dashboard.usage.pieTitle" = "今日结构占比";
+"dashboard.usage.pieDesc" = "输入/输出/缓存命中/缓存创建 比例";
+"dashboard.usage.totalLabel" = "总计";
+"dashboard.usage.dimProvider" = "供应商";
+"dashboard.usage.dimAdapter" = "适配器";
+"dashboard.usage.dimModel" = "模型";
+"dashboard.usage.rangeToday" = "今日";
+"dashboard.usage.range7d" = "近 7 天";
+"dashboard.usage.range30d" = "近 30 天";
+"dashboard.usage.rangeAll" = "全部";
+"dashboard.usage.days7" = "7 天";
+"dashboard.usage.days30" = "30 天";
+"dashboard.usage.days90" = "90 天";
+"dashboard.usage.seriesInput" = "输入";
+"dashboard.usage.seriesOutput" = "输出";
+"dashboard.usage.seriesCacheRead" = "缓存命中";
+"dashboard.usage.seriesCacheCreate" = "缓存创建";
+"dashboard.usage.storageTitle" = "用量数据存储";
+"dashboard.usage.storageDesc" = "%d 条事件 · %d 条预聚合 · %@";
+"dashboard.usage.cleanupBtn" = "清理 90 天前的数据";
+"dashboard.usage.cleanupConfirm" = "清理历史用量数据";
+"dashboard.usage.cleanupMessage" = "确定要清理 90 天前的所有历史用量数据吗？此操作不可恢复。";
+
 // Common
 "console.empty" = "暂无数据";
 "common.copy" = "复制";
 "common.copied" = "已复制";
 "common.refresh" = "刷新";
 "common.close" = "关闭";
+"common.cancel" = "取消";
+"common.loading" = "加载中...";
 
 // Settings
 "settings.title" = "设置";

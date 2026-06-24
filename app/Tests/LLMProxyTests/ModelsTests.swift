@@ -73,6 +73,102 @@ final class ModelsTests: XCTestCase {
         XCTAssertNil(resp.data)
     }
 
+    // MARK: - Token Usage Charts (持久化层)
+
+    func testTimelinePointDecoding() throws {
+        let json = """
+        {
+            "date": "2026-05-28",
+            "input_tokens": 1000,
+            "output_tokens": 500,
+            "cache_read_input_tokens": 300,
+            "cache_creation_input_tokens": 50,
+            "request_count": 10
+        }
+        """
+        let data = json.data(using: .utf8)!
+        let point = try JSONDecoder().decode(TimelinePoint.self, from: data)
+
+        XCTAssertEqual(point.date, "2026-05-28")
+        XCTAssertEqual(point.shortDate, "05-28")
+        XCTAssertEqual(point.input_tokens, 1000)
+        XCTAssertEqual(point.cache_read_input_tokens, 300)
+        XCTAssertEqual(point.request_count, 10)
+    }
+
+    func testTimelineArrayResponseDecoding() throws {
+        let json = """
+        {
+            "success": true,
+            "data": [
+                {"date": "2026-05-27", "input_tokens": 100, "output_tokens": 50, "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0, "request_count": 1},
+                {"date": "2026-05-28", "input_tokens": 200, "output_tokens": 100, "cache_read_input_tokens": 50, "cache_creation_input_tokens": 10, "request_count": 5}
+            ]
+        }
+        """
+        let data = json.data(using: .utf8)!
+        let resp = try JSONDecoder().decode(ArrayResponse<TimelinePoint>.self, from: data)
+
+        XCTAssertTrue(resp.success)
+        XCTAssertEqual(resp.data?.count, 2)
+        XCTAssertEqual(resp.data?[1].input_tokens, 200)
+    }
+
+    func testUsageBucketDecoding() throws {
+        let json = """
+        {
+            "key": "codex",
+            "input_tokens": 500,
+            "output_tokens": 200,
+            "cache_read_input_tokens": 100,
+            "cache_creation_input_tokens": 0,
+            "request_count": 8
+        }
+        """
+        let data = json.data(using: .utf8)!
+        let bucket = try JSONDecoder().decode(UsageBucket.self, from: data)
+
+        XCTAssertEqual(bucket.key, "codex")
+        XCTAssertEqual(bucket.totalTokens, 700)
+        XCTAssertEqual(bucket.request_count, 8)
+    }
+
+    func testUsageBucketWithEmptyKeyReplacedByBackend() throws {
+        // 后端把空 adapter key 替换为 "(direct proxy)"
+        let json = """
+        {"key": "(direct proxy)", "input_tokens": 100, "output_tokens": 50, "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0, "request_count": 3}
+        """
+        let data = json.data(using: .utf8)!
+        let bucket = try JSONDecoder().decode(UsageBucket.self, from: data)
+        XCTAssertEqual(bucket.key, "(direct proxy)")
+    }
+
+    func testTokenDbInfoDecoding() throws {
+        let json = """
+        {"success": true, "data": {"events": 1234, "aggregates": 89, "sizeBytes": 49152}}
+        """
+        let data = json.data(using: .utf8)!
+        let resp = try JSONDecoder().decode(InfoResponse<TokenDbInfo>.self, from: data)
+
+        XCTAssertTrue(resp.success)
+        XCTAssertEqual(resp.data?.events, 1234)
+        XCTAssertEqual(resp.data?.aggregates, 89)
+        XCTAssertEqual(resp.data?.sizeBytes, 49152)
+    }
+
+    func testCleanupResponseDecoding() throws {
+        let json = """
+        {"success": true, "data": {"days": 90, "events": 100, "aggregates": 10}}
+        """
+        let data = json.data(using: .utf8)!
+        let resp = try JSONDecoder().decode(CleanupResponse.self, from: data)
+
+        XCTAssertTrue(resp.success)
+        XCTAssertEqual(resp.data?.days, 90)
+        XCTAssertEqual(resp.data?.events, 100)
+        XCTAssertEqual(resp.data?.aggregates, 10)
+    }
+
     // MARK: - LogEntry
 
     func testLogEntryDecoding() throws {

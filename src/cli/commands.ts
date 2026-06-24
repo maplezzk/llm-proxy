@@ -2,7 +2,7 @@ import { readFileSync, writeFileSync, appendFileSync, unlinkSync, existsSync, mk
 import { createProxyServer } from '../api/server.js'
 import { ConfigStore } from '../config/store.js'
 import { StatusTracker } from '../status/tracker.js'
-import { TokenTracker } from '../status/token-tracker.js'
+import { UsageStore } from '../status/usage-store.js'
 import { CaptureBuffer } from '../proxy/capture.js'
 import { Logger, type LogLevel } from '../log/logger.js'
 import { createI18n } from '../lib/i18n.js'
@@ -94,9 +94,9 @@ export async function cmdStart(opts: StartOptions): Promise<void> {
   }
 
   const tracker = new StatusTracker()
-  const tokenTracker = new TokenTracker()
-  const capture = new CaptureBuffer(store.getConfig().config.captureMaxSize ?? 100)
   const logDir = `${process.env.HOME ?? '/tmp'}/.llm-proxy`
+  const usageStore = new UsageStore(`${logDir}/usage.db`, undefined /* Logger 在下面创建后再注入 */)
+  const capture = new CaptureBuffer(store.getConfig().config.captureMaxSize ?? 100)
   const persistedLevel = store.getConfig().config.logLevel
   const defaultLevel = (opts.logLevel && ['debug', 'info', 'warn', 'error'].includes(opts.logLevel))
     ? opts.logLevel as LogLevel
@@ -118,7 +118,7 @@ export async function cmdStart(opts: StartOptions): Promise<void> {
     proxyPort: port,
     store,
     tracker,
-    tokenTracker,
+    usageStore,
     capture,
     logger,
     visionCache,
@@ -128,11 +128,13 @@ export async function cmdStart(opts: StartOptions): Promise<void> {
     console.error(t('cli.start.sigterm'))
     try { unlinkSync(DEFAULT_PID_PATH) } catch { /* ignore */ }
     visionCache.flushSync()
+    usageStore.close()
     server.close()
     process.exit(0)
   })
   process.on('SIGINT', () => {
     visionCache.flushSync()
+    usageStore.close()
     server.close()
     process.exit(0)
   })

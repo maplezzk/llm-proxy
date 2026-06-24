@@ -67,7 +67,30 @@
       "proxyKeyNotSet": "未设置 — 所有请求可直接访问",
       "proxyKeySetSuccess": "代理 Key 已设置",
       "proxyKeyRemoveSuccess": "代理 Key 已移除",
-      "loadMore": "加载更多"
+      "loadMore": "加载更多",
+      "usage": {
+        "trendTitle": "Token 用量趋势",
+        "trendDesc": "输入/输出/缓存命中/缓存创建 按日聚合",
+        "breakdownTitle": "分维度对比",
+        "pieTitle": "今日结构占比",
+        "pieDesc": "输入/输出/缓存命中/缓存创建 比例",
+        "dimProvider": "供应商",
+        "dimAdapter": "适配器",
+        "dimModel": "模型",
+        "rangeToday": "今日",
+        "range7d": "近 7 天",
+        "range30d": "近 30 天",
+        "rangeAll": "全部",
+        "days7": "7 天",
+        "days30": "30 天",
+        "days90": "90 天",
+        "storageTitle": "用量数据存储",
+        "storageDesc": "{{events}} 条事件 · {{aggregates}} 条预聚合 · {{size}}",
+        "cleanupBtn": "清理 90 天前的数据",
+        "cleanupConfirm": "确定要清理 {{days}} 天前的所有历史用量数据吗？此操作不可恢复。",
+        "cleanupDone": "已清理 {{events}} 条事件 / {{aggregates}} 条预聚合",
+        "cleanupFailed": "清理失败"
+      }
     },
     "logs": {
       "title": "日志",

@@ -210,11 +210,41 @@
 "dashboard.hitRate" = "Hit Rate";
 "dashboard.empty" = "No data";
 "dashboard.loading" = "Loading...";
+
+// Dashboard Usage Charts
+"dashboard.usage.trendTitle" = "Token Usage Trend";
+"dashboard.usage.trendDesc" = "Input / Output / Cache Read / Cache Create aggregated by day";
+"dashboard.usage.breakdownTitle" = "Breakdown Comparison";
+"dashboard.usage.pieTitle" = "Today's Composition";
+"dashboard.usage.pieDesc" = "Ratio of input / output / cache read / cache create";
+"dashboard.usage.totalLabel" = "Total";
+"dashboard.usage.dimProvider" = "Provider";
+"dashboard.usage.dimAdapter" = "Adapter";
+"dashboard.usage.dimModel" = "Model";
+"dashboard.usage.rangeToday" = "Today";
+"dashboard.usage.range7d" = "7 days";
+"dashboard.usage.range30d" = "30 days";
+"dashboard.usage.rangeAll" = "All";
+"dashboard.usage.days7" = "7 days";
+"dashboard.usage.days30" = "30 days";
+"dashboard.usage.days90" = "90 days";
+"dashboard.usage.seriesInput" = "Input";
+"dashboard.usage.seriesOutput" = "Output";
+"dashboard.usage.seriesCacheRead" = "Cache Read";
+"dashboard.usage.seriesCacheCreate" = "Cache Create";
+"dashboard.usage.storageTitle" = "Usage Data Storage";
+"dashboard.usage.storageDesc" = "%d events · %d aggregates · %@";
+"dashboard.usage.cleanupBtn" = "Clean up data older than 90 days";
+"dashboard.usage.cleanupConfirm" = "Clean Up Usage History";
+"dashboard.usage.cleanupMessage" = "Are you sure you want to delete all usage data older than 90 days? This cannot be undone.";
+
 "console.empty" = "No data";
 "common.copy" = "Copy";
 "common.copied" = "Copied";
 "common.refresh" = "Refresh";
 "common.close" = "Close";
+"common.cancel" = "Cancel";
+"common.loading" = "Loading...";
 "settings.title" = "Settings";
 "settings.port" = "Port";
 "settings.proxyKey" = "Proxy Key";

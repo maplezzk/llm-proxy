@@ -67,7 +67,30 @@
       "proxyKeyNotSet": "Not set — all requests are accessible directly",
       "proxyKeySetSuccess": "Proxy key set",
       "proxyKeyRemoveSuccess": "Proxy key removed",
-      "loadMore": "Load More"
+      "loadMore": "Load More",
+      "usage": {
+        "trendTitle": "Token Usage Trend",
+        "trendDesc": "Input / Output / Cache Read / Cache Create aggregated by day",
+        "breakdownTitle": "Breakdown Comparison",
+        "pieTitle": "Today's Composition",
+        "pieDesc": "Ratio of input / output / cache read / cache create",
+        "dimProvider": "Provider",
+        "dimAdapter": "Adapter",
+        "dimModel": "Model",
+        "rangeToday": "Today",
+        "range7d": "7 days",
+        "range30d": "30 days",
+        "rangeAll": "All",
+        "days7": "7 days",
+        "days30": "30 days",
+        "days90": "90 days",
+        "storageTitle": "Usage Data Storage",
+        "storageDesc": "{{events}} events · {{aggregates}} aggregates · {{size}}",
+        "cleanupBtn": "Clean up data older than 90 days",
+        "cleanupConfirm": "Are you sure you want to delete all usage data older than {{days}} days? This cannot be undone.",
+        "cleanupDone": "Cleaned {{events}} events / {{aggregates}} aggregates",
+        "cleanupFailed": "Cleanup failed"
+      }
     },
     "logs": {
       "title": "Logs",

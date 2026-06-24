@@ -375,6 +375,68 @@ tbody tr:hover td { background: #f8f9fb; }
           </div>
         </template>
       </div>
+
+      <!-- Token 用量图表区 -->
+      <div class="dash-card" style="margin-top:14px">
+        <div class="dash-card-title">
+          <span class="dc-icon">📊</span>
+          <h3 x-text="$t('admin.dashboard.usage.trendTitle')"></h3>
+          <div style="margin-left:auto;display:flex;gap:4px">
+            <template x-for="opt in timelineDaysOptions" :key="opt.value">
+              <button class="filter-btn" :class="{active: timelineDays === opt.value}" @click="setTimelineDays(opt.value)" x-text="opt.label"></button>
+            </template>
+          </div>
+        </div>
+        <div class="dash-card-sub" x-text="$t('admin.dashboard.usage.trendDesc')"></div>
+        <div style="position:relative;height:240px;margin-top:8px">
+          <canvas id="chart-timeline"></canvas>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:14px">
+        <div class="dash-card">
+          <div class="dash-card-title">
+            <span class="dc-icon">📈</span>
+            <h3 x-text="$t('admin.dashboard.usage.breakdownTitle')"></h3>
+          </div>
+          <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px">
+            <template x-for="opt in breakdownDimensionOptions" :key="opt.value">
+              <button class="filter-btn" :class="{active: breakdownDimension === opt.value}" @click="setBreakdownDimension(opt.value)" x-text="opt.label"></button>
+            </template>
+            <span style="border-left:1px solid var(--border);margin:0 2px"></span>
+            <template x-for="opt in breakdownRangeOptions" :key="opt.value">
+              <button class="filter-btn" :class="{active: breakdownRange === opt.value}" @click="setBreakdownRange(opt.value)" x-text="opt.label"></button>
+            </template>
+          </div>
+          <div style="position:relative;height:280px">
+            <canvas id="chart-breakdown"></canvas>
+          </div>
+        </div>
+
+        <div class="dash-card">
+          <div class="dash-card-title">
+            <span class="dc-icon">🥧</span>
+            <h3 x-text="$t('admin.dashboard.usage.pieTitle')"></h3>
+          </div>
+          <div class="dash-card-sub" x-text="$t('admin.dashboard.usage.pieDesc')"></div>
+          <div style="position:relative;height:280px;margin-top:8px">
+            <canvas id="chart-pie"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <div class="dash-card" style="margin-top:14px">
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <div>
+            <div class="dash-card-title" style="margin-bottom:0">
+              <span class="dc-icon">💾</span>
+              <h3 x-text="$t('admin.dashboard.usage.storageTitle')"></h3>
+            </div>
+            <div class="dash-card-sub" x-text="$t('admin.dashboard.usage.storageDesc', { events: dbInfo.events, aggregates: dbInfo.aggregates, size: fmtBytes(dbInfo.sizeBytes) })"></div>
+          </div>
+          <button class="btn btn-ghost btn-sm" @click="cleanupUsage()" :disabled="cleaning" x-text="cleaning ? $t('admin.common.saving') : $t('admin.dashboard.usage.cleanupBtn')"></button>
+        </div>
+      </div>
       <div class="dash-card" x-data="proxyKeyForm">
         <div class="dash-card-title"><span class="dc-icon">🔑</span><h3 x-text="$t('admin.dashboard.proxyKey')"></h3></div>
         <div class="dash-card-sub" x-show="hasKey" x-text="$t('admin.dashboard.proxyKeySet')"></div>

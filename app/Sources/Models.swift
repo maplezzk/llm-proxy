@@ -22,6 +22,68 @@ struct TokenStatsResponse: Codable {
     let data: TokenStats?
 }
 
+// MARK: - Token Usage Charts (持久化层新增)
+
+/// 折线图每日数据点
+struct TimelinePoint: Codable, Identifiable {
+    let date: String
+    let input_tokens: Int
+    let output_tokens: Int
+    let cache_read_input_tokens: Int
+    let cache_creation_input_tokens: Int
+    let request_count: Int
+
+    var id: String { date }
+    /// MM-DD 短格式供 X 轴使用
+    var shortDate: String {
+        if date.count >= 10 { return String(date.suffix(5)) }
+        return date
+    }
+}
+
+/// 维度分桶（provider/adapter/model）
+struct UsageBucket: Codable, Identifiable {
+    let key: String
+    let input_tokens: Int
+    let output_tokens: Int
+    let cache_read_input_tokens: Int
+    let cache_creation_input_tokens: Int
+    let request_count: Int
+
+    var id: String { key }
+    var totalTokens: Int { input_tokens + output_tokens }
+}
+
+/// 数据库存储概况
+struct TokenDbInfo: Codable {
+    let events: Int
+    let aggregates: Int
+    let sizeBytes: Int
+}
+
+/// 清理响应
+struct CleanupResponse: Codable {
+    let success: Bool
+    let data: CleanupResult?
+}
+
+struct CleanupResult: Codable {
+    let days: Int
+    let events: Int
+    let aggregates: Int
+}
+
+/// 通用 envelope
+struct ArrayResponse<T: Codable>: Codable {
+    let success: Bool
+    let data: [T]?
+}
+
+struct InfoResponse<T: Codable>: Codable {
+    let success: Bool
+    let data: T?
+}
+
 // MARK: - Logs
 
 struct AnyCodable: Codable {

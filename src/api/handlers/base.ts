@@ -189,7 +189,62 @@ export async function handleSetVision(ctx: ServerContext, req: IncomingMessage, 
 }
 
 export function handleGetTokenStats(ctx: ServerContext, _req: IncomingMessage, res: ServerResponse): void {
-  json(res, 200, { success: true, data: ctx.tokenTracker.getStats() })
+  json(res, 200, { success: true, data: ctx.usageStore.getStats() })
+}
+
+/**
+ * 30/60/90 天趋势折线图数据。
+ * GET /admin/token-stats/timeline?days=30
+ */
+export function handleGetTokenTimeline(ctx: ServerContext, req: IncomingMessage, res: ServerResponse): void {
+  const url = new URL(req.url ?? '/', 'http://localhost')
+  const daysRaw = url.searchParams.get('days')
+  let days = parseInt(daysRaw ?? '30', 10)
+  if (!Number.isFinite(days) || days <= 0) days = 30
+  if (days > 365) days = 365
+  json(res, 200, { success: true, data: ctx.usageStore.getTimeline(days) })
+}
+
+/**
+ * 按维度分桶：'provider' | 'adapter' | 'model'。
+ * GET /admin/token-stats/breakdown?dimension=provider&range=today|7d|30d|all
+ */
+export function handleGetTokenBreakdown(ctx: ServerContext, req: IncomingMessage, res: ServerResponse): void {
+  const url = new URL(req.url ?? '/', 'http://localhost')
+  const dimension = (url.searchParams.get('dimension') ?? 'provider') as 'provider' | 'adapter' | 'model'
+  const range = (url.searchParams.get('range') ?? 'today') as 'today' | '7d' | '30d' | 'all'
+  if (!['provider', 'adapter', 'model'].includes(dimension)) {
+    json(res, 400, { success: false, error: 'dimension 必须是 provider/adapter/model' })
+    return
+  }
+  if (!['today', '7d', '30d', 'all'].includes(range)) {
+    json(res, 400, { success: false, error: 'range 必须是 today/7d/30d/all' })
+    return
+  }
+  json(res, 200, { success: true, data: ctx.usageStore.getBreakdown(dimension, range) })
+}
+
+/**
+ * 数据库概况：条目数 + 文件大小。
+ * GET /admin/token-stats/db-info
+ */
+export function handleGetTokenDbInfo(ctx: ServerContext, _req: IncomingMessage, res: ServerResponse): void {
+  json(res, 200, { success: true, data: ctx.usageStore.stats() })
+}
+
+/**
+ * 清理 N 天前的历史数据。body: { days: 90 }。
+ * POST /admin/token-stats/cleanup
+ */
+export async function handlePostTokenCleanup(ctx: ServerContext, req: IncomingMessage, res: ServerResponse): Promise<void> {
+  let body: { days?: number } = {}
+  try {
+    body = JSON.parse(await (await import('../../lib/http-utils.js')).readBody(req))
+  } catch { /* 允许空 body，默认 90 天 */ }
+  const days = typeof body.days === 'number' && body.days > 0 ? body.days : 90
+  const result = ctx.usageStore.cleanup(days)
+  ctx.logger.log('system', `Usage store cleaned: ${days}d`, { days, ...result })
+  json(res, 200, { success: true, data: { days, ...result } })
 }
 
 // Vision 缓存统计
