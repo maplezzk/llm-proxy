@@ -101,26 +101,44 @@ export function dashboardPage() {
      * 确保 3 个 chart 实例存在。幂等：重复调用不会 destroy 已有实例。
      * 关键：第一次创建后，后续数据更新走 chart.update()，避免 destroy+new 导致的
      * animation frame race（Chart.js 内部 _update 跑到一半时 ctx 被清空 → TypeError）。
+     *
+     * 额外护栏：先用 Chart.getChart(canvas) 检查 Chart.js 全局缓存里是否已有实例
+     * （避免 canvas DOM 被复用但全局实例未清理时报 'Canvas is already in use'）。
      */
     ensureCharts() {
       const tlCanvas = document.getElementById('chart-timeline') as HTMLCanvasElement | null
       if (tlCanvas && !this._timelineChart) {
-        this._timelineChart = new Chart(tlCanvas, buildTimelineConfig(this.timeline))
+        const existing = Chart.getChart(tlCanvas)
+        if (existing) {
+          this._timelineChart = existing
+        } else {
+          this._timelineChart = new Chart(tlCanvas, buildTimelineConfig(this.timeline))
+        }
       }
       const bdCanvas = document.getElementById('chart-breakdown') as HTMLCanvasElement | null
       if (bdCanvas && !this._breakdownChart) {
-        this._breakdownChart = new Chart(bdCanvas, buildBreakdownConfig(this.breakdownDimension, this.breakdown))
+        const existing = Chart.getChart(bdCanvas)
+        if (existing) {
+          this._breakdownChart = existing
+        } else {
+          this._breakdownChart = new Chart(bdCanvas, buildBreakdownConfig(this.breakdownDimension, this.breakdown))
+        }
       }
       const pieCanvas = document.getElementById('chart-pie') as HTMLCanvasElement | null
       if (pieCanvas && !this._pieChart) {
-        const today = (window as any).Alpine.store('app').tokenStats?.today
-        if (today && (today.input_tokens + today.output_tokens) > 0) {
-          this._pieChart = new Chart(pieCanvas, buildBreakdownPieConfig(today))
+        const existing = Chart.getChart(pieCanvas)
+        if (existing) {
+          this._pieChart = existing
         } else {
-          this._pieChart = new Chart(pieCanvas, buildBreakdownPieConfig({
-            input_tokens: 0, output_tokens: 0,
-            cache_read_input_tokens: 0, cache_creation_input_tokens: 0,
-          }))
+          const today = (window as any).Alpine.store('app').tokenStats?.today
+          if (today && (today.input_tokens + today.output_tokens) > 0) {
+            this._pieChart = new Chart(pieCanvas, buildBreakdownPieConfig(today))
+          } else {
+            this._pieChart = new Chart(pieCanvas, buildBreakdownPieConfig({
+              input_tokens: 0, output_tokens: 0,
+              cache_read_input_tokens: 0, cache_creation_input_tokens: 0,
+            }))
+          }
         }
       }
     },

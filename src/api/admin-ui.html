@@ -608,12 +608,12 @@ tbody tr:hover td { background: #f8f9fb; }
                 <td><span class="mono" x-text="p.type === 'openai-responses' ? 'openai (responses)' : p.type"></span></td>
                 <td class="mono">
                   <span x-text="p.models?.length ?? 0"></span>
-                  <template x-if="p.models?.some((m: any) => m.thinking?.budget_tokens || m.thinking?.type || m.reasoning_effort || m.thinking?.reasoning_effort)">
+                  <template x-if="p.models?.some((m) => m.thinking?.budget_tokens || m.thinking?.type || m.reasoning_effort || m.thinking?.reasoning_effort)">
                     <span style="margin-left:6px;font-size:10px;color:var(--accent);cursor:help"
-                          :title="p.models.filter((m:any) => m.thinking?.budget_tokens || m.thinking?.type || m.reasoning_effort || m.thinking?.reasoning_effort).map((m:any) => m.id + ' → ' + (m.thinking?.budget_tokens ? 'thinking:'+m.thinking.budget_tokens : m.thinking?.type ? 'type:'+m.thinking.type : 're:'+m.reasoning_effort || m.thinking?.reasoning_effort)).join('\n')">🧠</span>
+                          :title="p.models.filter((m) => m.thinking?.budget_tokens || m.thinking?.type || m.reasoning_effort || m.thinking?.reasoning_effort).map((m) => m.id + ' → ' + (m.thinking?.budget_tokens ? 'thinking:'+m.thinking.budget_tokens : m.thinking?.type ? 'type:'+m.thinking.type : 're:'+m.reasoning_effort || m.thinking?.reasoning_effort)).join('\n')">🧠</span>
                   </template>
-                  <template x-if="p.models?.some((m: any) => Array.isArray(m.input) && m.input.includes('image'))">
-                    <span style="margin-left:4px;font-size:10px;cursor:help" :title="$t('admin.providers.visionBadgeTitle') + '\n' + p.models.filter((m:any) => Array.isArray(m.input) && m.input.includes('image')).map((m:any) => m.id).join('\n')">🖼️</span>
+                  <template x-if="p.models?.some((m) => Array.isArray(m.input) && m.input.includes('image'))">
+                    <span style="margin-left:4px;font-size:10px;cursor:help" :title="$t('admin.providers.visionBadgeTitle') + '\n' + p.models.filter((m) => Array.isArray(m.input) && m.input.includes('image')).map((m) => m.id).join('\n')">🖼️</span>
                   </template>
                 </td>
                 <td><span class="badge" :class="p.available ? 'badge-ok' : 'badge-err'" x-text="p.available ? $t('admin.common.normal') : $t('admin.common.error')"></span></td>
