@@ -103,4 +103,41 @@ describe('adapter/router', () => {
       (err: AdapterError) => err.code === 'MODEL_NOT_FOUND'
     )
   })
+
+  it('传递 target model 的 input 模态到 route（用于外挂识图判断）', () => {
+    // 回归测试：修复前 adapter router 漏传 input 字段，导致 modelSupportsImage(route) 永远返回 false，
+    // 即使 provider 里正确声明了 input: [text, image]，走 adapter 路由时仍会触发外挂识图。
+    const config: Config = {
+      providers: [
+        {
+          name: 'vision-provider',
+          type: 'anthropic',
+          apiKey: 'sk-1',
+          models: [
+            { id: 'multimodal-model', input: ['text', 'image'] },
+            { id: 'text-only-model' },
+          ],
+        },
+      ],
+      adapters: [
+        {
+          name: 'a',
+          type: 'openai',
+          models: [
+            { sourceModelId: 'mm', provider: 'vision-provider', targetModelId: 'multimodal-model' },
+            { sourceModelId: 'txt', provider: 'vision-provider', targetModelId: 'text-only-model' },
+          ],
+        },
+      ],
+    }
+    const store = new ConfigStore('/fake', config)
+
+    // 多模态模型：input 字段必须原样传递，否则会触发外挂识图
+    const mmResult = resolveAdapterRoute(store, 'a', 'mm')
+    assert.deepStrictEqual(mmResult.route.input, ['text', 'image'])
+
+    // 纯文本模型：input 应为 undefined（向后兼容，默认视为仅文本）
+    const txtResult = resolveAdapterRoute(store, 'a', 'txt')
+    assert.strictEqual(txtResult.route.input, undefined)
+  })
 })
