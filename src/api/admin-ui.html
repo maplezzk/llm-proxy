@@ -352,6 +352,7 @@ tbody tr:hover td { background: #f8f9fb; }
     <div class="page" id="page-dashboard"
          x-data="dashboardPage"
          :class="{ active: $store.app.currentTab === 'dashboard' }">
+      <!-- ── 统计卡片 ── -->
       <div class="stats">
         <template x-for="stat in stats" :key="stat.label">
           <div class="stat" :style="{ '--stat-accent': stat.accent }">
@@ -376,36 +377,47 @@ tbody tr:hover td { background: #f8f9fb; }
         </template>
       </div>
 
-      <!-- Token 用量图表区 -->
+      <!-- ── Token 用量趋势（面积图）── -->
       <div class="dash-card" style="margin-top:14px">
         <div class="dash-card-title">
           <span class="dc-icon">📊</span>
           <h3 x-text="$t('admin.dashboard.usage.trendTitle')"></h3>
-          <div style="margin-left:auto;display:flex;gap:4px">
-            <template x-for="opt in timelineDaysOptions" :key="opt.value">
-              <button class="filter-btn" :class="{active: timelineDays === opt.value}" @click="setTimelineDays(opt.value)" x-text="opt.label"></button>
-            </template>
-          </div>
         </div>
         <div class="dash-card-sub" x-text="$t('admin.dashboard.usage.trendDesc')"></div>
-        <div style="position:relative;height:240px;margin-top:8px">
+        <!-- 日期选择栏 -->
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:10px">
+          <input type="date" x-model="dateStart" @change="setCustomDate()"
+                 style="padding:4px 8px;font-size:12px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text)">
+          <span style="font-size:13px;color:var(--text-muted)">—</span>
+          <input type="date" x-model="dateEnd" @change="setCustomDate()"
+                 style="padding:4px 8px;font-size:12px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text)">
+          <template x-for="p in presets" :key="p.v">
+            <button class="filter-btn" :class="{active: presetDays === p.v}" @click="setPreset(p.v)" x-text="p.l"></button>
+          </template>
+        </div>
+        <div style="position:relative;height:280px;min-height:240px">
           <canvas id="chart-timeline"></canvas>
+          <div x-show="loadingCharts" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(21,23,27,0.3);border-radius:12px">
+            <span style="color:var(--text-muted);font-size:12px" x-text="$t('admin.common.saving')"></span>
+          </div>
         </div>
       </div>
 
+      <!-- ── 下排：柱状图 + 环形图 ── -->
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:14px">
+        <!-- 分维度对比 -->
         <div class="dash-card">
           <div class="dash-card-title">
             <span class="dc-icon">📈</span>
             <h3 x-text="$t('admin.dashboard.usage.breakdownTitle')"></h3>
           </div>
           <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px">
-            <template x-for="opt in breakdownDimensionOptions" :key="opt.value">
-              <button class="filter-btn" :class="{active: breakdownDimension === opt.value}" @click="setBreakdownDimension(opt.value)" x-text="opt.label"></button>
+            <template x-for="opt in dimOptions" :key="opt.v">
+              <button class="filter-btn" :class="{active: breakdownDimension === opt.v}" @click="setBreakdownDim(opt.v)" x-text="opt.l"></button>
             </template>
             <span style="border-left:1px solid var(--border);margin:0 2px"></span>
-            <template x-for="opt in breakdownRangeOptions" :key="opt.value">
-              <button class="filter-btn" :class="{active: breakdownRange === opt.value}" @click="setBreakdownRange(opt.value)" x-text="opt.label"></button>
+            <template x-for="opt in rangeOptions" :key="opt.v">
+              <button class="filter-btn" :class="{active: breakdownRange === opt.v}" @click="setBreakdownRange(opt.v)" x-text="opt.l"></button>
             </template>
           </div>
           <div style="position:relative;height:280px">
@@ -413,6 +425,7 @@ tbody tr:hover td { background: #f8f9fb; }
           </div>
         </div>
 
+        <!-- 今日结构占比 -->
         <div class="dash-card">
           <div class="dash-card-title">
             <span class="dc-icon">🥧</span>
@@ -425,6 +438,7 @@ tbody tr:hover td { background: #f8f9fb; }
         </div>
       </div>
 
+      <!-- ── 用量数据存储 ── -->
       <div class="dash-card" style="margin-top:14px">
         <div style="display:flex;align-items:center;justify-content:space-between">
           <div>
@@ -437,6 +451,8 @@ tbody tr:hover td { background: #f8f9fb; }
           <button class="btn btn-ghost btn-sm" @click="cleanupUsage()" :disabled="cleaning" x-text="cleaning ? $t('admin.common.saving') : $t('admin.dashboard.usage.cleanupBtn')"></button>
         </div>
       </div>
+
+      <!-- ── 代理 API Key ── -->
       <div class="dash-card" x-data="proxyKeyForm">
         <div class="dash-card-title"><span class="dc-icon">🔑</span><h3 x-text="$t('admin.dashboard.proxyKey')"></h3></div>
         <div class="dash-card-sub" x-show="hasKey" x-text="$t('admin.dashboard.proxyKeySet')"></div>
@@ -447,6 +463,8 @@ tbody tr:hover td { background: #f8f9fb; }
           <button class="btn btn-ghost btn-sm" @click="remove()" :disabled="saving" x-show="hasKey" x-text="$t('admin.common.remove')"></button>
         </div>
       </div>
+
+      <!-- ── 外挂识图 ── -->
       <div class="dash-card" x-data="visionSettingForm">
         <div class="dash-card-title"><span class="dc-icon">🖼️</span><h3 x-text="$t('admin.vision.title')"></h3></div>
         <div class="dash-card-sub" x-text="$t('admin.vision.desc')"></div>
@@ -479,7 +497,6 @@ tbody tr:hover td { background: #f8f9fb; }
         </template>
         <button class="btn btn-primary btn-sm" @click="save()" :disabled="saving || (form.enabled && (!form.provider || !form.model))" style="margin-top:10px"
                 x-text="saving ? $t('admin.common.saving') : $t('admin.common.save')"></button>
-
         <div style="margin-top:14px;padding-top:12px;border-top:1px dashed var(--border)">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
             <div style="font-size:12px;font-weight:600;color:var(--text)">

@@ -11,16 +11,15 @@ import {
   LinearScale,
   Tooltip,
   Legend,
+  Filler,
 } from 'chart.js'
-import type { ChartConfiguration, ChartOptions } from 'chart.js'
 
-// Tree-shake 友好：只注册用到的 controllers + elements + plugins
 Chart.register(
   LineController, LineElement, PointElement,
   BarController, BarElement,
   DoughnutController, ArcElement,
   CategoryScale, LinearScale,
-  Tooltip, Legend,
+  Tooltip, Legend, Filler,
 )
 
 export interface TimelinePoint {
@@ -41,110 +40,83 @@ export interface UsageBucket {
   request_count: number
 }
 
-/**
- * 主题色：与 admin-ui.html 的 CSS 变量保持一致
- */
-const COLORS = {
-  input: '#3b82f6',        // var(--accent) - 蓝色
-  output: '#8b5cf6',       // 紫色
-  cacheRead: '#10b981',    // var(--success) - 绿色
-  cacheCreate: '#f59e0b',  // var(--warn) - 橙色
+const C = {
+  input: '#3b82f6',
+  output: '#8b5cf6',
+  cacheRead: '#10b981',
+  cacheCreate: '#f59e0b',
   text: '#cbd5e1',
   textMuted: '#94a3b8',
-  border: 'rgba(148, 163, 184, 0.15)',
+  border: 'rgba(148,163,184,0.15)',
 }
 
-const PROVIDER_PALETTE = [
-  '#3b82f6', '#8b5cf6', '#10b981', '#f59e0b', '#ec4899',
-  '#06b6d4', '#f43f5e', '#a855f7', '#22c55e', '#eab308',
-]
+const OPTS = {
+  responsive: true,
+  maintainAspectRatio: false,
+  animation: false as const,
+  events: ['mousemove', 'mouseout', 'click', 'touchstart', 'touchmove'] as string[],
+  interaction: { mode: 'index' as const, intersect: false },
+  hover: { mode: 'index' as const, intersect: false },
+}
+
+function fmtK(v: number | string): string {
+  const n = Number(v)
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M'
+  if (n >= 1_000) return (n / 1_000).toFixed(1) + 'K'
+  return String(n)
+}
 
 /**
- * 30 天趋势折线图配置：输入/输出/缓存命中/缓存创建 4 条线
+ * 面积折线图 — input/output/cache read/cache create 四条线，带渐变填充
  */
-export function buildTimelineConfig(timeline: TimelinePoint[]): ChartConfiguration<'line', any[], any> {
-  const labels = timeline.map(p => p.date.slice(5))  // MM-DD
+export function buildTimelineConfig(timeline: TimelinePoint[]): any {
+  const labels = timeline.map(p => p.date.slice(5))
   return {
     type: 'line',
     data: {
       labels,
       datasets: [
         {
-          label: 'Input',
-          data: timeline.map(p => p.input_tokens),
-          borderColor: COLORS.input,
-          backgroundColor: COLORS.input + '20',
-          tension: 0.3,
-          fill: false,
-          pointRadius: timeline.length > 60 ? 0 : 2,
+          label: 'Input', data: timeline.map(p => p.input_tokens),
+          borderColor: C.input, backgroundColor: C.input + '20',
+          fill: { target: 'origin', above: C.input + '18' },
+          tension: 0.35, pointRadius: timeline.length > 60 ? 0 : 2,
         },
         {
-          label: 'Output',
-          data: timeline.map(p => p.output_tokens),
-          borderColor: COLORS.output,
-          backgroundColor: COLORS.output + '20',
-          tension: 0.3,
-          fill: false,
-          pointRadius: timeline.length > 60 ? 0 : 2,
+          label: 'Output', data: timeline.map(p => p.output_tokens),
+          borderColor: C.output, backgroundColor: C.output + '20',
+          fill: { target: 'origin', above: C.output + '18' },
+          tension: 0.35, pointRadius: timeline.length > 60 ? 0 : 2,
         },
         {
-          label: 'Cache Read',
-          data: timeline.map(p => p.cache_read_input_tokens),
-          borderColor: COLORS.cacheRead,
-          backgroundColor: COLORS.cacheRead + '20',
-          tension: 0.3,
-          fill: false,
-          pointRadius: timeline.length > 60 ? 0 : 2,
+          label: 'Cache Read', data: timeline.map(p => p.cache_read_input_tokens),
+          borderColor: C.cacheRead, backgroundColor: C.cacheRead + '20',
+          fill: { target: 'origin', above: C.cacheRead + '18' },
+          tension: 0.35, pointRadius: timeline.length > 60 ? 0 : 2,
         },
         {
-          label: 'Cache Create',
-          data: timeline.map(p => p.cache_creation_input_tokens),
-          borderColor: COLORS.cacheCreate,
-          backgroundColor: COLORS.cacheCreate + '20',
-          tension: 0.3,
-          fill: false,
-          pointRadius: timeline.length > 60 ? 0 : 2,
+          label: 'Cache Create', data: timeline.map(p => p.cache_creation_input_tokens),
+          borderColor: C.cacheCreate, backgroundColor: C.cacheCreate + '20',
+          fill: { target: 'origin', above: C.cacheCreate + '18' },
+          tension: 0.35, pointRadius: timeline.length > 60 ? 0 : 2,
         },
       ],
     },
     options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      animation: false,
-      events: ['mousemove', 'mouseout', 'click', 'touchstart', 'touchmove'],
-      interaction: { mode: 'index', intersect: false },
-      hover: { mode: 'index', intersect: false },
+      ...OPTS,
       plugins: {
-        legend: {
-          position: 'top',
-          labels: { color: COLORS.text, boxWidth: 12, font: { size: 11 } },
-        },
+        legend: { position: 'top', labels: { color: C.text, boxWidth: 12, font: { size: 11 } } },
         tooltip: {
-          backgroundColor: '#1e293b',
-          titleColor: COLORS.text,
-          bodyColor: COLORS.text,
-          borderColor: COLORS.border,
-          borderWidth: 1,
+          backgroundColor: '#1e293b', titleColor: C.text, bodyColor: C.text,
+          borderColor: C.border, borderWidth: 1,
         },
       },
       scales: {
-        x: {
-          ticks: { color: COLORS.textMuted, maxTicksLimit: 15, font: { size: 10 } },
-          grid: { color: COLORS.border },
-        },
+        x: { ticks: { color: C.textMuted, maxTicksLimit: 15, font: { size: 10 } }, grid: { color: C.border } },
         y: {
           beginAtZero: true,
-          ticks: {
-            color: COLORS.textMuted,
-            font: { size: 10 },
-            callback: (v) => {
-              const n = Number(v)
-              if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M'
-              if (n >= 1_000) return (n / 1_000).toFixed(1) + 'K'
-              return String(n)
-            },
-          },
-          grid: { color: COLORS.border },
+          ticks: { color: C.textMuted, font: { size: 10 }, callback: fmtK },
+          grid: { color: C.border },
         },
       },
     },
@@ -152,110 +124,97 @@ export function buildTimelineConfig(timeline: TimelinePoint[]): ChartConfigurati
 }
 
 /**
- * 按供应商/适配器/模型分桶柱状图：横向柱状，按 input_tokens 排序
+ * 堆叠横向柱状图 — input + output 堆叠
  */
 export function buildBreakdownConfig(
-  dimension: 'provider' | 'adapter' | 'model',
+  _dimension: string,
   buckets: UsageBucket[]
-): ChartConfiguration<'bar', any[], any> {
-  const sorted = [...buckets].sort((a, b) => b.input_tokens - a.input_tokens).slice(0, 10)
-  const labels = sorted.map(b => b.key)
+): any {
+  const sorted = [...buckets]
+    .sort((a, b) => (b.input_tokens + b.output_tokens) - (a.input_tokens + a.output_tokens))
+    .slice(0, 12)
   return {
     type: 'bar',
     data: {
-      labels,
+      labels: sorted.map(b => b.key),
       datasets: [
         {
-          label: 'Input',
-          data: sorted.map(b => b.input_tokens),
-          backgroundColor: COLORS.input,
+          label: 'Input', data: sorted.map(b => b.input_tokens),
+          backgroundColor: C.input, stack: 'a',
         },
         {
-          label: 'Output',
-          data: sorted.map(b => b.output_tokens),
-          backgroundColor: COLORS.output,
-        },
-        {
-          label: 'Cache Read',
-          data: sorted.map(b => b.cache_read_input_tokens),
-          backgroundColor: COLORS.cacheRead,
-        },
-        {
-          label: 'Cache Create',
-          data: sorted.map(b => b.cache_creation_input_tokens),
-          backgroundColor: COLORS.cacheCreate,
+          label: 'Output', data: sorted.map(b => b.output_tokens),
+          backgroundColor: C.output, stack: 'a',
         },
       ],
     },
     options: {
+      ...OPTS,
       indexAxis: 'y',
-      responsive: true,
-      maintainAspectRatio: false,
-      animation: false,
-      events: ['mousemove', 'mouseout', 'click', 'touchstart', 'touchmove'],
-      interaction: { mode: 'nearest', intersect: false },
-      hover: { mode: 'nearest', intersect: false },
       plugins: {
-        legend: {
-          position: 'top',
-          labels: { color: COLORS.text, boxWidth: 12, font: { size: 11 } },
-        },
+        legend: { position: 'top', labels: { color: C.text, boxWidth: 12, font: { size: 11 } } },
         tooltip: {
-          backgroundColor: '#1e293b',
-          titleColor: COLORS.text,
-          bodyColor: COLORS.text,
-          borderColor: COLORS.border,
-          borderWidth: 1,
+          backgroundColor: '#1e293b', titleColor: C.text, bodyColor: C.text,
+          borderColor: C.border, borderWidth: 1,
           callbacks: {
-            afterBody: (items) => {
+            afterBody: (items: any[]) => {
               const idx = items[0]?.dataIndex
               if (idx === undefined) return []
-              const bucket = sorted[idx]
-              return [`Requests: ${bucket.request_count.toLocaleString()}`]
+              return [`Requests: ${sorted[idx].request_count.toLocaleString()}`]
             },
           },
         },
       },
       scales: {
-        x: {
-          stacked: false,
-          beginAtZero: true,
-          ticks: {
-            color: COLORS.textMuted,
-            font: { size: 10 },
-            callback: (v) => {
-              const n = Number(v)
-              if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M'
-              if (n >= 1_000) return (n / 1_000).toFixed(1) + 'K'
-              return String(n)
-            },
-          },
-          grid: { color: COLORS.border },
-        },
-        y: {
-          ticks: { color: COLORS.textMuted, font: { size: 11 } },
-          grid: { display: false },
-        },
+        x: { stacked: true, beginAtZero: true, ticks: { color: C.textMuted, font: { size: 10 }, callback: fmtK }, grid: { color: C.border } },
+        y: { stacked: true, ticks: { color: C.textMuted, font: { size: 11 } }, grid: { display: false } },
       },
     },
   }
 }
 
+// =============================================
+// Doughnut center-text plugin
+// =============================================
+export const doughnutCenterPlugin = {
+  id: 'doughnutCenter',
+  afterDraw(chart: Chart) {
+    const { ctx, chartArea: { width, height, top, left } } = chart
+    const meta = (chart as any).centerMeta
+    if (!meta) return
+    ctx.save()
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    // 主标题
+    const cx = left + width / 2
+    const cy = top + height / 2
+    ctx.font = 'bold 18px -apple-system,BlinkMacSystemFont,sans-serif'
+    ctx.fillStyle = C.text
+    ctx.fillText(meta.total, cx, cy - 6)
+    // 副标题
+    ctx.font = '11px -apple-system,BlinkMacSystemFont,sans-serif'
+    ctx.fillStyle = C.textMuted
+    ctx.fillText(meta.label, cx, cy + 14)
+    ctx.restore()
+  },
+}
+
+Chart.register(doughnutCenterPlugin)
+
 /**
- * 今日 token 结构饼图：input / output / cache_read / cache_create
+ * 环形图 — input/output/cache read/cache create，中心文字
  */
 export function buildBreakdownPieConfig(today: {
-  input_tokens: number
-  output_tokens: number
-  cache_read_input_tokens: number
-  cache_creation_input_tokens: number
-}): ChartConfiguration<'doughnut'> {
+  input_tokens: number; output_tokens: number
+  cache_read_input_tokens: number; cache_creation_input_tokens: number
+}): any {
   const data = [
-    { label: 'Input', value: today.input_tokens, color: COLORS.input },
-    { label: 'Output', value: today.output_tokens, color: COLORS.output },
-    { label: 'Cache Read', value: today.cache_read_input_tokens, color: COLORS.cacheRead },
-    { label: 'Cache Create', value: today.cache_creation_input_tokens, color: COLORS.cacheCreate },
+    { label: 'Input', value: today.input_tokens, color: C.input },
+    { label: 'Output', value: today.output_tokens, color: C.output },
+    { label: 'Cache Read', value: today.cache_read_input_tokens, color: C.cacheRead },
+    { label: 'Cache Create', value: today.cache_creation_input_tokens, color: C.cacheCreate },
   ]
+  const total = data.reduce((s, d) => s + d.value, 0)
   return {
     type: 'doughnut',
     data: {
@@ -263,32 +222,20 @@ export function buildBreakdownPieConfig(today: {
       datasets: [{
         data: data.map(d => d.value),
         backgroundColor: data.map(d => d.color),
-        borderColor: '#1e293b',
-        borderWidth: 2,
+        borderColor: '#1e293b', borderWidth: 2,
       }],
     },
     options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      animation: false,
-      events: ['mousemove', 'mouseout', 'click', 'touchstart', 'touchmove'],
-      interaction: { mode: 'nearest', intersect: true },
-      hover: { mode: 'nearest', intersect: true },
+      ...OPTS,
+      cutout: '65%',
       plugins: {
-        legend: {
-          position: 'right',
-          labels: { color: COLORS.text, boxWidth: 12, font: { size: 11 } },
-        },
+        legend: { position: 'right', labels: { color: C.text, boxWidth: 12, font: { size: 11 } } },
         tooltip: {
-          backgroundColor: '#1e293b',
-          titleColor: COLORS.text,
-          bodyColor: COLORS.text,
-          borderColor: COLORS.border,
-          borderWidth: 1,
+          backgroundColor: '#1e293b', titleColor: C.text, bodyColor: C.text,
+          borderColor: C.border, borderWidth: 1,
           callbacks: {
-            label: (ctx) => {
+            label: (ctx: any) => {
               const v = Number(ctx.parsed)
-              const total = data.reduce((s, d) => s + d.value, 0)
               const pct = total > 0 ? ((v / total) * 100).toFixed(1) : '0'
               return `${ctx.label}: ${v.toLocaleString()} (${pct}%)`
             },
@@ -296,57 +243,10 @@ export function buildBreakdownPieConfig(today: {
         },
       },
     },
-  }
-}
-
-/**
- * 按 provider 分组的环形图（每个供应商一个色块）
- */
-export function buildProviderPieConfig(buckets: UsageBucket[]): ChartConfiguration<'doughnut', any[], any> {
-  const data = buckets.map((b, i) => ({
-    label: b.key,
-    value: b.input_tokens + b.output_tokens,
-    color: PROVIDER_PALETTE[i % PROVIDER_PALETTE.length],
-  }))
-  return {
-    type: 'doughnut',
-    data: {
-      labels: data.map(d => d.label),
-      datasets: [{
-        data: data.map(d => d.value),
-        backgroundColor: data.map(d => d.color),
-        borderColor: '#1e293b',
-        borderWidth: 2,
-      }],
+    // 写入自定义 meta 供 plugin 读取
+    centerMeta: {
+      total: total.toLocaleString(),
+      label: '总计',
     },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      animation: false,
-      events: ['mousemove', 'mouseout', 'click', 'touchstart', 'touchmove'],
-      interaction: { mode: 'nearest', intersect: true },
-      hover: { mode: 'nearest', intersect: true },
-      plugins: {
-        legend: {
-          position: 'right',
-          labels: { color: COLORS.text, boxWidth: 12, font: { size: 11 } },
-        },
-        tooltip: {
-          backgroundColor: '#1e293b',
-          titleColor: COLORS.text,
-          bodyColor: COLORS.text,
-          borderColor: COLORS.border,
-          borderWidth: 1,
-          callbacks: {
-            label: (ctx) => {
-              const v = Number(ctx.parsed)
-              const total = data.reduce((s, d) => s + d.value, 0)
-              const pct = total > 0 ? ((v / total) * 100).toFixed(1) : '0'
-              return `${ctx.label}: ${v.toLocaleString()} (${pct}%)`
-            },
-          },
-        },
-      },
-    },
-  }
+  } as any
 }
