@@ -16,6 +16,8 @@
 "action.language" = "语言: %@";
 "status.stopping" = "◌ 正在停止...";
 "status.restarting" = "◌ 正在重启...";
+"quit.serviceStopFailed.title" = "服务停止失败";
+"quit.serviceStopFailed.body" = "后台服务未能正常退出，请查看日志后手动停止。菜单栏应用保持运行。";
 "status.starting" = "◌ 正在启动...";
 "status.loading" = "◌ 正在加载适配器...";
 "error.switchFailed" = "切换失败: %@";

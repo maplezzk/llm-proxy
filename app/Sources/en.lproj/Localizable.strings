@@ -16,6 +16,8 @@
 "action.language" = "Language: %@";
 "status.stopping" = "◌ Stopping...";
 "status.restarting" = "◌ Restarting...";
+"quit.serviceStopFailed.title" = "Service stop failed";
+"quit.serviceStopFailed.body" = "The background service failed to stop. Please check the logs and stop it manually. The menu bar app will stay running.";
 "status.starting" = "◌ Starting...";
 "status.loading" = "◌ Loading adapters...";
 "error.switchFailed" = "Switch failed: %@";
