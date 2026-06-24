@@ -11,8 +11,8 @@ import {
   LinearScale,
   Tooltip,
   Legend,
-  type ChartConfiguration,
 } from 'chart.js'
+import type { ChartConfiguration, ChartOptions } from 'chart.js'
 
 // Tree-shake 友好：只注册用到的 controllers + elements + plugins
 Chart.register(
@@ -62,7 +62,7 @@ const PROVIDER_PALETTE = [
 /**
  * 30 天趋势折线图配置：输入/输出/缓存命中/缓存创建 4 条线
  */
-export function buildTimelineConfig(timeline: TimelinePoint[]): ChartConfiguration<'line'> {
+export function buildTimelineConfig(timeline: TimelinePoint[]): ChartConfiguration<'line', any[], any> {
   const labels = timeline.map(p => p.date.slice(5))  // MM-DD
   return {
     type: 'line',
@@ -110,7 +110,10 @@ export function buildTimelineConfig(timeline: TimelinePoint[]): ChartConfigurati
     options: {
       responsive: true,
       maintainAspectRatio: false,
+      animation: false,
+      events: ['mousemove', 'mouseout', 'click', 'touchstart', 'touchmove'],
       interaction: { mode: 'index', intersect: false },
+      hover: { mode: 'index', intersect: false },
       plugins: {
         legend: {
           position: 'top',
@@ -154,7 +157,7 @@ export function buildTimelineConfig(timeline: TimelinePoint[]): ChartConfigurati
 export function buildBreakdownConfig(
   dimension: 'provider' | 'adapter' | 'model',
   buckets: UsageBucket[]
-): ChartConfiguration<'bar'> {
+): ChartConfiguration<'bar', any[], any> {
   const sorted = [...buckets].sort((a, b) => b.input_tokens - a.input_tokens).slice(0, 10)
   const labels = sorted.map(b => b.key)
   return {
@@ -188,6 +191,10 @@ export function buildBreakdownConfig(
       indexAxis: 'y',
       responsive: true,
       maintainAspectRatio: false,
+      animation: false,
+      events: ['mousemove', 'mouseout', 'click', 'touchstart', 'touchmove'],
+      interaction: { mode: 'nearest', intersect: false },
+      hover: { mode: 'nearest', intersect: false },
       plugins: {
         legend: {
           position: 'top',
@@ -263,6 +270,10 @@ export function buildBreakdownPieConfig(today: {
     options: {
       responsive: true,
       maintainAspectRatio: false,
+      animation: false,
+      events: ['mousemove', 'mouseout', 'click', 'touchstart', 'touchmove'],
+      interaction: { mode: 'nearest', intersect: true },
+      hover: { mode: 'nearest', intersect: true },
       plugins: {
         legend: {
           position: 'right',
@@ -291,7 +302,7 @@ export function buildBreakdownPieConfig(today: {
 /**
  * 按 provider 分组的环形图（每个供应商一个色块）
  */
-export function buildProviderPieConfig(buckets: UsageBucket[]): ChartConfiguration<'doughnut'> {
+export function buildProviderPieConfig(buckets: UsageBucket[]): ChartConfiguration<'doughnut', any[], any> {
   const data = buckets.map((b, i) => ({
     label: b.key,
     value: b.input_tokens + b.output_tokens,
@@ -311,6 +322,10 @@ export function buildProviderPieConfig(buckets: UsageBucket[]): ChartConfigurati
     options: {
       responsive: true,
       maintainAspectRatio: false,
+      animation: false,
+      events: ['mousemove', 'mouseout', 'click', 'touchstart', 'touchmove'],
+      interaction: { mode: 'nearest', intersect: true },
+      hover: { mode: 'nearest', intersect: true },
       plugins: {
         legend: {
           position: 'right',
