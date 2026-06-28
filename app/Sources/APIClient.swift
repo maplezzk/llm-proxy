@@ -214,14 +214,12 @@ class APIClient {
         return resp.data ?? []
     }
 
-    /// 按维度分桶查询
-    /// - Parameters:
-    ///   - dimension: provider / adapter / model
-    ///   - range: today / 7d / 30d / all
-    func fetchTokenBreakdown(dimension: String, range: String = "today", startDate: String? = nil, endDate: String? = nil) async throws -> [UsageBucket] {
-        var query = "dimension=\(dimension)&range=\(range)"
+    /// 按维度分桶查询，与 token-stats/timeline 共用同一对 startDate/endDate
+    /// - Parameter dimension: provider / adapter / model
+    func fetchTokenBreakdown(dimension: String, startDate: String? = nil, endDate: String? = nil) async throws -> [UsageBucket] {
+        var query = "dimension=\(dimension)"
         if let s = startDate, let e = endDate {
-            query = "dimension=\(dimension)&startDate=\(s)&endDate=\(e)"
+            query += "&startDate=\(s)&endDate=\(e)"
         }
         let url = URL(string: "\(baseURL)/admin/token-stats/breakdown?\(query)")!
         let (data, _) = try await URLSession.shared.data(from: url)

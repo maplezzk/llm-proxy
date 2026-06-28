@@ -162,7 +162,7 @@ describe('proxy/forwardRequest → UsageStore 集成', () => {
       adapterName: 'my-tool',  // 关键：适配器名称
     }, res)
 
-    const byAdapter = store.getBreakdown('adapter', 'today')
+    const byAdapter = store.getBreakdown('adapter', { range: 'today' })
     assert.strictEqual(byAdapter.length, 1)
     assert.strictEqual(byAdapter[0].key, 'my-tool')
     assert.strictEqual(byAdapter[0].input_tokens, 10)
@@ -216,7 +216,7 @@ describe('proxy/forwardRequest → UsageStore 集成', () => {
       adapterName: 'tool-a',
     }, makeMockRes())
 
-    const byAdapter = store.getBreakdown('adapter', 'today')
+    const byAdapter = store.getBreakdown('adapter', { range: 'today' })
     assert.strictEqual(byAdapter.length, 2)
     // 排序：input_tokens DESC。tool-a: 200, (direct proxy): 100
     assert.strictEqual(byAdapter[0].key, 'tool-a')

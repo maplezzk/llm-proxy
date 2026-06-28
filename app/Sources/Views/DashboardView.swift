@@ -16,7 +16,7 @@ struct DashboardView: View {
                 } else {
                     statsGridSection
                     trendChartCard
-                    bottomRowSection
+                    breakdownCard
                     storageCard
                 }
             }
@@ -245,9 +245,17 @@ struct DashboardView: View {
         ])
         .chartLegend(position: .top, alignment: .leading)
         .chartXAxis {
-            AxisMarks(values: .automatic(desiredCount: 8)) { value in
+            AxisMarks(values: .stride(by: .day, count: timelineAxisStride)) { value in
                 AxisGridLine()
-                AxisValueLabel { if let d = value.as(String.self) { Text(d).font(.caption2) } }
+                AxisValueLabel {
+                    if let d = value.as(String.self) {
+                        Text(d)
+                            .font(.caption2)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.7)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
             }
         }
         .chartYAxis {
@@ -258,12 +266,14 @@ struct DashboardView: View {
         }
     }
 
-    // MARK: - Bottom Row（柱状 + 环形）
-    private var bottomRowSection: some View {
-        HStack(alignment: .top, spacing: 14) {
-            breakdownCard.frame(maxWidth: .infinity)
-            doughnutCard.frame(maxWidth: .infinity)
-        }
+    // MARK: - 趋势图 X 轴步长 — 数据多时按天取间隔，避免标签重叠
+    /// 总跨度超过 desiredAxisCount 天时按 day stride，否则按 hour（不实际出现）也行。
+    /// 避免取 0/负数。
+    private var timelineAxisStride: Int {
+        let days = max(1, Calendar.current.dateComponents([.day], from: viewModel.dateStart, to: viewModel.dateEnd).day ?? 1)
+        // 目标轴点数 ~6 个：7天→1天，30天→5天，90天→15天，180天→30天
+        let stride = (days + 5) / 6
+        return max(1, min(stride, days))
     }
 
     // 分维度柱状图
@@ -280,7 +290,6 @@ struct DashboardView: View {
 
             HStack(spacing: 6) {
                 dimensionPicker
-                rangePicker
                 Spacer()
             }
             .padding(.horizontal, 14)
@@ -345,78 +354,6 @@ struct DashboardView: View {
         .onChange(of: viewModel.breakdownDimension) { _, _ in
             Task { await viewModel.setBreakdownDimension(viewModel.breakdownDimension) }
         }
-    }
-
-    private var rangePicker: some View {
-        Picker("", selection: $viewModel.breakdownRange) {
-            Text(loc("dashboard.usage.rangeToday")).tag("today")
-            Text(loc("dashboard.usage.range7d")).tag("7d")
-            Text(loc("dashboard.usage.range30d")).tag("30d")
-            Text(loc("dashboard.usage.rangeAll")).tag("all")
-        }
-        .pickerStyle(.menu).controlSize(.small).frame(width: 80)
-        .onChange(of: viewModel.breakdownRange) { _, _ in
-            Task { await viewModel.setBreakdownRange(viewModel.breakdownRange) }
-        }
-    }
-
-    // 今日结构环形图
-    private var doughnutCard: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 8) {
-                Image(systemName: "chart.pie.fill").foregroundColor(.pink)
-                Text(loc("dashboard.usage.pieTitle")).font(.headline)
-                Spacer()
-            }
-            .padding(.horizontal, 14)
-            .padding(.top, 14)
-            .padding(.bottom, 2)
-
-            Text(loc("dashboard.usage.pieDesc"))
-                .font(.caption).foregroundColor(.secondary)
-                .padding(.horizontal, 14).padding(.bottom, 10)
-
-            Divider()
-
-            if let today = viewModel.tokenStats?.today,
-               today.input_tokens + today.output_tokens + today.cache_read_input_tokens + today.cache_creation_input_tokens > 0 {
-                let total = today.input_tokens + today.output_tokens + today.cache_read_input_tokens + today.cache_creation_input_tokens
-                ZStack {
-                    Chart {
-                        SectorMark(angle: .value("Input", today.input_tokens), innerRadius: .ratio(0.58), angularInset: 1.5)
-                            .foregroundStyle(by: .value("Type", loc("dashboard.usage.seriesInput")))
-                        SectorMark(angle: .value("Output", today.output_tokens), innerRadius: .ratio(0.58), angularInset: 1.5)
-                            .foregroundStyle(by: .value("Type", loc("dashboard.usage.seriesOutput")))
-                        SectorMark(angle: .value("Cache Read", today.cache_read_input_tokens), innerRadius: .ratio(0.58), angularInset: 1.5)
-                            .foregroundStyle(by: .value("Type", loc("dashboard.usage.seriesCacheRead")))
-                        SectorMark(angle: .value("Cache Create", today.cache_creation_input_tokens), innerRadius: .ratio(0.58), angularInset: 1.5)
-                            .foregroundStyle(by: .value("Type", loc("dashboard.usage.seriesCacheCreate")))
-                    }
-                    .chartForegroundStyleScale([
-                        loc("dashboard.usage.seriesInput"): .blue,
-                        loc("dashboard.usage.seriesOutput"): .purple,
-                        loc("dashboard.usage.seriesCacheRead"): .green,
-                        loc("dashboard.usage.seriesCacheCreate"): .orange,
-                    ])
-                    .chartLegend(position: .trailing, alignment: .center, spacing: 6)
-
-                    VStack(spacing: 2) {
-                        Text(loc("dashboard.usage.totalLabel"))
-                            .font(.caption2).foregroundColor(.secondary)
-                        Text(DashboardViewModel.fmtNum(total))
-                            .font(.title3).fontWeight(.bold)
-                            .fontDesign(.rounded).monospacedDigit()
-                    }
-                }
-                .frame(height: 240).padding(14)
-            } else {
-                Text(loc("dashboard.empty"))
-                    .foregroundColor(.secondary)
-                    .frame(maxWidth: .infinity, minHeight: 200).padding(.top, 20)
-            }
-        }
-        .background(RoundedRectangle(cornerRadius: 12).fill(Color(nsColor: .controlBackgroundColor)))
-        .shadow(color: .black.opacity(0.04), radius: 4, y: 2)
     }
 
     // MARK: - Storage Card

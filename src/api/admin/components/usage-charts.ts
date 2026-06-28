@@ -5,8 +5,6 @@ import {
   PointElement,
   BarController,
   BarElement,
-  DoughnutController,
-  ArcElement,
   CategoryScale,
   LinearScale,
   Tooltip,
@@ -17,7 +15,6 @@ import {
 Chart.register(
   LineController, LineElement, PointElement,
   BarController, BarElement,
-  DoughnutController, ArcElement,
   CategoryScale, LinearScale,
   Tooltip, Legend, Filler,
 )
@@ -173,80 +170,4 @@ export function buildBreakdownConfig(
   }
 }
 
-// =============================================
-// Doughnut center-text plugin
-// =============================================
-export const doughnutCenterPlugin = {
-  id: 'doughnutCenter',
-  afterDraw(chart: Chart) {
-    const { ctx, chartArea: { width, height, top, left } } = chart
-    const meta = (chart as any).centerMeta
-    if (!meta) return
-    ctx.save()
-    ctx.textAlign = 'center'
-    ctx.textBaseline = 'middle'
-    // 主标题
-    const cx = left + width / 2
-    const cy = top + height / 2
-    ctx.font = 'bold 18px -apple-system,BlinkMacSystemFont,sans-serif'
-    ctx.fillStyle = C.text
-    ctx.fillText(meta.total, cx, cy - 6)
-    // 副标题
-    ctx.font = '11px -apple-system,BlinkMacSystemFont,sans-serif'
-    ctx.fillStyle = C.textMuted
-    ctx.fillText(meta.label, cx, cy + 14)
-    ctx.restore()
-  },
-}
 
-Chart.register(doughnutCenterPlugin)
-
-/**
- * 环形图 — input/output/cache read/cache create，中心文字
- */
-export function buildBreakdownPieConfig(today: {
-  input_tokens: number; output_tokens: number
-  cache_read_input_tokens: number; cache_creation_input_tokens: number
-}): any {
-  const data = [
-    { label: 'Input', value: today.input_tokens, color: C.input },
-    { label: 'Output', value: today.output_tokens, color: C.output },
-    { label: 'Cache Read', value: today.cache_read_input_tokens, color: C.cacheRead },
-    { label: 'Cache Create', value: today.cache_creation_input_tokens, color: C.cacheCreate },
-  ]
-  const total = data.reduce((s, d) => s + d.value, 0)
-  return {
-    type: 'doughnut',
-    data: {
-      labels: data.map(d => d.label),
-      datasets: [{
-        data: data.map(d => d.value),
-        backgroundColor: data.map(d => d.color),
-        borderColor: '#1e293b', borderWidth: 2,
-      }],
-    },
-    options: {
-      ...OPTS,
-      cutout: '65%',
-      plugins: {
-        legend: { position: 'right', labels: { color: C.text, boxWidth: 12, font: { size: 11 } } },
-        tooltip: {
-          backgroundColor: '#1e293b', titleColor: C.text, bodyColor: C.text,
-          borderColor: C.border, borderWidth: 1,
-          callbacks: {
-            label: (ctx: any) => {
-              const v = Number(ctx.parsed)
-              const pct = total > 0 ? ((v / total) * 100).toFixed(1) : '0'
-              return `${ctx.label}: ${v.toLocaleString()} (${pct}%)`
-            },
-          },
-        },
-      },
-    },
-    // 写入自定义 meta 供 plugin 读取
-    centerMeta: {
-      total: total.toLocaleString(),
-      label: '总计',
-    },
-  } as any
-}

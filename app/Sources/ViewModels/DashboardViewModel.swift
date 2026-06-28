@@ -22,7 +22,6 @@ final class DashboardViewModel: ObservableObject {
     @Published var dateStart: Date
     @Published var dateEnd: Date
     @Published var breakdownDimension: String = "provider"
-    @Published var breakdownRange: String = "7d"
 
     /// 单调递增的请求序号，丢弃过期的并发响应
     private var chartRequestSeq: UInt64 = 0
@@ -104,7 +103,7 @@ final class DashboardViewModel: ObservableObject {
 
         let tlDays = max(1, Calendar.current.dateComponents([.day], from: dateStart, to: dateEnd).day ?? 30)
         let timelineTask = Task { try await client.fetchTokenTimeline(days: tlDays, startDate: dateStartStr, endDate: dateEndStr) }
-        let breakdownTask = Task { try await client.fetchTokenBreakdown(dimension: breakdownDimension, range: breakdownRange, startDate: dateStartStr, endDate: dateEndStr) }
+        let breakdownTask = Task { try await client.fetchTokenBreakdown(dimension: breakdownDimension, startDate: dateStartStr, endDate: dateEndStr) }
 
         if Task.isCancelled { return }
         let newTimeline = try? await timelineTask.value
@@ -144,12 +143,6 @@ final class DashboardViewModel: ObservableObject {
     @MainActor
     func setBreakdownDimension(_ dim: String) {
         breakdownDimension = dim
-        triggerChartReload()
-    }
-
-    @MainActor
-    func setBreakdownRange(_ range: String) {
-        breakdownRange = range
         triggerChartReload()
     }
 

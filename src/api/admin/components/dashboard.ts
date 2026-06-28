@@ -3,7 +3,6 @@ import { Chart } from 'chart.js'
 import {
   buildTimelineConfig,
   buildBreakdownConfig,
-  buildBreakdownPieConfig,
   type TimelinePoint,
   type UsageBucket,
 } from './usage-charts.js'
@@ -54,14 +53,12 @@ export function dashboardPage() {
     loadingCharts: false,
     cleaning: false,
 
-    // ──── 维度 / 范围 ────
+    // ──── 维度 ────
     breakdownDimension: 'provider' as 'provider' | 'adapter' | 'model',
-    breakdownRange: 'today' as 'today' | '7d' | '30d' | 'all',
 
     // ──── Chart 实例引用 ────
     _tl: null as Chart | null,
     _bd: null as Chart | null,
-    _pie: null as Chart | null,
     _poll: null as ReturnType<typeof setInterval> | null,
 
     // ═══════════════════════════════════════
@@ -76,7 +73,6 @@ export function dashboardPage() {
     destroy() {
       this._tl?.destroy(); this._tl = null
       this._bd?.destroy(); this._bd = null
-      this._pie?.destroy(); this._pie = null
       if (this._poll) { clearInterval(this._poll); this._poll = null }
     },
 
@@ -92,20 +88,15 @@ export function dashboardPage() {
     async loadCharts() {
       this.loadingCharts = true
 
-      // 构建 timeline URL
+      // timeline + breakdown 共用同一对 startDate/endDate（预设天数会同步到 dateStart/dateEnd）
       let tlUrl: string
+      let bdUrl: string
       if (this.presetDays > 0) {
         tlUrl = `/admin/token-stats/timeline?days=${this.presetDays}`
+        bdUrl = `/admin/token-stats/breakdown?dimension=${this.breakdownDimension}&range=${this.presetDays}d`
       } else {
         tlUrl = `/admin/token-stats/timeline?startDate=${this.dateStart}&endDate=${this.dateEnd}`
-      }
-
-      // 构建 breakdown URL
-      let bdUrl: string
-      if (this.breakdownRange === 'all') {
-        bdUrl = `/admin/token-stats/breakdown?dimension=${this.breakdownDimension}&range=all`
-      } else {
-        bdUrl = `/admin/token-stats/breakdown?dimension=${this.breakdownDimension}&range=${this.breakdownRange}`
+        bdUrl = `/admin/token-stats/breakdown?dimension=${this.breakdownDimension}&startDate=${this.dateStart}&endDate=${this.dateEnd}`
       }
 
       const [tlRes, bdRes, dbRes] = await Promise.all([
@@ -136,23 +127,12 @@ export function dashboardPage() {
         Chart.getChart(bdCanvas)?.destroy()
         this._bd = new Chart(bdCanvas, buildBreakdownConfig(this.breakdownDimension, this.breakdown))
       }
-      const pieCanvas = document.getElementById('chart-pie') as HTMLCanvasElement | null
-      if (pieCanvas && !this._pie) {
-        Chart.getChart(pieCanvas)?.destroy()
-        const today = store().tokenStats?.today
-        const cfg = (today && (today.input_tokens + today.output_tokens) > 0)
-          ? buildBreakdownPieConfig(today)
-          : buildBreakdownPieConfig({ input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 })
-        this._pie = new Chart(pieCanvas, cfg)
-      }
     },
 
     renderCharts() {
-      const today = store().tokenStats?.today
       this.ensureCharts()
       this._updateTimeline()
       this._updateBreakdown()
-      this._updatePie(today)
     },
 
     _updateTimeline() {
@@ -185,29 +165,6 @@ export function dashboardPage() {
       try { ch.update('none') } catch { this._bd = null }
     },
 
-    _updatePie(today: any) {
-      const ch = this._pie
-      const canvas = ch?.canvas as HTMLCanvasElement | undefined
-      if (!ch || !canvas?.isConnected) { this._pie = null; this.ensureCharts(); return }
-      let cfg: any
-      if (today && (today.input_tokens + today.output_tokens) > 0) {
-        cfg = buildBreakdownPieConfig(today)
-      } else {
-        cfg = buildBreakdownPieConfig({ input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 })
-      }
-      ch.data.labels = cfg.data.labels
-      ch.data.datasets.forEach((ds: any, i: number) => {
-        const nd = cfg.data.datasets[i]
-        if (!nd) return
-        ds.data = nd.data
-        ds.backgroundColor = nd.backgroundColor
-      })
-      // 更新中心文字
-      const meta = { ...cfg.centerMeta, label: t('admin.dashboard.total') }
-      ;(ch as any).centerMeta = meta
-      try { ch.update('none') } catch { this._pie = null }
-    },
-
     // ═══════════════════════════════════════
     // 用户操作
     // ═══════════════════════════════════════
@@ -229,11 +186,6 @@ export function dashboardPage() {
 
     setBreakdownDim(dim: string) {
       this.breakdownDimension = dim as any
-      this.loadCharts()
-    },
-
-    setBreakdownRange(range: string) {
-      this.breakdownRange = range as any
       this.loadCharts()
     },
 
@@ -288,8 +240,7 @@ export function dashboardPage() {
     },
 
     get dimOptions() { return ['provider', 'adapter', 'model'].map(v => ({ v, l: t(`admin.dashboard.usage.dim${v[0].toUpperCase() + v.slice(1)}`) })) },
-    get rangeOptions() { return ['today', '7d', '30d', 'all'].map(v => ({ v, l: t(`admin.dashboard.usage.range${v === 'all' ? 'All' : v === '7d' ? '7d' : v === '30d' ? '30d' : 'Today'}`) })) },
-    get presets() { return [1, 7, 30, 90].map(v => ({ v, l: v === 1 ? t('admin.dashboard.usage.rangeToday') : t(`admin.dashboard.usage.days${v}`) })) },
+    get presets() { return [1, 7, 30, 90].map(v => ({ v, l: t(`admin.dashboard.usage.days${v}`) })) },
 
     fmtNum, fmtBytes,
   }

@@ -403,38 +403,19 @@ tbody tr:hover td { background: #f8f9fb; }
         </div>
       </div>
 
-      <!-- ── 下排：柱状图 + 环形图 ── -->
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:14px">
-        <!-- 分维度对比 -->
-        <div class="dash-card">
-          <div class="dash-card-title">
-            <span class="dc-icon">📈</span>
-            <h3 x-text="$t('admin.dashboard.usage.breakdownTitle')"></h3>
-          </div>
-          <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px">
-            <template x-for="opt in dimOptions" :key="opt.v">
-              <button class="filter-btn" :class="{active: breakdownDimension === opt.v}" @click="setBreakdownDim(opt.v)" x-text="opt.l"></button>
-            </template>
-            <span style="border-left:1px solid var(--border);margin:0 2px"></span>
-            <template x-for="opt in rangeOptions" :key="opt.v">
-              <button class="filter-btn" :class="{active: breakdownRange === opt.v}" @click="setBreakdownRange(opt.v)" x-text="opt.l"></button>
-            </template>
-          </div>
-          <div style="position:relative;height:280px">
-            <canvas id="chart-breakdown"></canvas>
-          </div>
+      <!-- ── 分维度对比（全宽，与趋势图共用同一日期范围）── -->
+      <div class="dash-card" style="margin-top:14px">
+        <div class="dash-card-title">
+          <span class="dc-icon">📈</span>
+          <h3 x-text="$t('admin.dashboard.usage.breakdownTitle')"></h3>
         </div>
-
-        <!-- 今日结构占比 -->
-        <div class="dash-card">
-          <div class="dash-card-title">
-            <span class="dc-icon">🥧</span>
-            <h3 x-text="$t('admin.dashboard.usage.pieTitle')"></h3>
-          </div>
-          <div class="dash-card-sub" x-text="$t('admin.dashboard.usage.pieDesc')"></div>
-          <div style="position:relative;height:280px;margin-top:8px">
-            <canvas id="chart-pie"></canvas>
-          </div>
+        <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px">
+          <template x-for="opt in dimOptions" :key="opt.v">
+            <button class="filter-btn" :class="{active: breakdownDimension === opt.v}" @click="setBreakdownDim(opt.v)" x-text="opt.l"></button>
+          </template>
+        </div>
+        <div style="position:relative;height:280px">
+          <canvas id="chart-breakdown"></canvas>
         </div>
       </div>
 
