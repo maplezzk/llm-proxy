@@ -236,6 +236,8 @@ export function buildBreakdownConfig(
           grid: { color: C.border },
         },
         y: {
+          // 关键：显式设 category 轴。否则 Chart.js 默认 linear，Y tick 走索引 0..N
+          type: 'category',
           stacked: true,
           ticks: {
             color: C.textMuted, font: { size: 11 },

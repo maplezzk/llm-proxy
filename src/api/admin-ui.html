@@ -462,6 +462,7 @@ tbody tr:hover td { background: #f8f9fb; }
 
     <!-- Settings -->
     <div class="page" id="page-settings"
+         x-data
          :class="{ active: $store.app.currentTab === 'settings' }">
       <!-- ── 代理 API Key ── -->
       <div class="dash-card" x-data="proxyKeyForm">

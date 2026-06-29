@@ -117,15 +117,20 @@ export function dashboardPage() {
     // Chart 管理
     // ═══════════════════════════════════════
     ensureCharts() {
-      const tlCanvas = document.getElementById('chart-timeline') as HTMLCanvasElement | null
-      if (tlCanvas && !this._tl) {
-        Chart.getChart(tlCanvas)?.destroy()
-        this._tl = new Chart(tlCanvas, buildTimelineConfig(this.timeline))
+      // 等数据到达再创建 chart：避免空 data → Chart.js 锁定 Y scale 0-1，后续填充数据后 Y scale 不会重算
+      if (this.timeline.length > 0 && !this._tl) {
+        const tlCanvas = document.getElementById('chart-timeline') as HTMLCanvasElement | null
+        if (tlCanvas) {
+          Chart.getChart(tlCanvas)?.destroy()
+          this._tl = new Chart(tlCanvas, buildTimelineConfig(this.timeline))
+        }
       }
-      const bdCanvas = document.getElementById('chart-breakdown') as HTMLCanvasElement | null
-      if (bdCanvas && !this._bd) {
-        Chart.getChart(bdCanvas)?.destroy()
-        this._bd = new Chart(bdCanvas, buildBreakdownConfig(this.breakdownDimension, this.breakdown))
+      if (this.breakdown.length > 0 && !this._bd) {
+        const bdCanvas = document.getElementById('chart-breakdown') as HTMLCanvasElement | null
+        if (bdCanvas) {
+          Chart.getChart(bdCanvas)?.destroy()
+          this._bd = new Chart(bdCanvas, buildBreakdownConfig(this.breakdownDimension, this.breakdown))
+        }
       }
     },
 
@@ -147,6 +152,11 @@ export function dashboardPage() {
         ds.data = nd.data
         ds.pointRadius = nd.pointRadius
       })
+      // 同步 Y scale 配置（覆盖旧 chart 的 suggestedMax，避免 Y scale 0-1 锁定）
+      if (cfg.options?.scales?.y) {
+        ch.options.scales = ch.options.scales ?? {}
+        ch.options.scales.y = { ...ch.options.scales.y, ...cfg.options.scales.y }
+      }
       try { ch.update('none') } catch { this._tl = null }
     },
 
@@ -162,6 +172,11 @@ export function dashboardPage() {
         ds.data = nd.data
         ds.backgroundColor = nd.backgroundColor
       })
+      // 同步 X scale 配置（X 是 breakdown 数值轴，兜底）
+      if (cfg.options?.scales?.x) {
+        ch.options.scales = ch.options.scales ?? {}
+        ch.options.scales.x = { ...ch.options.scales.x, ...cfg.options.scales.x }
+      }
       try { ch.update('none') } catch { this._bd = null }
     },
 
