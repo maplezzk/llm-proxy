@@ -222,6 +222,18 @@ export function dashboardPage() {
       ]
     },
 
+    /** 各图表的空态文案供 HTML 模板使用 */
+    get timelineEmpty() {
+      const preset = this.presetDays > 0 ? this.presetDays : null
+      const range = preset ? `${preset} ${t('admin.dashboard.usage.daysUnit')}` : `${this.dateStart} ~ ${this.dateEnd}`
+      return { icon: '📉', title: t('admin.dashboard.usage.emptyTitle'), desc: t('admin.dashboard.usage.emptyDesc', { range }) }
+    },
+    get breakdownEmpty() {
+      const preset = this.presetDays > 0 ? this.presetDays : null
+      const range = preset ? `${preset} ${t('admin.dashboard.usage.daysUnit')}` : `${this.dateStart} ~ ${this.dateEnd}`
+      return { icon: '📊', title: t('admin.dashboard.usage.emptyTitle'), desc: t('admin.dashboard.usage.emptyDesc', { range }) }
+    },
+
     get tokenCards() {
       const ts = store().tokenStats?.today
       if (!ts) return []

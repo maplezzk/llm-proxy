@@ -34,11 +34,36 @@ struct TimelinePoint: Codable, Identifiable {
     let request_count: Int
 
     var id: String { date }
-    /// MM-DD 短格式供 X 轴使用
+    /// MM-DD 短格式供 X 轴使用（保留供其他场景）
     var shortDate: String {
         if date.count >= 10 { return String(date.suffix(5)) }
         return date
     }
+    /// Date 类型供 SwiftUI Charts 使用（X 轴按时间跨度均布）
+    var dateAsDate: Date {
+        Self.isoDayFormatter.date(from: date) ?? Date()
+    }
+    /// 按是否跨年返回 X 轴 label：跨年显示 YY-MM-DD，否则 MM-DD
+    func axisLabel(showYear: Bool) -> String {
+        let d = dateAsDate
+        let cal = Calendar.current
+        let m = cal.component(.month, from: d)
+        let day = cal.component(.day, from: d)
+        let mmdd = String(format: "%02d-%02d", m, day)
+        if showYear {
+            let y = cal.component(.year, from: d) % 100
+            return String(format: "%02d-%@", y, mmdd)
+        }
+        return mmdd
+    }
+
+    private static let isoDayFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.timeZone = TimeZone.current
+        return f
+    }()
 }
 
 /// 维度分桶（provider/adapter/model）

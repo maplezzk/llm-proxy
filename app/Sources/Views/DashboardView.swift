@@ -7,6 +7,8 @@ struct DashboardView: View {
     @State private var showCleanupConfirm = false
     @State private var localDateStart: Date = Date()
     @State private var localDateEnd: Date = Date()
+    @State private var selectedTimelineDate: Date? = nil
+    @State private var selectedBreakdownKey: String? = nil
 
     var body: some View {
         ScrollView {
@@ -113,7 +115,7 @@ struct DashboardView: View {
                     .lineLimit(1)
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, minHeight: 78, alignment: .leading)
         .padding(12)
         .background(RoundedRectangle(cornerRadius: 10).fill(Color(nsColor: .controlBackgroundColor)))
         .overlay(alignment: .top) {
@@ -206,7 +208,7 @@ struct DashboardView: View {
         Chart {
             ForEach(viewModel.timeline) { point in
                 LineMark(
-                    x: .value("Date", point.shortDate),
+                    x: .value("Date", point.dateAsDate),
                     y: .value("Input", point.input_tokens)
                 )
                 .foregroundStyle(by: .value("Series", loc("dashboard.usage.seriesInput")))
@@ -214,7 +216,7 @@ struct DashboardView: View {
             }
             ForEach(viewModel.timeline) { point in
                 LineMark(
-                    x: .value("Date", point.shortDate),
+                    x: .value("Date", point.dateAsDate),
                     y: .value("Output", point.output_tokens)
                 )
                 .foregroundStyle(by: .value("Series", loc("dashboard.usage.seriesOutput")))
@@ -222,7 +224,7 @@ struct DashboardView: View {
             }
             ForEach(viewModel.timeline) { point in
                 LineMark(
-                    x: .value("Date", point.shortDate),
+                    x: .value("Date", point.dateAsDate),
                     y: .value("Cache Read", point.cache_read_input_tokens)
                 )
                 .foregroundStyle(by: .value("Series", loc("dashboard.usage.seriesCacheRead")))
@@ -230,11 +232,45 @@ struct DashboardView: View {
             }
             ForEach(viewModel.timeline) { point in
                 LineMark(
-                    x: .value("Date", point.shortDate),
+                    x: .value("Date", point.dateAsDate),
                     y: .value("Cache Create", point.cache_creation_input_tokens)
                 )
                 .foregroundStyle(by: .value("Series", loc("dashboard.usage.seriesCacheCreate")))
                 .interpolationMethod(.monotone)
+            }
+            // 选中日期画垂直虚线 + 高亮点
+            if let sel = selectedTimelineDate,
+               let p = viewModel.timeline.first(where: { Calendar.current.isDate($0.dateAsDate, inSameDayAs: sel) }) {
+                RuleMark(x: .value("Selected", p.dateAsDate))
+                    .foregroundStyle(.secondary.opacity(0.5))
+                    .lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
+                    .annotation(position: .top, alignment: .center, spacing: 0) {
+                        EmptyView()
+                    }
+                PointMark(
+                    x: .value("Date", p.dateAsDate),
+                    y: .value("Input", p.input_tokens)
+                )
+                .symbolSize(80)
+                .foregroundStyle(.blue)
+                PointMark(
+                    x: .value("Date", p.dateAsDate),
+                    y: .value("Output", p.output_tokens)
+                )
+                .symbolSize(80)
+                .foregroundStyle(.purple)
+                PointMark(
+                    x: .value("Date", p.dateAsDate),
+                    y: .value("Cache Read", p.cache_read_input_tokens)
+                )
+                .symbolSize(60)
+                .foregroundStyle(.green)
+                PointMark(
+                    x: .value("Date", p.dateAsDate),
+                    y: .value("Cache Create", p.cache_creation_input_tokens)
+                )
+                .symbolSize(60)
+                .foregroundStyle(.orange)
             }
         }
         .chartForegroundStyleScale([
@@ -244,12 +280,13 @@ struct DashboardView: View {
             loc("dashboard.usage.seriesCacheCreate"): .orange,
         ])
         .chartLegend(position: .top, alignment: .leading)
+        .chartXSelection(value: $selectedTimelineDate)
         .chartXAxis {
             AxisMarks(values: .stride(by: .day, count: timelineAxisStride)) { value in
                 AxisGridLine()
                 AxisValueLabel {
-                    if let d = value.as(String.self) {
-                        Text(d)
+                    if let d = value.as(Date.self) {
+                        Text(axisLabel(for: d))
                             .font(.caption2)
                             .lineLimit(1)
                             .minimumScaleFactor(0.7)
@@ -264,16 +301,52 @@ struct DashboardView: View {
                 AxisValueLabel { if let n = value.as(Double.self) { Text(DashboardViewModel.fmtNum(Int(n))).font(.caption2) } }
             }
         }
+        .chartOverlay { proxy in
+            if let sel = selectedTimelineDate,
+               let p = viewModel.timeline.first(where: { Calendar.current.isDate($0.dateAsDate, inSameDayAs: sel) }) {
+                GeometryReader { geo in
+                    if let plotFrame = proxy.plotFrame {
+                        let xPos = proxy.position(forX: p.dateAsDate) ?? 0
+                        let originX = geo[plotFrame].origin.x
+                        let tooltipWidth: CGFloat = 200
+                        let tooltipHeight: CGFloat = 116
+                        // 趋近边缘时左/右贴齐
+                        let leadingX = min(max(originX + xPos - tooltipWidth / 2, 4), geo.size.width - tooltipWidth - 4)
+                        let topY: CGFloat = 8
+                        TimelineTooltip(point: p, showsYear: showsYear)
+                            .frame(width: tooltipWidth, height: tooltipHeight)
+                            .offset(x: leadingX, y: topY)
+                            .allowsHitTesting(false)
+                    }
+                }
+            }
+        }
     }
 
-    // MARK: - 趋势图 X 轴步长 — 数据多时按天取间隔，避免标签重叠
-    /// 总跨度超过 desiredAxisCount 天时按 day stride，否则按 hour（不实际出现）也行。
-    /// 避免取 0/负数。
+    /// 趋势图 X 轴步长 — 数据多时按天取间隔，避免标签重叠
     private var timelineAxisStride: Int {
         let days = max(1, Calendar.current.dateComponents([.day], from: viewModel.dateStart, to: viewModel.dateEnd).day ?? 1)
-        // 目标轴点数 ~6 个：7天→1天，30天→5天，90天→15天，180天→30天
         let stride = (days + 5) / 6
         return max(1, min(stride, days))
+    }
+
+    /// 日期范围是否跨年（决定 X 轴是否显示年份）
+    private var showsYear: Bool {
+        let y1 = Calendar.current.component(.year, from: viewModel.dateStart)
+        let y2 = Calendar.current.component(.year, from: viewModel.dateEnd)
+        return y1 != y2
+    }
+
+    private func axisLabel(for date: Date) -> String {
+        let cal = Calendar.current
+        let m = cal.component(.month, from: date)
+        let day = cal.component(.day, from: date)
+        let mmdd = String(format: "%02d-%02d", m, day)
+        if showsYear {
+            let y = cal.component(.year, from: date) % 100
+            return String(format: "%02d-%@", y, mmdd)
+        }
+        return mmdd
     }
 
     // 分维度柱状图
@@ -330,10 +403,32 @@ struct DashboardView: View {
                     loc("dashboard.usage.seriesCacheRead"): .green,
                 ])
                 .chartLegend(position: .top, alignment: .leading)
+                .chartXSelection(value: $selectedBreakdownKey)
                 .chartXAxis {
                     AxisMarks(position: .bottom) { value in
                         AxisGridLine()
                         AxisValueLabel { if let n = value.as(Double.self) { Text(DashboardViewModel.fmtNum(Int(n))).font(.caption2) } }
+                    }
+                }
+                .chartOverlay { proxy in
+                    if let key = selectedBreakdownKey,
+                       let bucket = viewModel.breakdown.first(where: { $0.key == key }) {
+                        GeometryReader { geo in
+                            if let plotFrame = proxy.plotFrame,
+                               let yPos = proxy.position(forY: bucket.key) {
+                                let originY = geo[plotFrame].origin.y
+                                let tooltipWidth: CGFloat = 220
+                                let tooltipHeight: CGFloat = 100
+                                // 默认靠右贴齐，接近右边缘时反向
+                                let baseX = geo[plotFrame].maxX - tooltipWidth - 8
+                                let leadingX = max(baseX, 8)
+                                let topY = min(max(originY + yPos - tooltipHeight / 2, 4), geo.size.height - tooltipHeight - 4)
+                                BreakdownTooltip(bucket: bucket)
+                                    .frame(width: tooltipWidth, height: tooltipHeight)
+                                    .offset(x: leadingX, y: topY)
+                                    .allowsHitTesting(false)
+                            }
+                        }
                     }
                 }
                 .frame(height: 240)
@@ -380,5 +475,117 @@ struct DashboardView: View {
         .padding(16)
         .background(RoundedRectangle(cornerRadius: 12).fill(Color(nsColor: .controlBackgroundColor)))
         .shadow(color: .black.opacity(0.04), radius: 4, y: 2)
+    }
+}
+
+// MARK: - 趋势图 hover tooltip
+struct TimelineTooltip: View {
+    let point: TimelinePoint
+    let showsYear: Bool
+
+    private var totalTokens: Int {
+        point.input_tokens + point.output_tokens + point.cache_read_input_tokens + point.cache_creation_input_tokens
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(point.axisLabel(showYear: showsYear))
+                .font(.caption).fontWeight(.semibold)
+                .foregroundColor(.secondary)
+            HStack(spacing: 6) {
+                Circle().fill(Color.blue).frame(width: 6, height: 6)
+                Text("\(DashboardViewModel.fmtNum(point.input_tokens))")
+                    .font(.caption2).monospacedDigit()
+            }
+            HStack(spacing: 6) {
+                Circle().fill(Color.purple).frame(width: 6, height: 6)
+                Text("\(DashboardViewModel.fmtNum(point.output_tokens))")
+                    .font(.caption2).monospacedDigit()
+            }
+            if point.cache_read_input_tokens > 0 {
+                HStack(spacing: 6) {
+                    Circle().fill(Color.green).frame(width: 6, height: 6)
+                    Text("\(DashboardViewModel.fmtNum(point.cache_read_input_tokens))")
+                        .font(.caption2).monospacedDigit()
+                }
+            }
+            Divider().padding(.vertical, 1)
+            HStack {
+                Text("Total").font(.caption2).foregroundColor(.secondary)
+                Spacer()
+                Text(DashboardViewModel.fmtNum(totalTokens)).font(.caption2).fontWeight(.semibold).monospacedDigit()
+            }
+            HStack {
+                Text("Requests").font(.caption2).foregroundColor(.secondary)
+                Spacer()
+                Text("\(point.request_count)").font(.caption2).fontWeight(.semibold).monospacedDigit()
+            }
+        }
+        .padding(8)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(Color(nsColor: .windowBackgroundColor))
+                .shadow(color: .black.opacity(0.18), radius: 8, y: 2)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.secondary.opacity(0.2), lineWidth: 1)
+        )
+    }
+}
+
+// MARK: - 柱状图 hover tooltip
+struct BreakdownTooltip: View {
+    let bucket: UsageBucket
+
+    private var totalTokens: Int {
+        bucket.input_tokens + bucket.output_tokens + bucket.cache_read_input_tokens + bucket.cache_creation_input_tokens
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(bucket.key)
+                .font(.caption).fontWeight(.semibold)
+                .foregroundColor(.primary)
+                .lineLimit(2)
+            HStack(spacing: 6) {
+                Circle().fill(Color.blue).frame(width: 6, height: 6)
+                Text("\(DashboardViewModel.fmtNum(bucket.input_tokens))")
+                    .font(.caption2).monospacedDigit()
+            }
+            HStack(spacing: 6) {
+                Circle().fill(Color.purple).frame(width: 6, height: 6)
+                Text("\(DashboardViewModel.fmtNum(bucket.output_tokens))")
+                    .font(.caption2).monospacedDigit()
+            }
+            if bucket.cache_read_input_tokens > 0 {
+                HStack(spacing: 6) {
+                    Circle().fill(Color.green).frame(width: 6, height: 6)
+                    Text("\(DashboardViewModel.fmtNum(bucket.cache_read_input_tokens))")
+                        .font(.caption2).monospacedDigit()
+                }
+            }
+            Divider().padding(.vertical, 1)
+            HStack {
+                Text("Total").font(.caption2).foregroundColor(.secondary)
+                Spacer()
+                Text(DashboardViewModel.fmtNum(totalTokens)).font(.caption2).fontWeight(.semibold).monospacedDigit()
+            }
+            HStack {
+                Text("Requests").font(.caption2).foregroundColor(.secondary)
+                Spacer()
+                Text("\(bucket.request_count)").font(.caption2).fontWeight(.semibold).monospacedDigit()
+            }
+        }
+        .padding(8)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(Color(nsColor: .windowBackgroundColor))
+                .shadow(color: .black.opacity(0.18), radius: 8, y: 2)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.secondary.opacity(0.2), lineWidth: 1)
+        )
     }
 }
