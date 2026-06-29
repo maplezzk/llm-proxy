@@ -238,40 +238,6 @@ struct DashboardView: View {
                 .foregroundStyle(by: .value("Series", loc("dashboard.usage.seriesCacheCreate")))
                 .interpolationMethod(.monotone)
             }
-            // 选中日期画垂直虚线 + 高亮点
-            if let sel = selectedTimelineDate,
-               let p = viewModel.timeline.first(where: { Calendar.current.isDate($0.dateAsDate, inSameDayAs: sel) }) {
-                RuleMark(x: .value("Selected", p.dateAsDate))
-                    .foregroundStyle(.secondary.opacity(0.5))
-                    .lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
-                    .annotation(position: .top, alignment: .center, spacing: 0) {
-                        EmptyView()
-                    }
-                PointMark(
-                    x: .value("Date", p.dateAsDate),
-                    y: .value("Input", p.input_tokens)
-                )
-                .symbolSize(80)
-                .foregroundStyle(.blue)
-                PointMark(
-                    x: .value("Date", p.dateAsDate),
-                    y: .value("Output", p.output_tokens)
-                )
-                .symbolSize(80)
-                .foregroundStyle(.purple)
-                PointMark(
-                    x: .value("Date", p.dateAsDate),
-                    y: .value("Cache Read", p.cache_read_input_tokens)
-                )
-                .symbolSize(60)
-                .foregroundStyle(.green)
-                PointMark(
-                    x: .value("Date", p.dateAsDate),
-                    y: .value("Cache Create", p.cache_creation_input_tokens)
-                )
-                .symbolSize(60)
-                .foregroundStyle(.orange)
-            }
         }
         .chartForegroundStyleScale([
             loc("dashboard.usage.seriesInput"): .blue,
@@ -303,15 +269,13 @@ struct DashboardView: View {
         .chartOverlay { proxy in
             GeometryReader { geo in
                 if let plotFrame = proxy.plotFrame {
-                    // 用连续 hover 兜底：chartXSelection 边界点（最后一天）可能不触发，手动算最近
+                    // 1) hover 检测 — 找离 x 坐标最近的数据点
                     Rectangle().fill(Color.clear).contentShape(Rectangle())
                         .onContinuousHover { phase in
                             switch phase {
                             case .active(let loc):
                                 let xInPlot = loc.x - geo[plotFrame].origin.x
-                                let bounds = geo[plotFrame]
-                                guard xInPlot >= 0, xInPlot <= bounds.width else { return }
-                                // 把 x 像素反向转成 Date：拿 viewModel.timeline 中离 xInPlot 最近的那个点
+                                guard xInPlot >= 0, xInPlot <= geo[plotFrame].width else { return }
                                 let timeline = viewModel.timeline
                                 guard !timeline.isEmpty else { return }
                                 let closest = timeline.min(by: { a, b in
@@ -324,21 +288,46 @@ struct DashboardView: View {
                                 selectedTimelineDate = nil
                             }
                         }
-                }
-            }
-            if let sel = selectedTimelineDate,
-               let p = nearestTimelinePoint(to: sel) {
-                GeometryReader { geo in
-                    if let plotFrame = proxy.plotFrame {
-                        let xPos = proxy.position(forX: p.dateAsDate) ?? 0
+
+                    // 2) 选中态 — 全部用 SwiftUI 原生 Path/Circle 画，**不**进 Chart，
+                    //    避免 RuleMark/PointMark 触发 Y scale 重算（axis ticks 跳跃）
+                    if let sel = selectedTimelineDate,
+                       let p = nearestTimelinePoint(to: sel),
+                       let xPos = proxy.position(forX: p.dateAsDate) {
                         let originX = geo[plotFrame].origin.x
+                        let originY = geo[plotFrame].origin.y
+                        let height = geo[plotFrame].height
+                        let x = originX + xPos
+
+                        // 垂直虚线
+                        Path { path in
+                            path.move(to: CGPoint(x: x, y: originY))
+                            path.addLine(to: CGPoint(x: x, y: originY + height))
+                        }
+                        .stroke(Color.secondary.opacity(0.5), style: StrokeStyle(lineWidth: 1, dash: [3, 3]))
+
+                        // 4 个 series 高亮点（不参与 Chart scale）
+                        ForEach([
+                            (p.input_tokens, Color.blue, 8.0),
+                            (p.output_tokens, Color.purple, 8.0),
+                            (p.cache_read_input_tokens, Color.green, 6.0),
+                            (p.cache_creation_input_tokens, Color.orange, 6.0),
+                        ], id: \.0) { value, color, size in
+                            if let yPos = proxy.position(forY: value) {
+                                Circle()
+                                    .fill(color)
+                                    .frame(width: size, height: size)
+                                    .position(x: x, y: originY + yPos)
+                            }
+                        }
+
+                        // tooltip 浮层（贴顶 8px，边缘时左右贴齐）
                         let tooltipWidth: CGFloat = 200
                         let tooltipHeight: CGFloat = 116
-                        let leadingX = min(max(originX + xPos - tooltipWidth / 2, 4), geo.size.width - tooltipWidth - 4)
-                        let topY: CGFloat = 8
+                        let leadingX = min(max(x - tooltipWidth / 2, 4), geo.size.width - tooltipWidth - 4)
                         TimelineTooltip(point: p, showsYear: showsYear)
                             .frame(width: tooltipWidth, height: tooltipHeight)
-                            .offset(x: leadingX, y: topY)
+                            .offset(x: leadingX, y: 8)
                             .allowsHitTesting(false)
                     }
                 }
@@ -441,24 +430,21 @@ struct DashboardView: View {
                     GeometryReader { geo in
                         if let plotFrame = proxy.plotFrame {
                             // chartXSelection 对横向柱状图（Y 是分类）不触发，改用 onContinuousHover
+                            // 不依赖 axis 顺序，直接用 proxy.position(forY:) 找离鼠标 y 最近的 bar
                             Rectangle().fill(Color.clear).contentShape(Rectangle())
                                 .onContinuousHover { phase in
                                     switch phase {
                                     case .active(let loc):
                                         let yInPlot = loc.y - geo[plotFrame].origin.y
-                                        let bounds = geo[plotFrame]
-                                        guard yInPlot >= 0, yInPlot <= bounds.height else { return }
+                                        guard yInPlot >= 0, yInPlot <= geo[plotFrame].height else { return }
                                         let top10 = Array(viewModel.breakdown.prefix(10))
                                         guard !top10.isEmpty else { return }
-                                        // Y 轴是分类轴，bar 从下往上堆叠：0..count-1
-                                        // bottom(0) 到 top(count-1) — SwiftUI Charts 默认 indexedAxis 从原点往上逆序
-                                        let bandHeight = bounds.height / CGFloat(top10.count)
-                                        // 倒转索引（底是最后一行）
-                                        let fromBottom = Int((yInPlot / bandHeight).rounded(.down))
-                                        let idx = top10.count - 1 - fromBottom
-                                        if idx >= 0 && idx < top10.count {
-                                            selectedBreakdownKey = top10[idx].key
-                                        }
+                                        let closest = top10.min(by: { a, b in
+                                            let ya = proxy.position(forY: a.key) ?? 0
+                                            let yb = proxy.position(forY: b.key) ?? 0
+                                            return abs(ya - yInPlot) < abs(yb - yInPlot)
+                                        })
+                                        if let closest { selectedBreakdownKey = closest.key }
                                     case .ended:
                                         selectedBreakdownKey = nil
                                     }
