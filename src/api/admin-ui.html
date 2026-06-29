@@ -309,7 +309,7 @@ tbody tr:hover td { background: #f8f9fb; }
     <div class="sub">Model Gateway</div>
   </div>
   <div class="sidebar-nav" x-data>
-    <template x-for="tab in ['dashboard','providers','adapters','logs','capture']" :key="tab">
+    <template x-for="tab in ['dashboard','providers','adapters','logs','capture','settings']" :key="tab">
       <a :class="{ active: $store.app.currentTab === tab }"
          href="#"
          @click.prevent="$store.app.switchTab(tab)">
@@ -399,7 +399,7 @@ tbody tr:hover td { background: #f8f9fb; }
           </template>
         </div>
         <div style="position:relative;height:280px;min-height:240px">
-          <canvas id="chart-timeline" x-show="timeline.length > 0"></canvas>
+          <canvas id="chart-timeline"></canvas>
           <!-- 加载态：遮罩 + spinner -->
           <div x-show="loadingCharts" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(21,23,27,0.35);border-radius:12px;backdrop-filter:blur(2px);z-index:1">
             <div style="display:flex;flex-direction:column;align-items:center;gap:8px">
@@ -428,7 +428,7 @@ tbody tr:hover td { background: #f8f9fb; }
           </template>
         </div>
         <div style="position:relative;height:280px">
-          <canvas id="chart-breakdown" x-show="breakdown.length > 0"></canvas>
+          <canvas id="chart-breakdown"></canvas>
           <!-- 加载态 -->
           <div x-show="loadingCharts" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(21,23,27,0.35);border-radius:12px;backdrop-filter:blur(2px);z-index:1">
             <div style="display:flex;flex-direction:column;align-items:center;gap:8px">
@@ -458,7 +458,11 @@ tbody tr:hover td { background: #f8f9fb; }
           <button class="btn btn-ghost btn-sm" @click="cleanupUsage()" :disabled="cleaning" x-text="cleaning ? $t('admin.common.saving') : $t('admin.dashboard.usage.cleanupBtn')"></button>
         </div>
       </div>
+    </div>
 
+    <!-- Settings -->
+    <div class="page" id="page-settings"
+         :class="{ active: $store.app.currentTab === 'settings' }">
       <!-- ── 代理 API Key ── -->
       <div class="dash-card" x-data="proxyKeyForm">
         <div class="dash-card-title"><span class="dc-icon">🔑</span><h3 x-text="$t('admin.dashboard.proxyKey')"></h3></div>
@@ -472,7 +476,7 @@ tbody tr:hover td { background: #f8f9fb; }
       </div>
 
       <!-- ── 外挂识图 ── -->
-      <div class="dash-card" x-data="visionSettingForm">
+      <div class="dash-card" x-data="visionSettingForm" style="margin-top:14px">
         <div class="dash-card-title"><span class="dc-icon">🖼️</span><h3 x-text="$t('admin.vision.title')"></h3></div>
         <div class="dash-card-sub" x-text="$t('admin.vision.desc')"></div>
         <label style="display:flex;align-items:center;gap:6px;font-size:13px;margin-bottom:8px;cursor:pointer">

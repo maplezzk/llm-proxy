@@ -5,7 +5,8 @@
       "providers": "模型供应商",
       "adapters": "适配器",
       "logs": "日志",
-      "capture": "协议抓包"
+      "capture": "协议抓包",
+      "settings": "设置"
     },
     "sidebar": {
       "running": "运行中",

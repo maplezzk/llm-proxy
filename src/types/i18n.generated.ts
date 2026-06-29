@@ -161,6 +161,7 @@ export type TranslationKey =
   | 'admin.nav.dashboard'
   | 'admin.nav.logs'
   | 'admin.nav.providers'
+  | 'admin.nav.settings'
   | 'admin.providers.actions'
   | 'admin.providers.add'
   | 'admin.providers.addModel'

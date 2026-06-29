@@ -229,6 +229,8 @@
 "dashboard.cacheHits" = "缓存命中";
 "dashboard.cacheCreation" = "缓存创建";
 "dashboard.hitRate" = "命中率";
+"dashboard.today" = "今日";
+"dashboard.newCacheTokens" = "新写入缓存 token";
 "dashboard.empty" = "暂无数据";
 "dashboard.loading" = "加载中...";
 

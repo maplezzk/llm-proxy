@@ -210,6 +210,8 @@
 "dashboard.cacheHits" = "Cache Hits";
 "dashboard.cacheCreation" = "Cache Creation";
 "dashboard.hitRate" = "Hit Rate";
+"dashboard.today" = "Today";
+"dashboard.newCacheTokens" = "New cache tokens written";
 "dashboard.empty" = "No data";
 "dashboard.loading" = "Loading...";
 

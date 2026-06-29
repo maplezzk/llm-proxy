@@ -280,7 +280,6 @@ struct DashboardView: View {
             loc("dashboard.usage.seriesCacheCreate"): .orange,
         ])
         .chartLegend(position: .top, alignment: .leading)
-        .chartXSelection(value: $selectedTimelineDate)
         .chartXAxis {
             AxisMarks(values: .stride(by: .day, count: timelineAxisStride)) { value in
                 AxisGridLine()
@@ -302,15 +301,39 @@ struct DashboardView: View {
             }
         }
         .chartOverlay { proxy in
+            GeometryReader { geo in
+                if let plotFrame = proxy.plotFrame {
+                    // 用连续 hover 兜底：chartXSelection 边界点（最后一天）可能不触发，手动算最近
+                    Rectangle().fill(Color.clear).contentShape(Rectangle())
+                        .onContinuousHover { phase in
+                            switch phase {
+                            case .active(let loc):
+                                let xInPlot = loc.x - geo[plotFrame].origin.x
+                                let bounds = geo[plotFrame]
+                                guard xInPlot >= 0, xInPlot <= bounds.width else { return }
+                                // 把 x 像素反向转成 Date：拿 viewModel.timeline 中离 xInPlot 最近的那个点
+                                let timeline = viewModel.timeline
+                                guard !timeline.isEmpty else { return }
+                                let closest = timeline.min(by: { a, b in
+                                    let pa = proxy.position(forX: a.dateAsDate) ?? 0
+                                    let pb = proxy.position(forX: b.dateAsDate) ?? 0
+                                    return abs(pa - xInPlot) < abs(pb - xInPlot)
+                                })
+                                selectedTimelineDate = closest?.dateAsDate
+                            case .ended:
+                                selectedTimelineDate = nil
+                            }
+                        }
+                }
+            }
             if let sel = selectedTimelineDate,
-               let p = viewModel.timeline.first(where: { Calendar.current.isDate($0.dateAsDate, inSameDayAs: sel) }) {
+               let p = nearestTimelinePoint(to: sel) {
                 GeometryReader { geo in
                     if let plotFrame = proxy.plotFrame {
                         let xPos = proxy.position(forX: p.dateAsDate) ?? 0
                         let originX = geo[plotFrame].origin.x
                         let tooltipWidth: CGFloat = 200
                         let tooltipHeight: CGFloat = 116
-                        // 趋近边缘时左/右贴齐
                         let leadingX = min(max(originX + xPos - tooltipWidth / 2, 4), geo.size.width - tooltipWidth - 4)
                         let topY: CGFloat = 8
                         TimelineTooltip(point: p, showsYear: showsYear)
@@ -321,6 +344,11 @@ struct DashboardView: View {
                 }
             }
         }
+    }
+
+    /// 找 timeline 中离 sel 时间最近的数据点（容忍边界值落在 axis 外的情况）
+    private func nearestTimelinePoint(to sel: Date) -> TimelinePoint? {
+        viewModel.timeline.min(by: { abs($0.dateAsDate.timeIntervalSince(sel)) < abs($1.dateAsDate.timeIntervalSince(sel)) })
     }
 
     /// 趋势图 X 轴步长 — 数据多时按天取间隔，避免标签重叠
@@ -403,7 +431,6 @@ struct DashboardView: View {
                     loc("dashboard.usage.seriesCacheRead"): .green,
                 ])
                 .chartLegend(position: .top, alignment: .leading)
-                .chartXSelection(value: $selectedBreakdownKey)
                 .chartXAxis {
                     AxisMarks(position: .bottom) { value in
                         AxisGridLine()
@@ -411,6 +438,33 @@ struct DashboardView: View {
                     }
                 }
                 .chartOverlay { proxy in
+                    GeometryReader { geo in
+                        if let plotFrame = proxy.plotFrame {
+                            // chartXSelection 对横向柱状图（Y 是分类）不触发，改用 onContinuousHover
+                            Rectangle().fill(Color.clear).contentShape(Rectangle())
+                                .onContinuousHover { phase in
+                                    switch phase {
+                                    case .active(let loc):
+                                        let yInPlot = loc.y - geo[plotFrame].origin.y
+                                        let bounds = geo[plotFrame]
+                                        guard yInPlot >= 0, yInPlot <= bounds.height else { return }
+                                        let top10 = Array(viewModel.breakdown.prefix(10))
+                                        guard !top10.isEmpty else { return }
+                                        // Y 轴是分类轴，bar 从下往上堆叠：0..count-1
+                                        // bottom(0) 到 top(count-1) — SwiftUI Charts 默认 indexedAxis 从原点往上逆序
+                                        let bandHeight = bounds.height / CGFloat(top10.count)
+                                        // 倒转索引（底是最后一行）
+                                        let fromBottom = Int((yInPlot / bandHeight).rounded(.down))
+                                        let idx = top10.count - 1 - fromBottom
+                                        if idx >= 0 && idx < top10.count {
+                                            selectedBreakdownKey = top10[idx].key
+                                        }
+                                    case .ended:
+                                        selectedBreakdownKey = nil
+                                    }
+                                }
+                        }
+                    }
                     if let key = selectedBreakdownKey,
                        let bucket = viewModel.breakdown.first(where: { $0.key == key }) {
                         GeometryReader { geo in
@@ -419,7 +473,7 @@ struct DashboardView: View {
                                 let originY = geo[plotFrame].origin.y
                                 let tooltipWidth: CGFloat = 220
                                 let tooltipHeight: CGFloat = 100
-                                // 默认靠右贴齐，接近右边缘时反向
+                                // 默认靠右贴齐
                                 let baseX = geo[plotFrame].maxX - tooltipWidth - 8
                                 let leadingX = max(baseX, 8)
                                 let topY = min(max(originY + yPos - tooltipHeight / 2, 4), geo.size.height - tooltipHeight - 4)
