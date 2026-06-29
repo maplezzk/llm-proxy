@@ -1,6 +1,10 @@
 node_modules/
 dist/
 *.log
+
+# Dev instance: tsx watch 模式跑 server 时 serve 的 admin-app.js/admin-ui.html 副本
+admin-app.js
+admin-ui.html
 .env
 .DS_Store
 # Added by code-review-graph
