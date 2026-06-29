@@ -183,10 +183,10 @@ export function buildBreakdownConfig(
     const t = b.input_tokens + b.output_tokens + b.cache_read_input_tokens + b.cache_creation_input_tokens
     return t > m ? t : m
   }, 0)
-  return {
+  const cfg: any = {
     type: 'bar',
     data: {
-      labels: sorted.map(b => b.key),
+      labels: sorted.map(b => truncateKey(b.key)),
       datasets: [
         {
           label: 'Input', data: sorted.map(b => b.input_tokens),
@@ -214,7 +214,8 @@ export function buildBreakdownConfig(
             title: (items: any[]) => {
               // 显示完整 key 名（不受 Y 轴 label 截断影响）
               const idx = items[0]?.dataIndex
-              return idx !== undefined ? (sorted[idx]?.key ?? '') : ''
+              if (idx === undefined) return ''
+              return sorted[idx]?.key ?? ''
             },
             label: (ctx: any) => `${ctx.dataset.label}: ${Number(ctx.parsed.x || 0).toLocaleString()}`,
             afterBody: (items: any[]) => {
@@ -236,12 +237,10 @@ export function buildBreakdownConfig(
           grid: { color: C.border },
         },
         y: {
-          // 关键：显式设 category 轴。否则 Chart.js 默认 linear，Y tick 走索引 0..N
           type: 'category',
           stacked: true,
           ticks: {
             color: C.textMuted, font: { size: 11 },
-            callback: (v: any) => truncateKey(String(v)),
             autoSkip: false,
           },
           grid: { display: false },
@@ -249,6 +248,8 @@ export function buildBreakdownConfig(
       },
     },
   }
+  return cfg
 }
+
 
 

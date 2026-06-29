@@ -89,15 +89,9 @@ export function dashboardPage() {
       this.loadingCharts = true
 
       // timeline + breakdown 共用同一对 startDate/endDate（预设天数会同步到 dateStart/dateEnd）
-      let tlUrl: string
-      let bdUrl: string
-      if (this.presetDays > 0) {
-        tlUrl = `/admin/token-stats/timeline?days=${this.presetDays}`
-        bdUrl = `/admin/token-stats/breakdown?dimension=${this.breakdownDimension}&range=${this.presetDays}d`
-      } else {
-        tlUrl = `/admin/token-stats/timeline?startDate=${this.dateStart}&endDate=${this.dateEnd}`
-        bdUrl = `/admin/token-stats/breakdown?dimension=${this.breakdownDimension}&startDate=${this.dateStart}&endDate=${this.dateEnd}`
-      }
+      // 不再用 range=${days}d — 后端白名单只有 today/7d/30d/all，presetDays=1 会变 range=1d 被拒
+      const tlUrl = `/admin/token-stats/timeline?startDate=${this.dateStart}&endDate=${this.dateEnd}`
+      const bdUrl = `/admin/token-stats/breakdown?dimension=${this.breakdownDimension}&startDate=${this.dateStart}&endDate=${this.dateEnd}`
 
       const [tlRes, bdRes, dbRes] = await Promise.all([
         fetchJson()(tlUrl).catch(() => null),
@@ -152,11 +146,9 @@ export function dashboardPage() {
         ds.data = nd.data
         ds.pointRadius = nd.pointRadius
       })
-      // 同步 Y scale 配置（覆盖旧 chart 的 suggestedMax，避免 Y scale 0-1 锁定）
-      if (cfg.options?.scales?.y) {
-        ch.options.scales = ch.options.scales ?? {}
-        ch.options.scales.y = { ...ch.options.scales.y, ...cfg.options.scales.y }
-      }
+      // 不修改 ch.options.scales — 复制 scale config 包含 ticks.callback 引用，
+      // Chart.js 在 update 时会按 _scriptable 代理处理，触发 Recursion detected
+      // scale 上限让 Chart.js 根据新 data 自动重算（dataMax 变 → suggestedMax 跟着变）
       try { ch.update('none') } catch { this._tl = null }
     },
 
@@ -172,11 +164,7 @@ export function dashboardPage() {
         ds.data = nd.data
         ds.backgroundColor = nd.backgroundColor
       })
-      // 同步 X scale 配置（X 是 breakdown 数值轴，兜底）
-      if (cfg.options?.scales?.x) {
-        ch.options.scales = ch.options.scales ?? {}
-        ch.options.scales.x = { ...ch.options.scales.x, ...cfg.options.scales.x }
-      }
+      // 不修改 ch.options.scales（同上原因，避免 _scriptable 循环）
       try { ch.update('none') } catch { this._bd = null }
     },
 
