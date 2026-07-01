@@ -245,11 +245,13 @@ export function dashboardPage() {
       const cr = ts.cache_read_input_tokens || 0
       const cc = ts.cache_creation_input_tokens || 0
       const total = inp + out
+      const totalTokens = inp + out + cr + cc
+      const cacheHitRate = totalTokens > 0 ? pct(cr, totalTokens) : '0%'
       const tt = t
       return [
         { label: tt('admin.dashboard.requests'), value: ts.request_count || 0, clr: 'var(--text)', desc: tt('admin.dashboard.today'), icon: '↑↓', accent: 'var(--text-muted)' },
         { label: tt('admin.dashboard.inputTokens'), value: fmtNum(inp), clr: 'var(--accent)', desc: `${tt('admin.dashboard.output')} ${fmtNum(out)} / ${tt('admin.dashboard.total')} ${fmtNum(total)}`, icon: '◈', accent: 'var(--accent)' },
-        { label: tt('admin.dashboard.cacheHits'), value: fmtNum(cr), clr: 'var(--success)', desc: tt('admin.dashboard.hitRate', { rate: pct(cr, inp) }), icon: '⚡', accent: 'var(--success)' },
+        { label: tt('admin.dashboard.cacheHits'), value: fmtNum(cr), clr: 'var(--success)', desc: tt('admin.dashboard.hitRate', { rate: cacheHitRate }), icon: '⚡', accent: 'var(--success)' },
         { label: tt('admin.dashboard.cacheCreation'), value: fmtNum(cc), clr: 'var(--warn)', desc: tt('admin.dashboard.newCacheTokens'), icon: '✷', accent: 'var(--warn)' },
       ]
     },
