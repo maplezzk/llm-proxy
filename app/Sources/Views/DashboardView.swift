@@ -171,6 +171,13 @@ struct DashboardView: View {
             .onChange(of: localDateEnd) { _, newEnd in
                 viewModel.setDateRange(start: localDateStart, end: newEnd)
             }
+            // 反向同步：点 7/30/90 预设按钮后 viewModel.dateStart/dateEnd 变，输入框跟着更新
+            .onChange(of: viewModel.dateStart) { _, newStart in
+                if abs(newStart.timeIntervalSince(localDateStart)) > 1 { localDateStart = newStart }
+            }
+            .onChange(of: viewModel.dateEnd) { _, newEnd in
+                if abs(newEnd.timeIntervalSince(localDateEnd)) > 1 { localDateEnd = newEnd }
+            }
             .onAppear {
                 localDateStart = viewModel.dateStart
                 localDateEnd = viewModel.dateEnd
