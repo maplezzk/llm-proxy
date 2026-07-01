@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.21.0](https://github.com/maplezzk/llm-proxy/compare/v0.20.0...v0.21.0) (2026-07-01)
+
+
+### Features
+
+* 用量数据持久化 + Dashboard 图表化重构 ([#162](https://github.com/maplezzk/llm-proxy/issues/162)) ([189aeb5](https://github.com/maplezzk/llm-proxy/commit/189aeb500bff2164b6d3d797620f803df095e948))
+
+
+### Bug Fixes
+
+* **macOS:** 修复 ProviderFormView 删除模型行偶发崩溃(EXC_BREAKPOINT/SIGTRAP) ([#159](https://github.com/maplezzk/llm-proxy/issues/159)) ([806a483](https://github.com/maplezzk/llm-proxy/commit/806a483396a085ec0747511ecac6d41d446d5061))
+* **macOS:** 修复测试面板 responseBody 非 JSON 时 NSException 闪退 ([#163](https://github.com/maplezzk/llm-proxy/issues/163)) ([dfe975a](https://github.com/maplezzk/llm-proxy/commit/dfe975a65b31d0dfa9d771300fbd2656e18a548a))
+* 修复 adapter 多模态误判 + 菜单栏退出后服务残留进程 ([#161](https://github.com/maplezzk/llm-proxy/issues/161)) ([8ec3641](https://github.com/maplezzk/llm-proxy/commit/8ec3641f33746ccf68aa38c6b1a332fc4da29ad0))
+* 缓存命中率公式 + stream-converter text-block 闭合 + 用量公式调研 ([#164](https://github.com/maplezzk/llm-proxy/issues/164)) ([3fc8093](https://github.com/maplezzk/llm-proxy/commit/3fc809301e045f774e17aa295aaa9c5a470a79d2))
+
 ## [0.20.0](https://github.com/maplezzk/llm-proxy/compare/v0.19.0...v0.20.0) (2026-06-22)
 
 
