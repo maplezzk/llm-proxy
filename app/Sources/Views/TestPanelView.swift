@@ -219,9 +219,10 @@ struct TestPanelView: View {
     }
 
     private func responseJSON(from body: AnyCodable) -> String {
-        guard let data = try? JSONSerialization.data(withJSONObject: body.value, options: [.prettyPrinted, .sortedKeys]),
-              let str = String(data: data, encoding: .utf8) else { return "\(body.value)" }
-        return str
+        // 后端在 responseBody 不可 JSON 化时（如上游返回 HTML 错误页）会回退为原始字符串，
+        // 直接喂给 JSONSerialization.data(withJSONObject:) 会触发 NSException 导致 app 闪退。
+        // JSONFormatter.pretty 内部用 isValidJSONObject 守卫，顶层非 array/dict 时降级展示原文。
+        JSONFormatter.pretty(body.value)
     }
 
     // MARK: - Copy Curl

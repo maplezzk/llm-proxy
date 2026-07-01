@@ -453,15 +453,10 @@ struct CaptureView: View {
             // 响应可能是流式 SSE 文本，直接显示
             return raw
         }
-        // 尝试 JSON 格式化
-        guard let data = raw.data(using: .utf8) else { return raw }
-        do {
-            let json = try JSONSerialization.jsonObject(with: data)
-            let pretty = try JSONSerialization.data(withJSONObject: json, options: [.prettyPrinted, .sortedKeys])
-            return String(data: pretty, encoding: .utf8) ?? raw
-        } catch {
-            return raw
-        }
+        // 尝试 JSON 格式化（用 JSONFormatter 守卫顶层非 array/dict 等场景的 NSException）
+        guard let data = raw.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: data) else { return raw }
+        return JSONFormatter.pretty(json)
     }
 
     private func formatEntryJSON(_ entry: CaptureEntry) -> String {
