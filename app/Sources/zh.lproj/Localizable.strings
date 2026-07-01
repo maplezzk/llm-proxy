@@ -16,6 +16,8 @@
 "action.language" = "语言: %@";
 "status.stopping" = "◌ 正在停止...";
 "status.restarting" = "◌ 正在重启...";
+"quit.serviceStopFailed.title" = "服务停止失败";
+"quit.serviceStopFailed.body" = "后台服务未能正常退出，请查看日志后手动停止。菜单栏应用保持运行。";
 "status.starting" = "◌ 正在启动...";
 "status.loading" = "◌ 正在加载适配器...";
 "error.switchFailed" = "切换失败: %@";
@@ -227,6 +229,8 @@
 "dashboard.cacheHits" = "缓存命中";
 "dashboard.cacheCreation" = "缓存创建";
 "dashboard.hitRate" = "命中率";
+"dashboard.today" = "今日";
+"dashboard.newCacheTokens" = "新写入缓存 token";
 "dashboard.empty" = "暂无数据";
 "dashboard.loading" = "加载中...";
 
@@ -234,16 +238,9 @@
 "dashboard.usage.trendTitle" = "Token 用量趋势";
 "dashboard.usage.trendDesc" = "输入/输出/缓存命中/缓存创建 按日聚合";
 "dashboard.usage.breakdownTitle" = "分维度对比";
-"dashboard.usage.pieTitle" = "今日结构占比";
-"dashboard.usage.pieDesc" = "输入/输出/缓存命中/缓存创建 比例";
-"dashboard.usage.totalLabel" = "总计";
 "dashboard.usage.dimProvider" = "供应商";
 "dashboard.usage.dimAdapter" = "适配器";
 "dashboard.usage.dimModel" = "模型";
-"dashboard.usage.rangeToday" = "今日";
-"dashboard.usage.range7d" = "近 7 天";
-"dashboard.usage.range30d" = "近 30 天";
-"dashboard.usage.rangeAll" = "全部";
 "dashboard.usage.days7" = "7 天";
 "dashboard.usage.days30" = "30 天";
 "dashboard.usage.days90" = "90 天";

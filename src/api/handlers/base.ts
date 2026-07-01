@@ -193,35 +193,59 @@ export function handleGetTokenStats(ctx: ServerContext, _req: IncomingMessage, r
 }
 
 /**
- * 30/60/90 天趋势折线图数据。
+ * 趋势折线图数据。
  * GET /admin/token-stats/timeline?days=30
+ * GET /admin/token-stats/timeline?startDate=YYYY-MM-DD&endDate=YYYY-MM-DD
+ * 自定义日期范围优先；缺失/无效时回退到 days（默认 30，封顶 365）。
  */
 export function handleGetTokenTimeline(ctx: ServerContext, req: IncomingMessage, res: ServerResponse): void {
   const url = new URL(req.url ?? '/', 'http://localhost')
+  const startDate = url.searchParams.get('startDate')
+  const endDate = url.searchParams.get('endDate')
+  if (startDate && endDate && /^\d{4}-\d{2}-\d{2}$/.test(startDate) && /^\d{4}-\d{2}-\d{2}$/.test(endDate)) {
+    if (startDate > endDate) {
+      json(res, 400, { success: false, error: 'startDate 不能晚于 endDate' })
+      return
+    }
+    json(res, 200, { success: true, data: ctx.usageStore.getTimeline({ startDate, endDate }) })
+    return
+  }
   const daysRaw = url.searchParams.get('days')
   let days = parseInt(daysRaw ?? '30', 10)
   if (!Number.isFinite(days) || days <= 0) days = 30
   if (days > 365) days = 365
-  json(res, 200, { success: true, data: ctx.usageStore.getTimeline(days) })
+  json(res, 200, { success: true, data: ctx.usageStore.getTimeline({ days }) })
 }
 
 /**
  * 按维度分桶：'provider' | 'adapter' | 'model'。
  * GET /admin/token-stats/breakdown?dimension=provider&range=today|7d|30d|all
+ * GET /admin/token-stats/breakdown?dimension=provider&startDate=YYYY-MM-DD&endDate=YYYY-MM-DD
+ * 自定义日期范围优先；否则按 range（默认 'today'）。
  */
 export function handleGetTokenBreakdown(ctx: ServerContext, req: IncomingMessage, res: ServerResponse): void {
   const url = new URL(req.url ?? '/', 'http://localhost')
   const dimension = (url.searchParams.get('dimension') ?? 'provider') as 'provider' | 'adapter' | 'model'
-  const range = (url.searchParams.get('range') ?? 'today') as 'today' | '7d' | '30d' | 'all'
   if (!['provider', 'adapter', 'model'].includes(dimension)) {
     json(res, 400, { success: false, error: 'dimension 必须是 provider/adapter/model' })
     return
   }
+  const startDate = url.searchParams.get('startDate')
+  const endDate = url.searchParams.get('endDate')
+  if (startDate && endDate && /^\d{4}-\d{2}-\d{2}$/.test(startDate) && /^\d{4}-\d{2}-\d{2}$/.test(endDate)) {
+    if (startDate > endDate) {
+      json(res, 400, { success: false, error: 'startDate 不能晚于 endDate' })
+      return
+    }
+    json(res, 200, { success: true, data: ctx.usageStore.getBreakdown(dimension, { startDate, endDate }) })
+    return
+  }
+  const range = (url.searchParams.get('range') ?? 'today') as 'today' | '7d' | '30d' | 'all'
   if (!['today', '7d', '30d', 'all'].includes(range)) {
     json(res, 400, { success: false, error: 'range 必须是 today/7d/30d/all' })
     return
   }
-  json(res, 200, { success: true, data: ctx.usageStore.getBreakdown(dimension, range) })
+  json(res, 200, { success: true, data: ctx.usageStore.getBreakdown(dimension, { range }) })
 }
 
 /**

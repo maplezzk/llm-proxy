@@ -3,233 +3,262 @@ import { Chart } from 'chart.js'
 import {
   buildTimelineConfig,
   buildBreakdownConfig,
-  buildBreakdownPieConfig,
-  buildProviderPieConfig,
   type TimelinePoint,
   type UsageBucket,
 } from './usage-charts.js'
 
 interface DbInfo {
-  events: number
-  aggregates: number
-  sizeBytes: number
+  events: number; aggregates: number; sizeBytes: number
 }
 
-type BreakdownRange = 'today' | '7d' | '30d' | 'all'
-type BreakdownDimension = 'provider' | 'adapter' | 'model'
-type TimelineDays = 7 | 30 | 90
+/** 今天往前 N 天，返回 YYYY-MM-DD */
+function daysAgo(n: number): string {
+  const d = new Date()
+  d.setDate(d.getDate() - n)
+  return d.toISOString().slice(0, 10)
+}
 
 export function dashboardPage() {
+  const store = () => (window as any).Alpine.store('app')
+  const fetchJson = () => store().fetch
+
   function fmtNum(n: number): string {
     if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M'
     if (n >= 1_000) return (n / 1_000).toFixed(1) + 'K'
     return String(n)
   }
-
   function fmtBytes(n: number): string {
     if (n >= 1_000_000) return (n / 1_000_000).toFixed(2) + ' MB'
     if (n >= 1_000) return (n / 1_000).toFixed(1) + ' KB'
     return n + ' B'
   }
-
   function pct(n: number, total: number): string {
     if (!total) return '0%'
     return ((n / total) * 100).toFixed(1) + '%'
   }
-
   const t = (key: string, opts?: Record<string, unknown>) => i18next.t(key, opts)
 
+  const todayStr = new Date().toISOString().slice(0, 10)
+
   return {
-    // ========== 数据状态 ==========
+    // ──── 日期范围 ────
+    dateStart: daysAgo(30) as string,
+    dateEnd: todayStr as string,
+    presetDays: 30 as number, // 快捷按钮用的天数（0 = 自定义）
+
+    // ──── Chart 数据 ────
     timeline: [] as TimelinePoint[],
-    timelineDays: 30 as TimelineDays,
     breakdown: [] as UsageBucket[],
-    breakdownDimension: 'provider' as BreakdownDimension,
-    breakdownRange: 'today' as BreakdownRange,
     dbInfo: { events: 0, aggregates: 0, sizeBytes: 0 } as DbInfo,
     loadingCharts: false,
     cleaning: false,
 
-    // ========== Chart 实例 ==========
-    _timelineChart: null as Chart | null,
-    _breakdownChart: null as Chart | null,
-    _pieChart: null as Chart | null,
+    // ──── 维度 ────
+    breakdownDimension: 'provider' as 'provider' | 'adapter' | 'model',
 
-    // ========== 生命周期 ==========
+    // ──── Chart 实例引用 ────
+    _tl: null as Chart | null,
+    _bd: null as Chart | null,
+    _poll: null as ReturnType<typeof setInterval> | null,
+
+    // ═══════════════════════════════════════
+    // 生命周期
+    // ═══════════════════════════════════════
     init() {
+      this.ensureCharts()
       this.loadCharts()
-      // 每次 dashboard 数据刷新时同步图表（每 10 秒一次）
-      // 这里订阅 store 的 tokenStats 变化不优雅，改成在外部 store 主动调用
-      const store = (window as any).Alpine.store('app')
-      const orig = store.loadDashboard.bind(store)
-      store.loadDashboard = async () => {
-        await orig()
-        // dashboard 刷新后重新拉图表（轻量查询）
-        this.loadCharts()
-      }
+      this._poll = setInterval(() => this.refreshToday(), 30_000)
     },
 
     destroy() {
-      this._timelineChart?.destroy()
-      this._breakdownChart?.destroy()
-      this._pieChart?.destroy()
-      this._timelineChart = null
-      this._breakdownChart = null
-      this._pieChart = null
+      this._tl?.destroy(); this._tl = null
+      this._bd?.destroy(); this._bd = null
+      if (this._poll) { clearInterval(this._poll); this._poll = null }
     },
 
-    // ========== 数据加载 ==========
+    /** 只刷新今日 stats（轻量），不重绘图表 */
+    async refreshToday() {
+      const res = await fetchJson()('/admin/token-stats').catch(() => null)
+      if (res?.data) store().tokenStats = res.data
+    },
+
+    // ═══════════════════════════════════════
+    // 数据加载
+    // ═══════════════════════════════════════
     async loadCharts() {
       this.loadingCharts = true
-      const fetchJson = (window as any).Alpine.store('app').fetch
-      const [timelineRes, breakdownRes, dbInfoRes] = await Promise.all([
-        fetchJson(`/admin/token-stats/timeline?days=${this.timelineDays}`).catch(() => null),
-        fetchJson(`/admin/token-stats/breakdown?dimension=${this.breakdownDimension}&range=${this.breakdownRange}`).catch(() => null),
-        fetchJson('/admin/token-stats/db-info').catch(() => null),
+
+      // timeline + breakdown 共用同一对 startDate/endDate（预设天数会同步到 dateStart/dateEnd）
+      // 不再用 range=${days}d — 后端白名单只有 today/7d/30d/all，presetDays=1 会变 range=1d 被拒
+      const tlUrl = `/admin/token-stats/timeline?startDate=${this.dateStart}&endDate=${this.dateEnd}`
+      const bdUrl = `/admin/token-stats/breakdown?dimension=${this.breakdownDimension}&startDate=${this.dateStart}&endDate=${this.dateEnd}`
+
+      const [tlRes, bdRes, dbRes] = await Promise.all([
+        fetchJson()(tlUrl).catch(() => null),
+        fetchJson()(bdUrl).catch(() => null),
+        fetchJson()('/admin/token-stats/db-info').catch(() => null),
       ])
-      this.timeline = timelineRes?.data ?? []
-      this.breakdown = breakdownRes?.data ?? []
-      this.dbInfo = dbInfoRes?.data ?? this.dbInfo
+      this.timeline = tlRes?.data ?? []
+      this.breakdown = bdRes?.data ?? []
+      this.dbInfo = dbRes?.data ?? this.dbInfo
       this.loadingCharts = false
-      // 等 DOM 更新完再渲染图表
+
       await (window as any).Alpine.nextTick()
       this.renderCharts()
     },
 
-    renderCharts() {
-      const today = (window as any).Alpine.store('app').tokenStats?.today
-      this.renderTimelineChart()
-      this.renderBreakdownChart()
-      this.renderPieChart(today)
-    },
-
-    renderTimelineChart() {
-      const canvas = document.getElementById('chart-timeline') as HTMLCanvasElement | null
-      if (!canvas) return
-      this._timelineChart?.destroy()
-      this._timelineChart = new Chart(canvas, buildTimelineConfig(this.timeline))
-    },
-
-    renderBreakdownChart() {
-      const canvas = document.getElementById('chart-breakdown') as HTMLCanvasElement | null
-      if (!canvas) return
-      this._breakdownChart?.destroy()
-      this._breakdownChart = new Chart(canvas, buildBreakdownConfig(this.breakdownDimension, this.breakdown))
-    },
-
-    renderPieChart(today: any) {
-      const canvas = document.getElementById('chart-pie') as HTMLCanvasElement | null
-      if (!canvas) return
-      this._pieChart?.destroy()
-      // 饼图优先展示今日结构；如果今日为空但有 7d 数据，按当前范围展示 provider 占比
-      if (today && (today.input_tokens + today.output_tokens) > 0) {
-        this._pieChart = new Chart(canvas, buildBreakdownPieConfig(today))
-      } else if (this.breakdown.length > 0 && this.breakdownDimension === 'provider') {
-        this._pieChart = new Chart(canvas, buildProviderPieConfig(this.breakdown))
-      } else {
-        this._pieChart = new Chart(canvas, buildBreakdownPieConfig({
-          input_tokens: 0, output_tokens: 0,
-          cache_read_input_tokens: 0, cache_creation_input_tokens: 0,
-        }))
+    // ═══════════════════════════════════════
+    // Chart 管理
+    // ═══════════════════════════════════════
+    ensureCharts() {
+      // 等数据到达再创建 chart：避免空 data → Chart.js 锁定 Y scale 0-1，后续填充数据后 Y scale 不会重算
+      if (this.timeline.length > 0 && !this._tl) {
+        const tlCanvas = document.getElementById('chart-timeline') as HTMLCanvasElement | null
+        if (tlCanvas) {
+          Chart.getChart(tlCanvas)?.destroy()
+          this._tl = new Chart(tlCanvas, buildTimelineConfig(this.timeline))
+        }
+      }
+      if (this.breakdown.length > 0 && !this._bd) {
+        const bdCanvas = document.getElementById('chart-breakdown') as HTMLCanvasElement | null
+        if (bdCanvas) {
+          Chart.getChart(bdCanvas)?.destroy()
+          this._bd = new Chart(bdCanvas, buildBreakdownConfig(this.breakdownDimension, this.breakdown))
+        }
       }
     },
 
-    // ========== 用户操作 ==========
-    async setTimelineDays(days: TimelineDays) {
-      this.timelineDays = days
-      await this.loadCharts()
+    renderCharts() {
+      this.ensureCharts()
+      this._updateTimeline()
+      this._updateBreakdown()
     },
 
-    async setBreakdownDimension(dim: BreakdownDimension) {
-      this.breakdownDimension = dim
-      await this.loadCharts()
+    _updateTimeline() {
+      const ch = this._tl
+      const canvas = ch?.canvas as HTMLCanvasElement | undefined
+      if (!ch || !canvas?.isConnected) { this._tl = null; this.ensureCharts(); return }
+      const cfg = buildTimelineConfig(this.timeline)
+      ch.data.labels = cfg.data.labels
+      ch.data.datasets.forEach((ds: any, i: number) => {
+        const nd = cfg.data.datasets[i]
+        if (!nd) return
+        ds.data = nd.data
+        ds.pointRadius = nd.pointRadius
+      })
+      // 不修改 ch.options.scales — 复制 scale config 包含 ticks.callback 引用，
+      // Chart.js 在 update 时会按 _scriptable 代理处理，触发 Recursion detected
+      // scale 上限让 Chart.js 根据新 data 自动重算（dataMax 变 → suggestedMax 跟着变）
+      try { ch.update('none') } catch { this._tl = null }
     },
 
-    async setBreakdownRange(range: BreakdownRange) {
-      this.breakdownRange = range
-      await this.loadCharts()
+    _updateBreakdown() {
+      const ch = this._bd
+      const canvas = ch?.canvas as HTMLCanvasElement | undefined
+      if (!ch || !canvas?.isConnected) { this._bd = null; this.ensureCharts(); return }
+      const cfg = buildBreakdownConfig(this.breakdownDimension, this.breakdown)
+      ch.data.labels = cfg.data.labels
+      ch.data.datasets.forEach((ds: any, i: number) => {
+        const nd = cfg.data.datasets[i]
+        if (!nd) return
+        ds.data = nd.data
+        ds.backgroundColor = nd.backgroundColor
+      })
+      // 不修改 ch.options.scales（同上原因，避免 _scriptable 循环）
+      try { ch.update('none') } catch { this._bd = null }
+    },
+
+    // ═══════════════════════════════════════
+    // 用户操作
+    // ═══════════════════════════════════════
+    setPreset(days: number) {
+      this.presetDays = days
+      this.dateStart = daysAgo(days - 1)
+      this.dateEnd = todayStr
+      this.loadCharts()
+    },
+
+    setCustomDate() {
+      this.presetDays = 0
+      if (!this.dateStart || !this.dateEnd) return
+      if (this.dateStart > this.dateEnd) {
+        [this.dateStart, this.dateEnd] = [this.dateEnd, this.dateStart]
+      }
+      this.loadCharts()
+    },
+
+    setBreakdownDim(dim: string) {
+      this.breakdownDimension = dim as any
+      this.loadCharts()
     },
 
     async cleanupUsage() {
       const days = 90
       if (!window.confirm(t('admin.dashboard.usage.cleanupConfirm', { days }))) return
       this.cleaning = true
-      const res = await (window as any).Alpine.store('app').fetch('/admin/token-stats/cleanup', {
-        method: 'POST',
-        body: JSON.stringify({ days }),
+      const res = await fetchJson()('/admin/token-stats/cleanup', {
+        method: 'POST', body: JSON.stringify({ days }),
       }).catch(() => null)
       this.cleaning = false
       if (res?.success) {
-        (window as any).Alpine.store('app').toast(
-          t('admin.dashboard.usage.cleanupDone', { events: res.data.events, aggregates: res.data.aggregates }),
-          'success'
-        )
-        await this.loadCharts()
+        store().toast(t('admin.dashboard.usage.cleanupDone', { events: res.data.events, aggregates: res.data.aggregates }), 'success')
+        this.loadCharts()
       } else {
-        (window as any).Alpine.store('app').toast(t('admin.dashboard.usage.cleanupFailed'), 'error')
+        store().toast(t('admin.dashboard.usage.cleanupFailed'), 'error')
       }
     },
 
-    // ========== 现有 dashboard 卡片（保留） ==========
+    // ═══════════════════════════════════════
+    // Getters（HTML 模板用）
+    // ═══════════════════════════════════════
     get stats() {
-      const store = (window as any).Alpine.store('app')
-      const ok = store.health?.success
-      const providers = store.config?.providers ?? []
-      const modelCount = providers.reduce((s: number, p: any) => s + (p.models?.length ?? 0), 0)
-      const adapters = store.config?.adapters ?? []
+      const ok = store().health?.success
+      const providers = store().config?.providers ?? []
+      const models = providers.reduce((s: number, p: any) => s + (p.models?.length ?? 0), 0)
+      const adapters = store().config?.adapters ?? []
+      const tt = t
       return [
-        { label: t('admin.dashboard.status'), value: ok ? t('admin.common.normal') : t('admin.common.error'), clr: ok ? 'var(--success)' : 'var(--danger)', icon: ok ? '✓' : '✕', accent: ok ? 'var(--success)' : 'var(--danger)' },
-        { label: t('admin.dashboard.providerCount'), value: providers.length, clr: 'var(--text)', icon: '◉', accent: 'var(--accent)' },
-        { label: t('admin.dashboard.modelCount'), value: modelCount, clr: 'var(--text)', icon: '▣', accent: '#8b5cf6' },
-        { label: t('admin.dashboard.adapterCount'), value: adapters.length, clr: 'var(--text)', icon: '⇄', accent: '#0ea5e9' },
+        { label: tt('admin.dashboard.status'), value: ok ? tt('admin.common.normal') : tt('admin.common.error'), clr: ok ? 'var(--success)' : 'var(--danger)', icon: ok ? '✓' : '✕', accent: ok ? 'var(--success)' : 'var(--danger)' },
+        { label: tt('admin.dashboard.providerCount'), value: providers.length, clr: 'var(--text)', icon: '◉', accent: 'var(--accent)' },
+        { label: tt('admin.dashboard.modelCount'), value: models, clr: 'var(--text)', icon: '▣', accent: '#8b5cf6' },
+        { label: tt('admin.dashboard.adapterCount'), value: adapters.length, clr: 'var(--text)', icon: '⇄', accent: '#0ea5e9' },
       ]
+    },
+
+    /** 各图表的空态文案供 HTML 模板使用 */
+    get timelineEmpty() {
+      const preset = this.presetDays > 0 ? this.presetDays : null
+      const range = preset ? `${preset} ${t('admin.dashboard.usage.daysUnit')}` : `${this.dateStart} ~ ${this.dateEnd}`
+      return { icon: '📉', title: t('admin.dashboard.usage.emptyTitle'), desc: t('admin.dashboard.usage.emptyDesc', { range }) }
+    },
+    get breakdownEmpty() {
+      const preset = this.presetDays > 0 ? this.presetDays : null
+      const range = preset ? `${preset} ${t('admin.dashboard.usage.daysUnit')}` : `${this.dateStart} ~ ${this.dateEnd}`
+      return { icon: '📊', title: t('admin.dashboard.usage.emptyTitle'), desc: t('admin.dashboard.usage.emptyDesc', { range }) }
     },
 
     get tokenCards() {
-      const store = (window as any).Alpine.store('app')
-      const ts = store.tokenStats?.today
+      const ts = store().tokenStats?.today
       if (!ts) return []
-      const input = ts.input_tokens || 0
-      const output = ts.output_tokens || 0
-      const cacheRead = ts.cache_read_input_tokens || 0
-      const cacheCreate = ts.cache_creation_input_tokens || 0
-      const total = input + output
-      const cacheHitRate = input > 0 ? pct(cacheRead, input) : '0%'
+      const inp = ts.input_tokens || 0
+      const out = ts.output_tokens || 0
+      const cr = ts.cache_read_input_tokens || 0
+      const cc = ts.cache_creation_input_tokens || 0
+      const total = inp + out
+      const totalTokens = inp + out + cr + cc
+      const cacheHitRate = totalTokens > 0 ? pct(cr, totalTokens) : '0%'
+      const tt = t
       return [
-        { label: t('admin.dashboard.requests'), value: ts.request_count || 0, clr: 'var(--text)', desc: t('admin.dashboard.today'), icon: '↑↓', accent: 'var(--text-muted)' },
-        { label: t('admin.dashboard.inputTokens'), value: fmtNum(input), clr: 'var(--accent)', desc: `${t('admin.dashboard.output')} ${fmtNum(output)} / ${t('admin.dashboard.total')} ${fmtNum(total)}`, icon: '◈', accent: 'var(--accent)' },
-        { label: t('admin.dashboard.cacheHits'), value: fmtNum(cacheRead), clr: 'var(--success)', desc: t('admin.dashboard.hitRate', { rate: cacheHitRate }), icon: '⚡', accent: 'var(--success)' },
-        { label: t('admin.dashboard.cacheCreation'), value: fmtNum(cacheCreate), clr: 'var(--warn)', desc: t('admin.dashboard.newCacheTokens'), icon: '✷', accent: 'var(--warn)' },
+        { label: tt('admin.dashboard.requests'), value: ts.request_count || 0, clr: 'var(--text)', desc: tt('admin.dashboard.today'), icon: '↑↓', accent: 'var(--text-muted)' },
+        { label: tt('admin.dashboard.inputTokens'), value: fmtNum(inp), clr: 'var(--accent)', desc: `${tt('admin.dashboard.output')} ${fmtNum(out)} / ${tt('admin.dashboard.total')} ${fmtNum(total)}`, icon: '◈', accent: 'var(--accent)' },
+        { label: tt('admin.dashboard.cacheHits'), value: fmtNum(cr), clr: 'var(--success)', desc: tt('admin.dashboard.hitRate', { rate: cacheHitRate }), icon: '⚡', accent: 'var(--success)' },
+        { label: tt('admin.dashboard.cacheCreation'), value: fmtNum(cc), clr: 'var(--warn)', desc: tt('admin.dashboard.newCacheTokens'), icon: '✷', accent: 'var(--warn)' },
       ]
     },
 
-    // ========== 图表辅助 ==========
-    get breakdownDimensionOptions(): Array<{ value: BreakdownDimension; label: string }> {
-      return [
-        { value: 'provider', label: t('admin.dashboard.usage.dimProvider') },
-        { value: 'adapter', label: t('admin.dashboard.usage.dimAdapter') },
-        { value: 'model', label: t('admin.dashboard.usage.dimModel') },
-      ]
-    },
+    get dimOptions() { return ['provider', 'adapter', 'model'].map(v => ({ v, l: t(`admin.dashboard.usage.dim${v[0].toUpperCase() + v.slice(1)}`) })) },
+    get presets() { return [1, 7, 30, 90].map(v => ({ v, l: t(`admin.dashboard.usage.days${v}`) })) },
 
-    get breakdownRangeOptions(): Array<{ value: BreakdownRange; label: string }> {
-      return [
-        { value: 'today', label: t('admin.dashboard.usage.rangeToday') },
-        { value: '7d', label: t('admin.dashboard.usage.range7d') },
-        { value: '30d', label: t('admin.dashboard.usage.range30d') },
-        { value: 'all', label: t('admin.dashboard.usage.rangeAll') },
-      ]
-    },
-
-    get timelineDaysOptions(): Array<{ value: TimelineDays; label: string }> {
-      return [
-        { value: 7, label: t('admin.dashboard.usage.days7') },
-        { value: 30, label: t('admin.dashboard.usage.days30') },
-        { value: 90, label: t('admin.dashboard.usage.days90') },
-      ]
-    },
-
-    fmtNum,
-    fmtBytes,
+    fmtNum, fmtBytes,
   }
 }

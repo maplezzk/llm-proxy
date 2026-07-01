@@ -250,6 +250,10 @@ export async function convertOpenAIStreamToAnthropic(
   let lastUsage: Record<string, unknown> = {}
   let pendingStopReason: string | null = null
   let messageStarted = false
+  // text 块在 message_start 后即打开（content_block_start index=1）。
+  // 必须跟踪它是否已关闭，确保在转 tool_use / finish 时补发 content_block_stop，
+  // 否则 Anthropic 客户端会因 text 块未闭合而丢弃其累积文本正文。
+  let textBlockOpen = false
 
   const writeEvent = (eventType: string, data: Record<string, unknown>): void => {
     const json = JSON.stringify(data)
@@ -357,6 +361,7 @@ export async function convertOpenAIStreamToAnthropic(
         contentBlockIndex = 1
         thinkingBlockIndex = 0
         thinkingBlockStarted = true
+        textBlockOpen = true
         writeEvent('content_block_start', { type: 'content_block_start', index: 0, content_block: { type: 'thinking', thinking: '', signature: '' } })
         writeEvent('content_block_start', { type: 'content_block_start', index: 1, content_block: { type: 'text', text: '' } })
         // 不 continue — 同一 chunk 可能包含 reasoning_content/content 需要继续处理
@@ -366,6 +371,18 @@ export async function convertOpenAIStreamToAnthropic(
       const toolCalls = delta?.tool_calls as Array<Record<string, unknown>> | undefined
       if (toolCalls && toolCalls.length > 0) {
         const tc = toolCalls[0]
+        // 开启 tool_use 块前，必须先关闭可能仍打开的 thinking / text 块，
+        // 保证每个 content_block_start 都有配对的 content_block_stop。
+        if (thinkingBlockStarted) {
+          const sig = thinkingSignature || makeSignature(thinkingText)
+          if (sig) writeEvent('content_block_delta', { type: 'content_block_delta', index: 0, delta: { type: 'signature_delta', signature: sig } })
+          writeEvent('content_block_stop', { type: 'content_block_stop', index: 0 })
+          thinkingBlockStarted = false
+        }
+        if (textBlockOpen) {
+          writeEvent('content_block_stop', { type: 'content_block_stop', index: 1 })
+          textBlockOpen = false
+        }
         if (tc.id && tc.type === 'function') {
           contentBlockIndex++
           const fn = tc.function as Record<string, unknown> | undefined
@@ -421,7 +438,10 @@ export async function convertOpenAIStreamToAnthropic(
           writeEvent('content_block_stop', { type: 'content_block_stop', index: 0 })
           thinkingBlockStarted = false
         }
+        // 关闭当前最后打开的内容块；当 text 块仍开着（即未转 tool_use）时它指向 text(1)，
+        // 否则已是 tool_use 块，text(1) 已在 tool_use 开启时提前关闭。
         writeEvent('content_block_stop', { type: 'content_block_stop', index: contentBlockIndex })
+        textBlockOpen = false
         // message_delta 延迟到 [DONE] / 流结束时统一发送，确保能拿到后续
         // usage-only chunk (choices=[]) 中的最新 usage，避免 0 usage 被错发。
         continue
@@ -435,6 +455,12 @@ export async function convertOpenAIStreamToAnthropic(
     const sig = thinkingSignature || makeSignature(thinkingText)
     if (sig) writeEvent('content_block_delta', { type: 'content_block_delta', index: 0, delta: { type: 'signature_delta', signature: sig } })
     writeEvent('content_block_stop', { type: 'content_block_stop', index: 0 })
+  }
+  // text 块若仍开启（未转 tool_use 且未经 finish_reason 关闭），补发其 content_block_stop，
+  // 确保每个 content_block_start 都有配对的 content_block_stop（Anthropic 协议要求）。
+  if (textBlockOpen) {
+    writeEvent('content_block_stop', { type: 'content_block_stop', index: contentBlockIndex })
+    textBlockOpen = false
   }
   // Note: content_block_stop for text block may have been emitted via finish_reason.
   // If the stream aborted without finish_reason, we skip message_delta too —

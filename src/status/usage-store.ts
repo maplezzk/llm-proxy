@@ -298,6 +298,7 @@ export class UsageStore {
    * 获取 dashboard 兼容结构：today / history / byProvider
    */
   getStats(): TokenStats {
+    const t0 = process.hrtime.bigint()
     const today = this.today
     const todayRow = this.db.prepare(`
       SELECT
@@ -344,7 +345,7 @@ export class UsageStore {
       }
     }
 
-    return {
+    const result = {
       today: {
         date: today,
         input_tokens: todayRow.input_tokens,
@@ -356,50 +357,93 @@ export class UsageStore {
       history: historyRows,
       byProvider,
     }
+    const elapsed = Number(process.hrtime.bigint() - t0) / 1e6
+    this.logger?.log('system', `UsageStore.getStats`, { durationMs: Math.round(elapsed * 100) / 100 }, 'debug')
+    return result
   }
 
   /**
-   * 获取 N 天的折线图数据。
-   * 返回从最早到最近的每日数据点（按 date ASC），缺失日期补 0。
+   * 获取每日折线图数据。
+   * - startDate + endDate 都给：自定义日期范围（YYYY-MM-DD，含两端）
+   * - 否则：按 days（默认 30）回退，向前推 N 天
+   * 返回从最早到最近的每日数据点，缺失日期补 0。
    */
-  getTimeline(days: number): TimelinePoint[] {
-    const today = this.today
-    const rows = this.db.prepare(`
-      SELECT
-        date,
-        COALESCE(SUM(input_tokens), 0) AS input_tokens,
-        COALESCE(SUM(output_tokens), 0) AS output_tokens,
-        COALESCE(SUM(cache_read_input_tokens), 0) AS cache_read_input_tokens,
-        COALESCE(SUM(cache_creation_input_tokens), 0) AS cache_creation_input_tokens,
-        COALESCE(SUM(request_count), 0) AS request_count
-      FROM daily_aggregates
-      WHERE date >= date(?, '-' || ? || ' days')
-      GROUP BY date
-      ORDER BY date ASC
-    `).all(today, days - 1) as unknown as TimelinePoint[]
+  getTimeline(opts: { startDate?: string; endDate?: string; days?: number } = {}): TimelinePoint[] {
+    const t0 = process.hrtime.bigint()
+    const { startDate, endDate } = opts
+    const useRange = !!(startDate && endDate)
+
+    let dates: string[]
+    let rows: TimelinePoint[]
+    if (useRange) {
+      rows = this.db.prepare(`
+        SELECT
+          date,
+          COALESCE(SUM(input_tokens), 0) AS input_tokens,
+          COALESCE(SUM(output_tokens), 0) AS output_tokens,
+          COALESCE(SUM(cache_read_input_tokens), 0) AS cache_read_input_tokens,
+          COALESCE(SUM(cache_creation_input_tokens), 0) AS cache_creation_input_tokens,
+          COALESCE(SUM(request_count), 0) AS request_count
+        FROM daily_aggregates
+        WHERE date BETWEEN ? AND ?
+        GROUP BY date
+        ORDER BY date ASC
+      `).all(startDate, endDate) as unknown as TimelinePoint[]
+      dates = this.expandDateRange(startDate, endDate)
+    } else {
+      const days = opts.days ?? 30
+      const today = this.today
+      rows = this.db.prepare(`
+        SELECT
+          date,
+          COALESCE(SUM(input_tokens), 0) AS input_tokens,
+          COALESCE(SUM(output_tokens), 0) AS output_tokens,
+          COALESCE(SUM(cache_read_input_tokens), 0) AS cache_read_input_tokens,
+          COALESCE(SUM(cache_creation_input_tokens), 0) AS cache_creation_input_tokens,
+          COALESCE(SUM(request_count), 0) AS request_count
+        FROM daily_aggregates
+        WHERE date >= date(?, '-' || ? || ' days')
+        GROUP BY date
+        ORDER BY date ASC
+      `).all(today, days - 1) as unknown as TimelinePoint[]
+      dates = []
+      for (let i = days - 1; i >= 0; i--) {
+        const d = new Date(today + 'T00:00:00')
+        d.setDate(d.getDate() - i)
+        dates.push(this.formatDate(d))
+      }
+    }
 
     // 补齐缺失日期
     const map = new Map(rows.map(r => [r.date, r]))
-    const result: TimelinePoint[] = []
-    for (let i = days - 1; i >= 0; i--) {
-      const d = new Date(today + 'T00:00:00')
-      d.setDate(d.getDate() - i)
-      const dateStr = this.formatDate(d)
+    const result: TimelinePoint[] = dates.map(dateStr => {
       const r = map.get(dateStr)
-      result.push(r ?? { date: dateStr, input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0, request_count: 0 })
-    }
+      return r ?? { date: dateStr, input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0, request_count: 0 }
+    })
+    const elapsed = Number(process.hrtime.bigint() - t0) / 1e6
+    this.logger?.log('system', `UsageStore.getTimeline`, { startDate, endDate, days: opts.days, returned: result.length, durationMs: Math.round(elapsed * 100) / 100 }, 'debug')
     return result
   }
 
   /**
    * 按维度分桶查询：'provider' | 'adapter' | 'model'
-   * @param range 'today' | '7d' | '30d' | 'all'
+   * - startDate + endDate 都给：自定义日期范围
+   * - 否则按 range（默认 'today'）：today / 7d / 30d / all
    */
-  getBreakdown(dimension: 'provider' | 'adapter' | 'model', range: 'today' | '7d' | '30d' | 'all' = 'today'): UsageBucket[] {
+  getBreakdown(
+    dimension: 'provider' | 'adapter' | 'model',
+    opts: { startDate?: string; endDate?: string; range?: 'today' | '7d' | '30d' | 'all' } = {},
+  ): UsageBucket[] {
+    const t0 = process.hrtime.bigint()
+    const { startDate, endDate } = opts
+    const range = opts.range ?? 'today'
     const col = dimension === 'provider' ? 'provider' : dimension === 'adapter' ? 'adapter' : 'model'
     let where = ''
     const params: unknown[] = []
-    if (range === 'today') {
+    if (startDate && endDate) {
+      where = 'WHERE date BETWEEN ? AND ?'
+      params.push(startDate, endDate)
+    } else if (range === 'today') {
       where = 'WHERE date = ?'
       params.push(this.today)
     } else if (range === '7d' || range === '30d') {
@@ -426,6 +470,8 @@ export class UsageStore {
         if (!r.key) r.key = '(direct proxy)'
       }
     }
+    const elapsed = Number(process.hrtime.bigint() - t0) / 1e6
+    this.logger?.log('system', `UsageStore.getBreakdown`, { dimension, startDate, endDate, range, returned: rows.length, durationMs: Math.round(elapsed * 100) / 100 }, 'debug')
     return rows
   }
 
@@ -476,6 +522,18 @@ export class UsageStore {
   private formatDate(d: Date): string {
     const pad = (n: number) => String(n).padStart(2, '0')
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+  }
+
+  /** 生成 [startDate, endDate]（含两端）的 YYYY-MM-DD 列表，按 ASC。 */
+  private expandDateRange(startDate: string, endDate: string): string[] {
+    const result: string[] = []
+    const cur = new Date(startDate + 'T00:00:00')
+    const end = new Date(endDate + 'T00:00:00')
+    while (cur <= end) {
+      result.push(this.formatDate(cur))
+      cur.setDate(cur.getDate() + 1)
+    }
+    return result
   }
 
   private offsetDate(dateStr: string, offsetDays: number): string {

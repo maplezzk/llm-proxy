@@ -762,14 +762,26 @@ class MenuBarController: NSObject {
     }
 
     @objc func quitApp() {
-        stopSync()
+        // 先同步停止后台服务，必须成功才退出菜单栏 app
+        // 避免服务未停就退出导致旧进程残留 / PID 文件丢失
+        guard stopSync() else {
+            // 服务停止失败：拒绝退出菜单栏，弹窗提醒用户
+            let alert = NSAlert()
+            alert.messageText = loc("quit.serviceStopFailed.title")
+            alert.informativeText = loc("quit.serviceStopFailed.body")
+            alert.alertStyle = .warning
+            alert.addButton(withTitle: loc("common.close"))
+            alert.runModal()
+            NSLog("[LLMProxy] ❌ 后台服务停止失败，拒绝退出菜单栏")
+            return
+        }
         (NSApp.delegate as? AppDelegate)?.shouldReallyQuit = true
         NSApplication.shared.terminate(nil)
     }
 
-    /// 同步停止后台服务，等待进程退出后再退出应用
-    /// 避免异步 stop 未完成时 terminate 导致旧进程残留
-    private func stopSync() {
+    /// 同步停止后台服务，等待进程退出后返回是否成功
+    /// - Returns: true 表示服务已成功停止，false 表示 stop 失败（进程退出码非 0 / 进程未退出）
+    private func stopSync() -> Bool {
         let task = Process()
         let shell = "/bin/zsh"
         task.executableURL = URL(fileURLWithPath: shell)
@@ -786,7 +798,7 @@ class MenuBarController: NSObject {
             let fallback = "/opt/homebrew/bin/llm-proxy"
             guard FileManager.default.isExecutableFile(atPath: fallback) else {
                 NSLog("[LLMProxy] ❌ 找不到 llm-proxy 二进制")
-                return
+                return false
             }
             task.arguments = ["-l", "-c", "\"\(fallback)\" stop"]
         }
@@ -795,8 +807,17 @@ class MenuBarController: NSObject {
             try task.run()
             // 阻塞直到 stop 完成（llm-proxy stop 内部会 SIGTERM + 清理 PID 文件）
             task.waitUntilExit()
+            let exitCode = task.terminationStatus
+            if exitCode == 0 {
+                NSLog("[LLMProxy] ✅ 后台服务已停止 (exit=0)")
+                return true
+            } else {
+                NSLog("[LLMProxy] ❌ 后台服务停止失败 (exit=\(exitCode))")
+                return false
+            }
         } catch {
             NSLog("[LLMProxy] ❌ 同步停止服务失败: \(error.localizedDescription)")
+            return false
         }
     }
 

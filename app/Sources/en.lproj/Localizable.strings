@@ -16,6 +16,8 @@
 "action.language" = "Language: %@";
 "status.stopping" = "◌ Stopping...";
 "status.restarting" = "◌ Restarting...";
+"quit.serviceStopFailed.title" = "Service stop failed";
+"quit.serviceStopFailed.body" = "The background service failed to stop. Please check the logs and stop it manually. The menu bar app will stay running.";
 "status.starting" = "◌ Starting...";
 "status.loading" = "◌ Loading adapters...";
 "error.switchFailed" = "Switch failed: %@";
@@ -208,6 +210,8 @@
 "dashboard.cacheHits" = "Cache Hits";
 "dashboard.cacheCreation" = "Cache Creation";
 "dashboard.hitRate" = "Hit Rate";
+"dashboard.today" = "Today";
+"dashboard.newCacheTokens" = "New cache tokens written";
 "dashboard.empty" = "No data";
 "dashboard.loading" = "Loading...";
 
@@ -215,16 +219,9 @@
 "dashboard.usage.trendTitle" = "Token Usage Trend";
 "dashboard.usage.trendDesc" = "Input / Output / Cache Read / Cache Create aggregated by day";
 "dashboard.usage.breakdownTitle" = "Breakdown Comparison";
-"dashboard.usage.pieTitle" = "Today's Composition";
-"dashboard.usage.pieDesc" = "Ratio of input / output / cache read / cache create";
-"dashboard.usage.totalLabel" = "Total";
 "dashboard.usage.dimProvider" = "Provider";
 "dashboard.usage.dimAdapter" = "Adapter";
 "dashboard.usage.dimModel" = "Model";
-"dashboard.usage.rangeToday" = "Today";
-"dashboard.usage.range7d" = "7 days";
-"dashboard.usage.range30d" = "30 days";
-"dashboard.usage.rangeAll" = "All";
 "dashboard.usage.days7" = "7 days";
 "dashboard.usage.days30" = "30 days";
 "dashboard.usage.days90" = "90 days";

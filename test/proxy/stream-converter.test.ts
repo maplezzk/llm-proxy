@@ -174,6 +174,41 @@ describe('proxy/stream-converter', () => {
       assert.ok(output.includes('event: message_stop'), '应有 message_stop')
     })
 
+    it('reasoning + text + tool_use：text 块必须在 tool_use 前补发 content_block_stop', async () => {
+      // 复刻真案：OpenAI 上游（glm 类）同一流里依次出现 reasoning → text → tool_calls。
+      // 转成 Anthropic 时初始化阶段就发出了 text content_block (index=1)，若 tool_use
+      // 启动时不关闭该 text 块，Anthropic 客户端会因缺 content_block_stop 丢弃正文。
+      const { chunks, res } = makeResponse()
+      const reader = makeReader([
+        'data: {"choices":[{"delta":{"role":"assistant","content":"","reasoning_content":""},"index":0}]}\n\n',
+        'data: {"choices":[{"delta":{"reasoning_content":"思考中"},"index":0}]}\n\n',
+        'data: {"choices":[{"delta":{"content":"正文"},"index":0}]}\n\n',
+        'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"edit","arguments":"{"}}]},"index":0}]}\n\n',
+        'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"}"}}]},"index":0}]}\n\n',
+        'data: {"choices":[{"delta":{},"finish_reason":"tool_calls","index":0}]}\n\n',
+        'data: [DONE]\n\n',
+      ])
+      await convertOpenAIStreamToAnthropic(reader, res)
+      const output = chunks.join('')
+
+      // 每个 content_block_start 都必须有配对的 content_block_stop（Anthropic 协议要求）
+      const startIdxs = [...output.matchAll(/content_block_start.*?"index":(\d+)/g)].map((m) => Number(m[1]))
+      const stopIdxs = [...output.matchAll(/content_block_stop.*?"index":(\d+)/g)].map((m) => Number(m[1]))
+      assert.deepStrictEqual(startIdxs.sort(), [0, 1, 2], '依次开启 thinking(0)、text(1)、tool_use(2) 三个块')
+      assert.deepStrictEqual(stopIdxs.sort(), [0, 1, 2], '三个块都必须有对应的 content_block_stop')
+
+      // 回归核心：text(1) 的 content_block_stop 必须在 tool_use 块开始之前发出
+      const stop1Match = output.match(/content_block_stop.*?"index":1/)
+      assert.ok(stop1Match, 'text 块(index=1) 必须有 content_block_stop')
+      const stop1Pos = output.indexOf(stop1Match![0])
+      const toolUseStartPos = output.indexOf('"type":"tool_use"')
+      assert.ok(toolUseStartPos > 0, '应有 tool_use 块')
+      assert.ok(stop1Pos < toolUseStartPos, 'text(1) 的 content_block_stop 必须在 tool_use 块开始之前发出')
+
+      assert.ok(output.includes('"thinking":"思考中"'), '应保留 thinking 正文')
+      assert.ok(output.includes('"text":"正文"'), '应保留 text 正文')
+      assert.ok(output.includes('"stop_reason":"tool_use"'), '应收尾为 tool_use')
+    })
     it('reasoning_content → thinking_delta (content_block_start/stop 配对)', async () => {
       const { chunks, res } = makeResponse()
       const reader = makeReader([
