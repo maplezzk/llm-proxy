@@ -2,21 +2,21 @@ import { createServer as createHttpServer, type IncomingMessage, type ServerResp
 import type { Server } from 'node:http'
 import type { ConfigStore } from '../config/store.js'
 import type { StatusTracker } from '../status/tracker.js'
-import type { TokenTracker } from '../status/token-tracker.js'
+import type { UsageStore } from '../status/usage-store.js'
 import type { CaptureBuffer } from '../proxy/capture.js'
 import type { VisionCache } from '../proxy/vision-cache.js'
 import type { Logger } from '../log/logger.js'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
-import { handleGetConfig, handleReload, handleHealth, handleStatus, handleGetLogs, handleGetLogLevel, handleSetLogLevel, handleGetLocale, handleSetLocale, handleGetPort, handleSetPort, handleGetAdapters, handleCreateProvider, handleUpdateProvider, handleDeleteProvider, handleCreateAdapter, handleUpdateAdapter, handleDeleteAdapter, handleTestModel, handleTestAdapter, handleListModels, handlePullModels, handleGetProxyKey, handleSetProxyKey, handleGetTokenStats, handleDebugCapturesStatus, handleDebugCaptures, handleDebugCapturesControl, handleDebugCapturesStream, handleGetVision, handleSetVision, handleGetVisionCacheStats, handleClearVisionCache } from './handlers/index.js'
+import { handleGetConfig, handleReload, handleHealth, handleStatus, handleGetLogs, handleGetLogLevel, handleSetLogLevel, handleGetLocale, handleSetLocale, handleGetPort, handleSetPort, handleGetAdapters, handleCreateProvider, handleUpdateProvider, handleDeleteProvider, handleCreateAdapter, handleUpdateAdapter, handleDeleteAdapter, handleTestModel, handleTestAdapter, handleListModels, handlePullModels, handleGetProxyKey, handleSetProxyKey, handleGetTokenStats, handleGetTokenTimeline, handleGetTokenBreakdown, handleGetTokenDbInfo, handlePostTokenCleanup, handleDebugCapturesStatus, handleDebugCaptures, handleDebugCapturesControl, handleDebugCapturesStream, handleGetVision, handleSetVision, handleGetVisionCacheStats, handleClearVisionCache } from './handlers/index.js'
 import { handleAnthropicMessages, handleOpenAIChat, handleOpenAIResponses } from '../proxy/handlers.js'
 import { handleAdapterRequest, handleAdapterModels } from '../adapter/handlers.js'
 
 export interface ServerContext {
   store: ConfigStore
   tracker: StatusTracker
-  tokenTracker: TokenTracker
+  usageStore: UsageStore
   logger: Logger
   capture?: CaptureBuffer
   visionCache?: VisionCache
@@ -29,7 +29,7 @@ export interface ServerOptions {
   proxyPort: number
   store: ConfigStore
   tracker: StatusTracker
-  tokenTracker: TokenTracker
+  usageStore: UsageStore
   logger: Logger
   capture?: CaptureBuffer
   visionCache?: VisionCache
@@ -103,6 +103,10 @@ const ROUTES: Route[] = [
   { method: 'GET', pattern: /^\/admin\/proxy-key$/, handler: handleGetProxyKey },
   { method: 'PUT', pattern: /^\/admin\/proxy-key$/, handler: handleSetProxyKey },
   { method: 'GET', pattern: /^\/admin\/token-stats$/, handler: handleGetTokenStats },
+  { method: 'GET', pattern: /^\/admin\/token-stats\/timeline(\?.*)?$/, handler: handleGetTokenTimeline },
+  { method: 'GET', pattern: /^\/admin\/token-stats\/breakdown(\?.*)?$/, handler: handleGetTokenBreakdown },
+  { method: 'GET', pattern: /^\/admin\/token-stats\/db-info$/, handler: handleGetTokenDbInfo },
+  { method: 'POST', pattern: /^\/admin\/token-stats\/cleanup$/, handler: handlePostTokenCleanup },
   { method: 'GET', pattern: /^\/admin\/debug\/captures$/, handler: handleDebugCaptures },
   { method: 'GET', pattern: /^\/admin\/debug\/captures\/status$/, handler: handleDebugCapturesStatus },
   { method: 'GET', pattern: /^\/admin\/debug\/captures\/stream$/, handler: handleDebugCapturesStream },
@@ -132,7 +136,7 @@ function corsHeaders(res: ServerResponse): void {
 }
 
 export function createProxyServer(opts: ServerOptions): Server {
-  const ctx: ServerContext = { store: opts.store, tracker: opts.tracker, tokenTracker: opts.tokenTracker, logger: opts.logger, capture: opts.capture, visionCache: opts.visionCache }
+  const ctx: ServerContext = { store: opts.store, tracker: opts.tracker, usageStore: opts.usageStore, logger: opts.logger, capture: opts.capture, visionCache: opts.visionCache }
 
   const server = createHttpServer(async (req: IncomingMessage, res: ServerResponse) => {
     corsHeaders(res)
@@ -153,6 +157,15 @@ export function createProxyServer(opts: ServerOptions): Server {
     const url = req.url ?? '/'
     const method = req.method ?? 'GET'
 
+    // 跳过高频健康检查和 SSE 长连接，避免日志刷屏
+    const skipLog = url === '/admin/health' || url.startsWith('/admin/capture/stream') || url === '/v1/models'
+
+    // Dashboard 相关端点默认记 info，其他端点 debug（避免 log 刷屏）
+    const isDashboard = url.startsWith('/admin/') && !skipLog
+    const baseLevel: 'info' | 'debug' = isDashboard ? 'info' : 'debug'
+
+    const startedAt = process.hrtime.bigint()
+
     for (const route of ROUTES) {
       if (route.method === method && route.pattern.test(url)) {
         try {
@@ -165,12 +178,22 @@ export function createProxyServer(opts: ServerOptions): Server {
             res.end(JSON.stringify({ error: { message } }))
           }
         }
+        if (!skipLog) {
+          const elapsedMs = Number(process.hrtime.bigint() - startedAt) / 1e6
+          const status = res.statusCode || 200
+          const level = status >= 500 ? 'error' : status >= 400 ? 'warn' : baseLevel
+          ctx.logger.log('request', `${method} ${url}`, { method, url, status, durationMs: Math.round(elapsedMs * 100) / 100 }, level)
+        }
         return
       }
     }
 
     res.writeHead(404, { 'Content-Type': 'application/json' })
     res.end(JSON.stringify({ error: { message: 'Not found' } }))
+    if (!skipLog) {
+      const elapsedMs = Number(process.hrtime.bigint() - startedAt) / 1e6
+      ctx.logger.log('request', `${method} ${url}`, { method, url, status: 404, durationMs: Math.round(elapsedMs * 100) / 100 }, 'warn')
+    }
   })
 
   // 超时配置：防止空闲 socket/请求无限期占用堆、防止句柄累积泄漏。

@@ -1,7 +1,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { ConfigStore } from '../config/store.js'
 import type { Logger } from '../log/logger.js'
-import type { TokenTracker } from '../status/token-tracker.js'
+import type { UsageStore } from '../status/usage-store.js'
 import type { CaptureBuffer } from './capture.js'
 import type { StatusTracker } from '../status/tracker.js'
 import type { RouterResult } from './types.js'
@@ -82,7 +82,7 @@ export interface PipelineContext {
   store: ConfigStore
   tracker: StatusTracker
   logger: Logger
-  tokenTracker: TokenTracker
+  usageStore: UsageStore
   capture?: CaptureBuffer
   visionCache?: VisionCache
 }
@@ -159,8 +159,11 @@ export async function forwardPipeline(
         inboundType,
         upstreamType: route.providerType,
         logger: ctx.logger,
-        tokenTracker: ctx.tokenTracker,
+        usageStore: ctx.usageStore,
         providerName: route.providerName,
+        upstreamModel: route.modelId,
+        clientModel: modelName,
+        adapterName,
         capture: ctx.capture,
         pairId,
       },
@@ -177,7 +180,7 @@ export async function forwardPipeline(
       crossProtocol: upstream.crossProtocol,
       stream: isStream,
       latency,
-      tokenUsage: ctx.tokenTracker.getStats().today,
+      tokenUsage: ctx.usageStore.getStats().today,
     })
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)

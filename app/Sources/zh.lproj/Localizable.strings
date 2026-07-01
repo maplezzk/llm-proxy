@@ -16,6 +16,8 @@
 "action.language" = "语言: %@";
 "status.stopping" = "◌ 正在停止...";
 "status.restarting" = "◌ 正在重启...";
+"quit.serviceStopFailed.title" = "服务停止失败";
+"quit.serviceStopFailed.body" = "后台服务未能正常退出，请查看日志后手动停止。菜单栏应用保持运行。";
 "status.starting" = "◌ 正在启动...";
 "status.loading" = "◌ 正在加载适配器...";
 "error.switchFailed" = "切换失败: %@";
@@ -227,8 +229,30 @@
 "dashboard.cacheHits" = "缓存命中";
 "dashboard.cacheCreation" = "缓存创建";
 "dashboard.hitRate" = "命中率";
+"dashboard.today" = "今日";
+"dashboard.newCacheTokens" = "新写入缓存 token";
 "dashboard.empty" = "暂无数据";
 "dashboard.loading" = "加载中...";
+
+// Dashboard 用量图表
+"dashboard.usage.trendTitle" = "Token 用量趋势";
+"dashboard.usage.trendDesc" = "输入/输出/缓存命中/缓存创建 按日聚合";
+"dashboard.usage.breakdownTitle" = "分维度对比";
+"dashboard.usage.dimProvider" = "供应商";
+"dashboard.usage.dimAdapter" = "适配器";
+"dashboard.usage.dimModel" = "模型";
+"dashboard.usage.days7" = "7 天";
+"dashboard.usage.days30" = "30 天";
+"dashboard.usage.days90" = "90 天";
+"dashboard.usage.seriesInput" = "输入";
+"dashboard.usage.seriesOutput" = "输出";
+"dashboard.usage.seriesCacheRead" = "缓存命中";
+"dashboard.usage.seriesCacheCreate" = "缓存创建";
+"dashboard.usage.storageTitle" = "用量数据存储";
+"dashboard.usage.storageDesc" = "%d 条事件 · %d 条预聚合 · %@";
+"dashboard.usage.cleanupBtn" = "清理 90 天前的数据";
+"dashboard.usage.cleanupConfirm" = "清理历史用量数据";
+"dashboard.usage.cleanupMessage" = "确定要清理 90 天前的所有历史用量数据吗？此操作不可恢复。";
 
 // Common
 "console.empty" = "暂无数据";
@@ -236,6 +260,8 @@
 "common.copied" = "已复制";
 "common.refresh" = "刷新";
 "common.close" = "关闭";
+"common.cancel" = "取消";
+"common.loading" = "加载中...";
 
 // Settings
 "settings.title" = "设置";

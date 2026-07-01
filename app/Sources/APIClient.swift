@@ -201,6 +201,59 @@ class APIClient {
         return stats
     }
 
+    /// 获取趋势折线图数据（支持天数或自定义日期范围）
+    func fetchTokenTimeline(days: Int = 30, startDate: String? = nil, endDate: String? = nil) async throws -> [TimelinePoint] {
+        var query = "days=\(days)"
+        if let s = startDate, let e = endDate {
+            query = "startDate=\(s)&endDate=\(e)"
+        }
+        let url = URL(string: "\(baseURL)/admin/token-stats/timeline?\(query)")!
+        let (data, _) = try await URLSession.shared.data(from: url)
+        let resp = try JSONDecoder().decode(ArrayResponse<TimelinePoint>.self, from: data)
+        guard resp.success else { throw URLError(.cannotParseResponse) }
+        return resp.data ?? []
+    }
+
+    /// 按维度分桶查询，与 token-stats/timeline 共用同一对 startDate/endDate
+    /// - Parameter dimension: provider / adapter / model
+    func fetchTokenBreakdown(dimension: String, startDate: String? = nil, endDate: String? = nil) async throws -> [UsageBucket] {
+        var query = "dimension=\(dimension)"
+        if let s = startDate, let e = endDate {
+            query += "&startDate=\(s)&endDate=\(e)"
+        }
+        let url = URL(string: "\(baseURL)/admin/token-stats/breakdown?\(query)")!
+        let (data, _) = try await URLSession.shared.data(from: url)
+        let resp = try JSONDecoder().decode(ArrayResponse<UsageBucket>.self, from: data)
+        guard resp.success else { throw URLError(.cannotParseResponse) }
+        return resp.data ?? []
+    }
+
+    /// 获取数据库概况（条目数 + 大小）
+    func fetchTokenDbInfo() async throws -> TokenDbInfo {
+        let url = URL(string: "\(baseURL)/admin/token-stats/db-info")!
+        let (data, _) = try await URLSession.shared.data(from: url)
+        let resp = try JSONDecoder().decode(InfoResponse<TokenDbInfo>.self, from: data)
+        guard resp.success, let info = resp.data else {
+            throw URLError(.cannotParseResponse)
+        }
+        return info
+    }
+
+    /// 清理 N 天前的历史数据
+    func cleanupTokenUsage(days: Int = 90) async throws -> CleanupResult {
+        let url = URL(string: "\(baseURL)/admin/token-stats/cleanup")!
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try JSONSerialization.data(withJSONObject: ["days": days])
+        let (data, _) = try await URLSession.shared.data(for: req)
+        let resp = try JSONDecoder().decode(CleanupResponse.self, from: data)
+        guard resp.success, let result = resp.data else {
+            throw URLError(.cannotParseResponse)
+        }
+        return result
+    }
+
     // MARK: - Vision Fallback
 
     /// 获取外挂识图配置。返回 nil 表示未启用。

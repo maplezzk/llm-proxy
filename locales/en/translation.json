@@ -5,7 +5,8 @@
       "providers": "Providers",
       "adapters": "Adapters",
       "logs": "Logs",
-      "capture": "Capture"
+      "capture": "Capture",
+      "settings": "Settings"
     },
     "sidebar": {
       "running": "Running",
@@ -67,7 +68,28 @@
       "proxyKeyNotSet": "Not set — all requests are accessible directly",
       "proxyKeySetSuccess": "Proxy key set",
       "proxyKeyRemoveSuccess": "Proxy key removed",
-      "loadMore": "Load More"
+      "loadMore": "Load More",
+      "usage": {
+        "trendTitle": "Token Usage Trend",
+        "trendDesc": "Input / Output / Cache Read / Cache Create aggregated by day",
+        "breakdownTitle": "Breakdown Comparison",
+        "dimProvider": "Provider",
+        "dimAdapter": "Adapter",
+        "dimModel": "Model",
+        "days1": "Today",
+        "days7": "7 days",
+        "days30": "30 days",
+        "days90": "90 days",
+        "daysUnit": "days",
+        "emptyTitle": "No usage data",
+        "emptyDesc": "No proxy requests recorded in {{range}}. Send a request to see the trend here.",
+        "storageTitle": "Usage Data Storage",
+        "storageDesc": "{{events}} events · {{aggregates}} aggregates · {{size}}",
+        "cleanupBtn": "Clean up data older than 90 days",
+        "cleanupConfirm": "Are you sure you want to delete all usage data older than {{days}} days? This cannot be undone.",
+        "cleanupDone": "Cleaned {{events}} events / {{aggregates}} aggregates",
+        "cleanupFailed": "Cleanup failed"
+      }
     },
     "logs": {
       "title": "Logs",

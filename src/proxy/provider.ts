@@ -3,7 +3,7 @@ import { maskUrl, maskHeaders } from '../lib/http-utils.js'
 import { convertAnthropicStreamToOpenAI, convertOpenAIStreamToAnthropic, convertOpenAIResponsesStreamToAnthropic, convertAnthropicStreamToOpenAIResponses, convertOpenAIStreamToOpenAIResponses, convertOpenAIResponsesStreamToOpenAI, type StreamUsage } from './stream-converter.js'
 import { convertOpenAIResponseToAnthropic, convertAnthropicResponseToOpenAI, convertOpenAIResponsesToAnthropic, convertAnthropicResponseToOpenAIResponses, convertOpenAIResponseToOpenAIResponses, convertOpenAIResponsesResponseToOpenAI, buildNamespaceToolContext, remapNamespaceFunctionCalls } from './translation.js'
 import type { Logger } from '../log/logger.js'
-import type { TokenTracker } from '../status/token-tracker.js'
+import type { UsageStore } from '../status/usage-store.js'
 
 import type { CaptureBuffer } from './capture.js'
 
@@ -17,8 +17,14 @@ interface ProviderRequest {
   inboundType: 'anthropic' | 'openai' | 'openai-responses'
   upstreamType: 'anthropic' | 'openai' | 'openai-responses'
   logger?: Logger
-  tokenTracker?: TokenTracker
+  usageStore?: UsageStore
   providerName?: string
+  /** 上游模型 ID（用于持久化） */
+  upstreamModel?: string
+  /** 客户端请求的模型名（代理端 model 字段，用于持久化） */
+  clientModel?: string
+  /** 适配器名称（适配器请求时传入，直接代理为 null） */
+  adapterName?: string
   capture?: CaptureBuffer
   pairId?: number
 }
@@ -219,7 +225,7 @@ export async function forwardRequest(
       try { parsed = JSON.parse(text) } catch { /* ignore */ }
 
       // Record token usage from non-streaming response
-      if (parsed && req.tokenTracker && req.providerName) {
+      if (parsed && req.usageStore && req.providerName) {
         const usage = parsed.usage as Record<string, unknown> | undefined
         if (usage) {
           let inputTokens = (usage.input_tokens ?? usage.prompt_tokens ?? 0) as number
@@ -231,7 +237,18 @@ export async function forwardRequest(
           if (req.upstreamType === 'anthropic') {
             inputTokens += (cacheRead ?? 0) + (cacheCreate ?? 0)
           }
-          req.tokenTracker.record(req.providerName, inputTokens, outputTokens, cacheRead, cacheCreate)
+          req.usageStore.record({
+            provider: req.providerName,
+            adapter: req.adapterName ?? null,
+            model: req.clientModel ?? req.providerName,
+            upstreamModel: req.upstreamModel ?? req.providerName,
+            protocol: req.upstreamType,
+            source: req.adapterName ?? 'proxy',
+            inputTokens,
+            outputTokens,
+            cacheRead: cacheRead ?? 0,
+            cacheCreate: cacheCreate ?? 0,
+          })
         }
       }
 
@@ -340,13 +357,24 @@ export async function forwardRequest(
         }
       }
       // Record token usage from streaming response
-      if (usage && req.tokenTracker && req.providerName) {
+      if (usage && req.usageStore && req.providerName) {
         let inputTokens = usage.input_tokens
         // 归一化：Anthropic 的 input_tokens 是计费部分（不含缓存），统一存为总输入
         if (req.upstreamType === 'anthropic') {
           inputTokens += (usage.cache_read_input_tokens ?? 0) + (usage.cache_creation_input_tokens ?? 0)
         }
-        req.tokenTracker.record(req.providerName, inputTokens, usage.output_tokens, usage.cache_read_input_tokens, usage.cache_creation_input_tokens)
+        req.usageStore.record({
+          provider: req.providerName,
+          adapter: req.adapterName ?? null,
+          model: req.clientModel ?? req.providerName,
+          upstreamModel: req.upstreamModel ?? req.providerName,
+          protocol: req.upstreamType,
+          source: req.adapterName ?? 'proxy',
+          inputTokens,
+          outputTokens: usage.output_tokens,
+          cacheRead: usage.cache_read_input_tokens ?? 0,
+          cacheCreate: usage.cache_creation_input_tokens ?? 0,
+        })
       }
     } else {
       const contentType = response.headers.get('content-type') ?? 'text/event-stream'
@@ -361,13 +389,24 @@ export async function forwardRequest(
         reader, res, req.upstreamType, req.logger, req.capture, req.pairId, abortController.signal
       )
       // Record token usage from passthrough streaming response
-      if (usage && req.tokenTracker && req.providerName) {
+      if (usage && req.usageStore && req.providerName) {
         let inputTokens = usage.input_tokens
         // 归一化：Anthropic 的 input_tokens 是计费部分（不含缓存），统一存为总输入
         if (req.upstreamType === 'anthropic') {
           inputTokens += (usage.cache_read_input_tokens ?? 0) + (usage.cache_creation_input_tokens ?? 0)
         }
-        req.tokenTracker.record(req.providerName, inputTokens, usage.output_tokens, usage.cache_read_input_tokens, usage.cache_creation_input_tokens)
+        req.usageStore.record({
+          provider: req.providerName,
+          adapter: req.adapterName ?? null,
+          model: req.clientModel ?? req.providerName,
+          upstreamModel: req.upstreamModel ?? req.providerName,
+          protocol: req.upstreamType,
+          source: req.adapterName ?? 'proxy',
+          inputTokens,
+          outputTokens: usage.output_tokens,
+          cacheRead: usage.cache_read_input_tokens ?? 0,
+          cacheCreate: usage.cache_creation_input_tokens ?? 0,
+        })
       }
     }
   } catch (err) {

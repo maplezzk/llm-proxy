@@ -1,8 +1,11 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert'
+import { mkdtempSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { ConfigStore } from '../../src/config/store.js'
 import { StatusTracker } from '../../src/status/tracker.js'
-import { TokenTracker } from '../../src/status/token-tracker.js'
+import { UsageStore } from '../../src/status/usage-store.js'
 import { Logger } from '../../src/log/logger.js'
 import { createProxyServer } from '../../src/api/server.js'
 import type { Config } from '../../src/config/types.js'
@@ -15,6 +18,10 @@ function createConfig(): Config {
   }
 }
 
+function makeUsageStore(): UsageStore {
+  return new UsageStore(join(mkdtempSync(join(tmpdir(), 'usage-')), 'usage.db'))
+}
+
 describe('api/server 超时配置（防止 socket 累积）', () => {
   it('createProxyServer 设置了 keepAliveTimeout / headersTimeout / requestTimeout / timeout', () => {
     const store = new ConfigStore('/fake/server-timeout-test', createConfig())
@@ -25,7 +32,7 @@ describe('api/server 超时配置（防止 socket 累积）', () => {
       proxyPort: 0,
       store,
       tracker: new StatusTracker(),
-      tokenTracker: new TokenTracker(),
+      usageStore: makeUsageStore(),
       logger: new Logger(10),
     })
 
@@ -51,7 +58,7 @@ describe('api/server 超时配置（防止 socket 累积）', () => {
       proxyPort: 0,
       store,
       tracker: new StatusTracker(),
-      tokenTracker: new TokenTracker(),
+      usageStore: makeUsageStore(),
       logger: new Logger(10),
     })
 

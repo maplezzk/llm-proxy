@@ -2,7 +2,7 @@ import { readFileSync, writeFileSync, appendFileSync, unlinkSync, existsSync, mk
 import { createProxyServer } from '../api/server.js'
 import { ConfigStore } from '../config/store.js'
 import { StatusTracker } from '../status/tracker.js'
-import { TokenTracker } from '../status/token-tracker.js'
+import { UsageStore } from '../status/usage-store.js'
 import { CaptureBuffer } from '../proxy/capture.js'
 import { Logger, type LogLevel } from '../log/logger.js'
 import { createI18n } from '../lib/i18n.js'
@@ -59,12 +59,15 @@ export function installShutdownHandlers(opts: {
   t: (key: string) => string
   pidPath?: string
   signalTarget?: NodeJS.Signals[] | '*'
+  /** 可选：需要 graceful close 的资源（如 SQLite store） */
+  onShutdown?: () => void
 }): void {
   const pidPath = opts.pidPath ?? DEFAULT_PID_PATH
   const shutdown = () => {
     try { console.error(opts.t('cli.start.sigterm')) } catch { /* ignore */ }
     try { unlinkSync(pidPath) } catch { /* ignore */ }
     try { opts.visionCache.flushSync() } catch { /* ignore */ }
+    try { opts.onShutdown?.() } catch { /* ignore */ }
     try { opts.server.close() } catch { /* ignore */ }
     process.exit(0)
   }
@@ -122,9 +125,9 @@ export async function cmdStart(opts: StartOptions): Promise<void> {
   }
 
   const tracker = new StatusTracker()
-  const tokenTracker = new TokenTracker()
-  const capture = new CaptureBuffer(store.getConfig().config.captureMaxSize ?? 100)
   const logDir = `${process.env.HOME ?? '/tmp'}/.llm-proxy`
+  const usageStore = new UsageStore(`${logDir}/usage.db`, undefined /* Logger 在下面创建后再注入 */)
+  const capture = new CaptureBuffer(store.getConfig().config.captureMaxSize ?? 100)
   const persistedLevel = store.getConfig().config.logLevel
   const defaultLevel = (opts.logLevel && ['debug', 'info', 'warn', 'error'].includes(opts.logLevel))
     ? opts.logLevel as LogLevel
@@ -146,17 +149,17 @@ export async function cmdStart(opts: StartOptions): Promise<void> {
     proxyPort: port,
     store,
     tracker,
-    tokenTracker,
+    usageStore,
     capture,
     logger,
     visionCache,
   })
 
-  // Node.js 文档：注册 SIGTERM/SIGINT listener 后，默认自动退出行为被移除，
+// Node.js 文档：注册 SIGTERM/SIGINT listener 后，默认自动退出行为被移除，
   // 进程能否退出完全取决于 handler 是否调用 process.exit。
   // 因此每一步都必须 try-catch 包住，保证最后 process.exit(0) 一定执行，
   // 否则进程残留（菜单栏 stopSync 退出后，Node.js 进程会变成孤儿）。
-  installShutdownHandlers({ server, visionCache, t })
+  installShutdownHandlers({ server, visionCache, t, onShutdown: () => usageStore.close() })
 
   logger.log('system', t('cli.start.started', { host, port, config: configPath }), { host, port, config: configPath })
 
