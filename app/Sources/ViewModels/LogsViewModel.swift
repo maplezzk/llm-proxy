@@ -225,11 +225,8 @@ final class LogsViewModel {
         for (key, anyCodable) in details {
             dict[key] = anyCodable.value
         }
-        guard let data = try? JSONSerialization.data(withJSONObject: dict, options: [.prettyPrinted, .sortedKeys]),
-              let str = String(data: data, encoding: .utf8) else {
-            return String(describing: dict)
-        }
-        return str
+        // 用 JSONFormatter 守卫，避免嵌套含 NSDate/NSData/顶层非 array/dict 等场景触发 NSException
+        return JSONFormatter.pretty(dict)
     }
 
     /// 格式化时间戳供显示（去掉毫秒部分便于阅读）

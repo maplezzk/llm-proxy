@@ -70,10 +70,10 @@ export async function handleTestModel(ctx: ServerContext, req: IncomingMessage, 
   }
 
   const requestBody = type === 'anthropic'
-    ? { model, messages: [{ role: 'user' as const, content: 'hi' }], max_tokens: 10 }
+    ? { model, messages: [{ role: 'user' as const, content: 'hi' }], max_tokens: 10, stream: false }
     : useResponses
-      ? { model, input: 'hi' }
-      : { model, messages: [{ role: 'user' as const, content: 'hi' }] }
+      ? { model, input: 'hi', stream: false }
+      : { model, messages: [{ role: 'user' as const, content: 'hi' }], stream: false }
 
   const startTime = Date.now()
   try {
@@ -164,8 +164,8 @@ export async function handleTestAdapter(ctx: ServerContext, req: IncomingMessage
   }
 
   const requestBody = providerType === 'anthropic'
-    ? { model: targetModel, messages: [{ role: 'user' as const, content: 'hi' }], max_tokens: 10 }
-    : { model: targetModel, messages: [{ role: 'user' as const, content: 'hi' }] }
+    ? { model: targetModel, messages: [{ role: 'user' as const, content: 'hi' }], max_tokens: 10, stream: false }
+    : { model: targetModel, messages: [{ role: 'user' as const, content: 'hi' }], stream: false }
 
   const startTime = Date.now()
   try {
