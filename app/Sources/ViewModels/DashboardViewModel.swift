@@ -74,6 +74,16 @@ final class DashboardViewModel: ObservableObject {
         return pct(cacheRead, total)
     }
 
+    /// 总输入 token（含缓存）= 计费 + cache_read + cache_create
+    static func totalInput(input: Int, cacheRead: Int, cacheCreate: Int) -> Int {
+        input + cacheRead + cacheCreate
+    }
+
+    /// 总 token 消耗 = inp + out + cache_read + cache_create
+    static func totalTokens(input: Int, output: Int, cacheRead: Int, cacheCreate: Int) -> Int {
+        input + output + cacheRead + cacheCreate
+    }
+
     /// 将 Date 格式化为 API 需要的 YYYY-MM-dd
     var dateStartStr: String { Self.df.string(from: dateStart) }
     var dateEndStr: String { Self.df.string(from: dateEnd) }
