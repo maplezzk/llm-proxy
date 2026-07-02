@@ -81,6 +81,26 @@ final class DashboardViewModelTests: XCTestCase {
         )
     }
 
+    // MARK: - totalInput (inp + cr + cc)
+
+    func testTotalInputNormal() {
+        XCTAssertEqual(DashboardViewModel.totalInput(input: 100, cacheRead: 200, cacheCreate: 50), 350)
+    }
+
+    func testTotalInputZeroCache() {
+        XCTAssertEqual(DashboardViewModel.totalInput(input: 100, cacheRead: 0, cacheCreate: 0), 100)
+    }
+
+    // MARK: - totalTokens (inp + out + cr + cc)
+
+    func testTotalTokensNormal() {
+        XCTAssertEqual(DashboardViewModel.totalTokens(input: 100, output: 50, cacheRead: 200, cacheCreate: 50), 400)
+    }
+
+    func testTotalTokensAllZero() {
+        XCTAssertEqual(DashboardViewModel.totalTokens(input: 0, output: 0, cacheRead: 0, cacheCreate: 0), 0)
+    }
+
     // MARK: - Initial State
 
     func testInitialState() {

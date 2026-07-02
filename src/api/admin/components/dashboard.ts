@@ -244,15 +244,18 @@ export function dashboardPage() {
       const out = ts.output_tokens || 0
       const cr = ts.cache_read_input_tokens || 0
       const cc = ts.cache_creation_input_tokens || 0
-      const total = inp + out
+      // DB 统一语义：inp = 计费部分（不含缓存），cr/cc 是独立字段
+      // 总计 = 所有 token 消耗之和（含缓存）
       const totalTokens = inp + out + cr + cc
+      // 输入 = 总输入含缓存 = 计费 + 缓存命中 + 缓存创建
+      const totalInput = inp + cr + cc
       const cacheHitRate = totalTokens > 0 ? pct(cr, totalTokens) : '0%'
       const tt = t
       return [
-        { label: tt('admin.dashboard.requests'), value: ts.request_count || 0, clr: 'var(--text)', desc: tt('admin.dashboard.today'), icon: '↑↓', accent: 'var(--text-muted)' },
-        { label: tt('admin.dashboard.inputTokens'), value: fmtNum(inp), clr: 'var(--accent)', desc: `${tt('admin.dashboard.output')} ${fmtNum(out)} / ${tt('admin.dashboard.total')} ${fmtNum(total)}`, icon: '◈', accent: 'var(--accent)' },
-        { label: tt('admin.dashboard.cacheHits'), value: fmtNum(cr), clr: 'var(--success)', desc: tt('admin.dashboard.hitRate', { rate: cacheHitRate }), icon: '⚡', accent: 'var(--success)' },
-        { label: tt('admin.dashboard.cacheCreation'), value: fmtNum(cc), clr: 'var(--warn)', desc: tt('admin.dashboard.newCacheTokens'), icon: '✷', accent: 'var(--warn)' },
+        { label: tt('admin.dashboard.total'), value: fmtNum(totalTokens), clr: 'var(--text)', desc: '', icon: '∑', accent: 'var(--accent)' },
+        { label: tt('admin.dashboard.inputTokens'), value: fmtNum(totalInput), clr: 'var(--accent)', desc: tt('admin.dashboard.today'), icon: '◈', accent: 'var(--accent)' },
+        { label: tt('admin.dashboard.output'), value: fmtNum(out), clr: 'var(--text)', desc: tt('admin.dashboard.today'), icon: '→', accent: 'var(--text-muted)' },
+        { label: tt('admin.dashboard.hitRate'), value: cacheHitRate, clr: 'var(--success)', desc: tt('admin.dashboard.today'), icon: '⚡', accent: 'var(--success)' },
       ]
     },
 

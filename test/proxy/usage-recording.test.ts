@@ -89,8 +89,8 @@ describe('proxy/forwardRequest → UsageStore 集成', () => {
     }, res)
 
     const stats = store.getStats()
-    // Anthropic 归一化后 input = billable + cache_read + cache_create = 22 + 58000 + 0 = 58022
-    assert.strictEqual(stats.today.input_tokens, 58022, 'Anthropic 应归一化为总输入')
+    // DB 统一语义：input_tokens = 计费部分（Anthropic API 返回的 22 已是计费）
+    assert.strictEqual(stats.today.input_tokens, 22, 'Anthropic 应存计费部分，不预加缓存')
     assert.strictEqual(stats.today.cache_read_input_tokens, 58000)
     assert.strictEqual(stats.today.output_tokens, 100)
     assert.strictEqual(stats.today.request_count, 1)
@@ -127,7 +127,8 @@ describe('proxy/forwardRequest → UsageStore 集成', () => {
     }, res)
 
     const stats = store.getStats()
-    assert.strictEqual(stats.today.input_tokens, 200)
+    // DB 统一语义：input_tokens = 计费部分 = prompt_tokens - cached_tokens = 200 - 140 = 60
+    assert.strictEqual(stats.today.input_tokens, 60)
     assert.strictEqual(stats.today.cache_read_input_tokens, 140)
     assert.strictEqual(stats.today.output_tokens, 50)
     assert.strictEqual(stats.today.request_count, 1)

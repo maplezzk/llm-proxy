@@ -325,11 +325,13 @@ export async function convertOpenAIStreamToAnthropic(
 
         if (Object.keys(lastUsage).length > 0) {
           const promptDetails = (lastUsage.prompt_tokens_details ?? lastUsage.prompt_cache_details) as Record<string, unknown> | undefined
+          const promptTokens = (lastUsage.prompt_tokens ?? lastUsage.input_tokens ?? 0) as number
+          const cachedTokens = (promptDetails?.cached_tokens as number | undefined) ?? 0
           return {
-            // 返回总输入 token（含缓存），与 provider.ts 归一化逻辑对齐
-            input_tokens: (lastUsage.prompt_tokens ?? lastUsage.input_tokens ?? 0) as number,
+            // DB 统一语义：OpenAI Chat prompt_tokens 含缓存，需减去 cached_tokens 才是计费部分
+            input_tokens: Math.max(0, promptTokens - cachedTokens),
             output_tokens: (lastUsage.completion_tokens ?? lastUsage.output_tokens ?? 0) as number,
-            cache_read_input_tokens: promptDetails?.cached_tokens as number | undefined,
+            cache_read_input_tokens: cachedTokens as number | undefined,
             cache_creation_input_tokens: lastUsage.prompt_cache_miss_tokens as number | undefined,
           }
         }
@@ -484,11 +486,13 @@ export async function convertOpenAIStreamToAnthropic(
 
   if (Object.keys(lastUsage).length > 0) {
     const promptDetails = (lastUsage.prompt_tokens_details ?? lastUsage.prompt_cache_details) as Record<string, unknown> | undefined
+    const promptTokens = (lastUsage.prompt_tokens ?? lastUsage.input_tokens ?? 0) as number
+    const cachedTokens = (promptDetails?.cached_tokens as number | undefined) ?? 0
     return {
-      // 返回总输入 token（含缓存），与 provider.ts 归一化逻辑对齐
-      input_tokens: (lastUsage.prompt_tokens ?? lastUsage.input_tokens ?? 0) as number,
+      // DB 统一语义：OpenAI Chat prompt_tokens 含缓存，需减去 cached_tokens 才是计费部分
+      input_tokens: Math.max(0, promptTokens - cachedTokens),
       output_tokens: (lastUsage.completion_tokens ?? lastUsage.output_tokens ?? 0) as number,
-      cache_read_input_tokens: promptDetails?.cached_tokens as number | undefined,
+      cache_read_input_tokens: cachedTokens as number | undefined,
       cache_creation_input_tokens: lastUsage.prompt_cache_miss_tokens as number | undefined,
     }
   }
@@ -1155,10 +1159,13 @@ export async function convertOpenAIStreamToOpenAIResponses(
 
         if (Object.keys(lastUsage).length > 0) {
           const promptDetails = (lastUsage.prompt_tokens_details ?? lastUsage.prompt_cache_details) as Record<string, unknown> | undefined
+          const baseTokens = (lastUsage.input_tokens ?? lastUsage.prompt_tokens ?? 0) as number
+          const cachedTokens = (promptDetails?.cached_tokens as number | undefined) ?? 0
           return {
-            input_tokens: (lastUsage.input_tokens ?? lastUsage.prompt_tokens ?? 0) as number,
+            // DB 统一语义：OpenAI Chat prompt_tokens 含缓存，需减去 cached_tokens 才是计费部分
+            input_tokens: Math.max(0, baseTokens - cachedTokens),
             output_tokens: (lastUsage.output_tokens ?? lastUsage.completion_tokens ?? 0) as number,
-            cache_read_input_tokens: promptDetails?.cached_tokens as number | undefined,
+            cache_read_input_tokens: cachedTokens as number | undefined,
             cache_creation_input_tokens: lastUsage.prompt_cache_miss_tokens as number | undefined,
           }
         }
@@ -1306,12 +1313,14 @@ export async function convertOpenAIStreamToOpenAIResponses(
 
   if (Object.keys(lastUsage).length > 0) {
     const promptDetails = (lastUsage.prompt_tokens_details ?? lastUsage.prompt_cache_details) as Record<string, unknown> | undefined
-    const input = ((lastUsage.input_tokens ?? lastUsage.prompt_tokens) as number) ?? 0
+    const baseTokens = ((lastUsage.input_tokens ?? lastUsage.prompt_tokens) as number) ?? 0
+    const cachedTokens = (promptDetails?.cached_tokens as number | undefined) ?? 0
     const output = ((lastUsage.output_tokens ?? lastUsage.completion_tokens) as number) ?? 0
     return {
-      input_tokens: input,
+      // DB 统一语义：OpenAI Chat prompt_tokens 含缓存，需减去 cached_tokens 才是计费部分
+      input_tokens: Math.max(0, baseTokens - cachedTokens),
       output_tokens: output,
-      cache_read_input_tokens: promptDetails?.cached_tokens as number | undefined,
+      cache_read_input_tokens: cachedTokens as number | undefined,
       cache_creation_input_tokens: lastUsage.prompt_cache_miss_tokens as number | undefined,
     }
   }
