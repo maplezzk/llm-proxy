@@ -38,6 +38,49 @@ final class DashboardViewModelTests: XCTestCase {
         XCTAssertEqual(DashboardViewModel.pct(100, 100), "100.0%")
     }
 
+    // MARK: - hitRate
+
+    /// hitRate 应与 webUI (dashboard.ts) 公式一致：
+    /// cache_read / (input + output + cache_read + cache_create)
+    func testHitRateNormal() {
+        // inp=200, out=50, cr=50, cc=0 → 50/300 = 16.7%
+        XCTAssertEqual(
+            DashboardViewModel.hitRate(input: 200, output: 50, cacheRead: 50, cacheCreate: 0),
+            "16.7%"
+        )
+    }
+
+    func testHitRateWithCacheCreation() {
+        // inp=200, out=50, cr=100, cc=50 → 100/400 = 25.0%
+        XCTAssertEqual(
+            DashboardViewModel.hitRate(input: 200, output: 50, cacheRead: 100, cacheCreate: 50),
+            "25.0%"
+        )
+    }
+
+    func testHitRateAllCacheHits() {
+        // inp=0, out=100, cr=900, cc=0 → 900/1000 = 90.0%
+        XCTAssertEqual(
+            DashboardViewModel.hitRate(input: 0, output: 100, cacheRead: 900, cacheCreate: 0),
+            "90.0%"
+        )
+    }
+
+    func testHitRateZeroTotal() {
+        XCTAssertEqual(
+            DashboardViewModel.hitRate(input: 0, output: 0, cacheRead: 0, cacheCreate: 0),
+            "0%"
+        )
+    }
+
+    func testHitRateZeroCacheRead() {
+        // inp=100, out=50, cr=0, cc=10 → 0/160 = 0.0%
+        XCTAssertEqual(
+            DashboardViewModel.hitRate(input: 100, output: 50, cacheRead: 0, cacheCreate: 10),
+            "0.0%"
+        )
+    }
+
     // MARK: - Initial State
 
     func testInitialState() {

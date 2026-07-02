@@ -80,7 +80,7 @@ struct DashboardView: View {
                              icon: "arrow.down.circle", accentColor: .blue)
                     statCard(title: loc("dashboard.cacheHits"),
                              value: DashboardViewModel.fmtNum(today.cache_read_input_tokens),
-                             subtitle: "\(loc("dashboard.hitRate")) \(DashboardViewModel.pct(today.cache_read_input_tokens, today.input_tokens))",
+                             subtitle: "\(loc("dashboard.hitRate")) \(DashboardViewModel.hitRate(input: today.input_tokens, output: today.output_tokens, cacheRead: today.cache_read_input_tokens, cacheCreate: today.cache_creation_input_tokens))",
                              icon: "bolt.fill", accentColor: .green)
                     statCard(title: loc("dashboard.cacheCreation"),
                              value: DashboardViewModel.fmtNum(today.cache_creation_input_tokens),

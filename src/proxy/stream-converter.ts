@@ -324,12 +324,13 @@ export async function convertOpenAIStreamToAnthropic(
         }
 
         if (Object.keys(lastUsage).length > 0) {
-          const u = buildAnthropicUsage()
+          const promptDetails = (lastUsage.prompt_tokens_details ?? lastUsage.prompt_cache_details) as Record<string, unknown> | undefined
           return {
-            input_tokens: u.input_tokens as number,
-            output_tokens: u.output_tokens as number,
-            cache_read_input_tokens: u.cache_read_input_tokens as number | undefined,
-            cache_creation_input_tokens: u.cache_creation_input_tokens as number | undefined,
+            // 返回总输入 token（含缓存），与 provider.ts 归一化逻辑对齐
+            input_tokens: (lastUsage.prompt_tokens ?? lastUsage.input_tokens ?? 0) as number,
+            output_tokens: (lastUsage.completion_tokens ?? lastUsage.output_tokens ?? 0) as number,
+            cache_read_input_tokens: promptDetails?.cached_tokens as number | undefined,
+            cache_creation_input_tokens: lastUsage.prompt_cache_miss_tokens as number | undefined,
           }
         }
         return null
@@ -482,12 +483,13 @@ export async function convertOpenAIStreamToAnthropic(
   }
 
   if (Object.keys(lastUsage).length > 0) {
-    const u = buildAnthropicUsage()
+    const promptDetails = (lastUsage.prompt_tokens_details ?? lastUsage.prompt_cache_details) as Record<string, unknown> | undefined
     return {
-      input_tokens: u.input_tokens as number,
-      output_tokens: u.output_tokens as number,
-      cache_read_input_tokens: u.cache_read_input_tokens as number | undefined,
-      cache_creation_input_tokens: u.cache_creation_input_tokens as number | undefined,
+      // 返回总输入 token（含缓存），与 provider.ts 归一化逻辑对齐
+      input_tokens: (lastUsage.prompt_tokens ?? lastUsage.input_tokens ?? 0) as number,
+      output_tokens: (lastUsage.completion_tokens ?? lastUsage.output_tokens ?? 0) as number,
+      cache_read_input_tokens: promptDetails?.cached_tokens as number | undefined,
+      cache_creation_input_tokens: lastUsage.prompt_cache_miss_tokens as number | undefined,
     }
   }
 
@@ -681,6 +683,8 @@ export async function convertOpenAIResponsesStreamToAnthropic(
         lastUsage = {
           input_tokens: usage.input_tokens as number,
           output_tokens: usage.output_tokens as number,
+          cache_read_input_tokens: respUsage?.cache_read_input_tokens as number | undefined,
+          cache_creation_input_tokens: respUsage?.cache_creation_input_tokens as number | undefined,
         }
 
         if (thinkingBlockStarted) {
@@ -1150,9 +1154,12 @@ export async function convertOpenAIStreamToOpenAIResponses(
         }
 
         if (Object.keys(lastUsage).length > 0) {
+          const promptDetails = (lastUsage.prompt_tokens_details ?? lastUsage.prompt_cache_details) as Record<string, unknown> | undefined
           return {
-            input_tokens: (lastUsage.input_tokens ?? 0) as number,
-            output_tokens: (lastUsage.output_tokens ?? 0) as number,
+            input_tokens: (lastUsage.input_tokens ?? lastUsage.prompt_tokens ?? 0) as number,
+            output_tokens: (lastUsage.output_tokens ?? lastUsage.completion_tokens ?? 0) as number,
+            cache_read_input_tokens: promptDetails?.cached_tokens as number | undefined,
+            cache_creation_input_tokens: lastUsage.prompt_cache_miss_tokens as number | undefined,
           }
         }
         return null
@@ -1298,9 +1305,15 @@ export async function convertOpenAIStreamToOpenAIResponses(
   res.end()
 
   if (Object.keys(lastUsage).length > 0) {
+    const promptDetails = (lastUsage.prompt_tokens_details ?? lastUsage.prompt_cache_details) as Record<string, unknown> | undefined
     const input = ((lastUsage.input_tokens ?? lastUsage.prompt_tokens) as number) ?? 0
     const output = ((lastUsage.output_tokens ?? lastUsage.completion_tokens) as number) ?? 0
-    return { input_tokens: input, output_tokens: output }
+    return {
+      input_tokens: input,
+      output_tokens: output,
+      cache_read_input_tokens: promptDetails?.cached_tokens as number | undefined,
+      cache_creation_input_tokens: lastUsage.prompt_cache_miss_tokens as number | undefined,
+    }
   }
   return null
 }
@@ -1449,6 +1462,8 @@ export async function convertOpenAIResponsesStreamToOpenAI(
           lastUsage = {
             input_tokens: (respUsage.input_tokens ?? 0) as number,
             output_tokens: (respUsage.output_tokens ?? 0) as number,
+            cache_read_input_tokens: respUsage.cache_read_input_tokens as number | undefined,
+            cache_creation_input_tokens: respUsage.cache_creation_input_tokens as number | undefined,
           }
           finalChunk.usage = {
             prompt_tokens: respUsage.input_tokens ?? 0,
@@ -1472,12 +1487,28 @@ export async function convertOpenAIResponsesStreamToOpenAI(
           capture.updateRequest(pairId, 'responseOut', outLines.join(''))
         }
 
-        return Object.keys(lastUsage).length > 0 ? { input_tokens: (lastUsage.input_tokens ?? 0) as number, output_tokens: (lastUsage.output_tokens ?? 0) as number } : null
+        if (Object.keys(lastUsage).length > 0) {
+          return {
+            input_tokens: (lastUsage.input_tokens ?? 0) as number,
+            output_tokens: (lastUsage.output_tokens ?? 0) as number,
+            cache_read_input_tokens: lastUsage.cache_read_input_tokens as number | undefined,
+            cache_creation_input_tokens: lastUsage.cache_creation_input_tokens as number | undefined,
+          }
+        }
+        return null
       }
     }
   }
 
   res.write('data: [DONE]\n\n')
   res.end()
-  return Object.keys(lastUsage).length > 0 ? { input_tokens: (lastUsage.input_tokens ?? 0) as number, output_tokens: (lastUsage.output_tokens ?? 0) as number } : null
+  if (Object.keys(lastUsage).length > 0) {
+    return {
+      input_tokens: (lastUsage.input_tokens ?? 0) as number,
+      output_tokens: (lastUsage.output_tokens ?? 0) as number,
+      cache_read_input_tokens: lastUsage.cache_read_input_tokens as number | undefined,
+      cache_creation_input_tokens: lastUsage.cache_creation_input_tokens as number | undefined,
+    }
+  }
+  return null
 }
