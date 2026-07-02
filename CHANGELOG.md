@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.21.1](https://github.com/maplezzk/llm-proxy/compare/v0.21.0...v0.21.1) (2026-07-02)
+
+
+### Bug Fixes
+
+* 修复流式转换器返回的 token 用量语义不一致 ([#165](https://github.com/maplezzk/llm-proxy/issues/165)) ([0588f43](https://github.com/maplezzk/llm-proxy/commit/0588f43f4ee185000b2c06f80ec3e8b71d1a363d))
+
 ## [0.21.0](https://github.com/maplezzk/llm-proxy/compare/v0.20.0...v0.21.0) (2026-07-01)
 
 
