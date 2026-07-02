@@ -67,6 +67,13 @@ final class DashboardViewModel: ObservableObject {
         return String(format: "%.1f%%", Double(n) / Double(total) * 100)
     }
 
+    /// 缓存命中率 = cache_read / (input + output + cache_read + cache_create)
+    /// 与 webUI / docs/brainstorms/2026-07-02-anthropic-openai-usage-formula.md 口径一致
+    static func hitRate(input: Int, output: Int, cacheRead: Int, cacheCreate: Int) -> String {
+        let total = input + output + cacheRead + cacheCreate
+        return pct(cacheRead, total)
+    }
+
     /// 将 Date 格式化为 API 需要的 YYYY-MM-dd
     var dateStartStr: String { Self.df.string(from: dateStart) }
     var dateEndStr: String { Self.df.string(from: dateEnd) }
