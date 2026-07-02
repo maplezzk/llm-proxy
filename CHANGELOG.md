@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.21.2](https://github.com/maplezzk/llm-proxy/compare/v0.21.1...v0.21.2) (2026-07-02)
+
+
+### Bug Fixes
+
+* 统一 DB input_tokens 语义为计费部分,dashboard 4 字段展示 ([#167](https://github.com/maplezzk/llm-proxy/issues/167)) ([51c71e3](https://github.com/maplezzk/llm-proxy/commit/51c71e30c5401e0001ef989507e801b3c6db6435))
+
 ## [0.21.1](https://github.com/maplezzk/llm-proxy/compare/v0.21.0...v0.21.1) (2026-07-02)
 
 
