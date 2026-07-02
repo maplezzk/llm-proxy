@@ -135,10 +135,13 @@ async function forwardPassthroughStream(
     }, 'debug')
   } else if (upstreamType === 'openai' && openaiUsage) {
     const details = openaiUsage.prompt_tokens_details as Record<string, unknown> | undefined
+    const cachedTokens = (details?.cached_tokens as number | undefined) ?? (openaiUsage.cache_read_input_tokens as number | undefined) ?? 0
+    const promptTokens = (openaiUsage.prompt_tokens ?? openaiUsage.input_tokens ?? 0) as number
     usage = {
-      input_tokens: (openaiUsage.prompt_tokens ?? openaiUsage.input_tokens ?? 0) as number,
+      // DB 统一语义：OpenAI Chat prompt_tokens 含缓存，需减去 cached_tokens 才是计费部分
+      input_tokens: Math.max(0, promptTokens - cachedTokens),
       output_tokens: (openaiUsage.completion_tokens ?? openaiUsage.output_tokens ?? 0) as number,
-      cache_read_input_tokens: (details?.cached_tokens ?? openaiUsage.cache_read_input_tokens) as number | undefined,
+      cache_read_input_tokens: cachedTokens as number | undefined,
       cache_creation_input_tokens: (openaiUsage.cache_creation_input_tokens ?? openaiUsage.prompt_cache_miss_tokens) as number | undefined,
     }
     logger?.log('request', '直通流式 (OpenAI Chat) token 统计', {
@@ -228,14 +231,20 @@ export async function forwardRequest(
       if (parsed && req.usageStore && req.providerName) {
         const usage = parsed.usage as Record<string, unknown> | undefined
         if (usage) {
-          let inputTokens = (usage.input_tokens ?? usage.prompt_tokens ?? 0) as number
           const outputTokens = (usage.output_tokens ?? usage.completion_tokens ?? 0) as number
           const details = usage.prompt_tokens_details as Record<string, unknown> | undefined
           const cacheRead = (usage.cache_read_input_tokens ?? details?.cached_tokens) as number | undefined
           const cacheCreate = (usage.cache_creation_input_tokens ?? usage.prompt_cache_miss_tokens) as number | undefined
-          // 归一化：Anthropic 的 input_tokens 是计费部分（不含缓存），统一存为总输入
-          if (req.upstreamType === 'anthropic') {
-            inputTokens += (cacheRead ?? 0) + (cacheCreate ?? 0)
+          // DB 统一语义：input_tokens 永远 = 计费部分（不含缓存）。
+          // - Anthropic API: usage.input_tokens 已是计费部分
+          // - OpenAI Responses: usage.input_tokens 已是计费部分
+          // - OpenAI Chat: usage.prompt_tokens 含 cached_tokens，需减去才是计费部分
+          let inputTokens: number
+          if (req.upstreamType === 'openai') {
+            const promptTokens = (usage.prompt_tokens ?? usage.input_tokens ?? 0) as number
+            inputTokens = Math.max(0, promptTokens - (cacheRead ?? 0))
+          } else {
+            inputTokens = (usage.input_tokens ?? 0) as number
           }
           req.usageStore.record({
             provider: req.providerName,
@@ -358,11 +367,8 @@ export async function forwardRequest(
       }
       // Record token usage from streaming response
       if (usage && req.usageStore && req.providerName) {
-        let inputTokens = usage.input_tokens
-        // 归一化：Anthropic 的 input_tokens 是计费部分（不含缓存），统一存为总输入
-        if (req.upstreamType === 'anthropic') {
-          inputTokens += (usage.cache_read_input_tokens ?? 0) + (usage.cache_creation_input_tokens ?? 0)
-        }
+        // StreamUsage 已按统一口径返回计费部分（不含缓存），直接使用
+        const inputTokens = usage.input_tokens
         req.usageStore.record({
           provider: req.providerName,
           adapter: req.adapterName ?? null,
@@ -390,11 +396,8 @@ export async function forwardRequest(
       )
       // Record token usage from passthrough streaming response
       if (usage && req.usageStore && req.providerName) {
-        let inputTokens = usage.input_tokens
-        // 归一化：Anthropic 的 input_tokens 是计费部分（不含缓存），统一存为总输入
-        if (req.upstreamType === 'anthropic') {
-          inputTokens += (usage.cache_read_input_tokens ?? 0) + (usage.cache_creation_input_tokens ?? 0)
-        }
+        // StreamUsage 已按统一口径返回计费部分（不含缓存），直接使用
+        const inputTokens = usage.input_tokens
         req.usageStore.record({
           provider: req.providerName,
           adapter: req.adapterName ?? null,

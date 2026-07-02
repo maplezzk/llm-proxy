@@ -70,22 +70,29 @@ struct DashboardView: View {
             }
             if let today = viewModel.tokenStats?.today {
                 HStack(spacing: 12) {
-                    statCard(title: loc("dashboard.requests"),
-                             value: "\(today.request_count)",
-                             subtitle: loc("dashboard.today"),
-                             icon: "arrow.up.arrow.down", accentColor: .gray)
+                    let inp = today.input_tokens
+                    let out = today.output_tokens
+                    let cr = today.cache_read_input_tokens
+                    let cc = today.cache_creation_input_tokens
+                    let total = DashboardViewModel.totalTokens(input: inp, output: out, cacheRead: cr, cacheCreate: cc)
+                    let totalInput = DashboardViewModel.totalInput(input: inp, cacheRead: cr, cacheCreate: cc)
+                    let hitRate = DashboardViewModel.hitRate(input: inp, output: out, cacheRead: cr, cacheCreate: cc)
+                    statCard(title: loc("dashboard.totalTokens"),
+                             value: DashboardViewModel.fmtNum(total),
+                             subtitle: nil,
+                             icon: "sum", accentColor: .blue)
                     statCard(title: loc("dashboard.inputTokens"),
-                             value: DashboardViewModel.fmtNum(today.input_tokens),
-                             subtitle: "\(loc("dashboard.outputTokens")) \(DashboardViewModel.fmtNum(today.output_tokens))",
-                             icon: "arrow.down.circle", accentColor: .blue)
-                    statCard(title: loc("dashboard.cacheHits"),
-                             value: DashboardViewModel.fmtNum(today.cache_read_input_tokens),
-                             subtitle: "\(loc("dashboard.hitRate")) \(DashboardViewModel.hitRate(input: today.input_tokens, output: today.output_tokens, cacheRead: today.cache_read_input_tokens, cacheCreate: today.cache_creation_input_tokens))",
+                             value: DashboardViewModel.fmtNum(totalInput),
+                             subtitle: loc("dashboard.today"),
+                             icon: "arrow.down.circle", accentColor: .accentColor)
+                    statCard(title: loc("dashboard.outputTokens"),
+                             value: DashboardViewModel.fmtNum(out),
+                             subtitle: loc("dashboard.today"),
+                             icon: "arrow.up.circle", accentColor: .gray)
+                    statCard(title: loc("dashboard.hitRate"),
+                             value: hitRate,
+                             subtitle: loc("dashboard.today"),
                              icon: "bolt.fill", accentColor: .green)
-                    statCard(title: loc("dashboard.cacheCreation"),
-                             value: DashboardViewModel.fmtNum(today.cache_creation_input_tokens),
-                             subtitle: loc("dashboard.newCacheTokens"),
-                             icon: "plus.circle", accentColor: .orange)
                 }
             }
         }
