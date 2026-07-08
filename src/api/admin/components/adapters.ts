@@ -17,7 +17,7 @@ export function adaptersPage() {
     search: '',
     editingName: null as string | null,
     showModal: false,
-    form: { name: '', type: 'openai', max_tokens: '', models: [] as any[] },
+    form: { name: '', type: 'openai', max_tokens: '', stream: '', models: [] as any[] },
     bulkImportProvider: '',
     adapterTestModal: { visible: false, adapterName: '', selectedModelId: '', models: [] as any[], results: [] as any[], running: false },
 
@@ -48,7 +48,7 @@ export function adaptersPage() {
 
     openForm(name?: string | null) {
       this.editingName = name ?? null
-      this.form = { name: '', type: 'openai', max_tokens: '', models: [] }
+      this.form = { name: '', type: 'openai', max_tokens: '', stream: '', models: [] }
       if (name) {
         const a = this.adapters.find((x: any) => x.name === name)
         if (a) {
@@ -56,6 +56,7 @@ export function adaptersPage() {
             name: a.name,
             type: a.type,
             max_tokens: a.max_tokens ?? '',
+            stream: a.stream === true ? 'true' : a.stream === false ? 'false' : '',
             models: (a.models || []).map((m: any) => ({
               sourceModelId: m.sourceModelId,
               provider: m.provider,
@@ -144,7 +145,8 @@ export function adaptersPage() {
         return
       }
 
-      const body = { name, type, max_tokens: parseInt(this.form.max_tokens, 10) || undefined, models: validModels }
+      const streamDefault = this.form.stream === 'true' ? true : this.form.stream === 'false' ? false : undefined
+      const body = { name, type, max_tokens: parseInt(this.form.max_tokens, 10) || undefined, stream: streamDefault, models: validModels }
       let res
       if (this.editingName) {
         res = await (window as any).Alpine.store('app').fetch(`/admin/adapters/${this.editingName}`, {

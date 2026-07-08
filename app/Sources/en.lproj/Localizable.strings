@@ -130,6 +130,12 @@
 "adapter.name" = "Name";
 "adapter.namePlaceholder" = "Adapter name";
 "adapter.type" = "Type";
+"adapter.requestDefaults" = "Request Defaults";
+"adapter.streamDefault" = "stream default";
+"adapter.streamFollow" = "Default (follow)";
+"adapter.streamOn" = "Stream";
+"adapter.streamOff" = "Non-stream";
+"adapter.requestDefaultsHint" = "Applied when the client omits these; 'Default (follow)' keeps streaming";
 "adapter.modelMappings" = "Model Mappings";
 "adapter.addMapping" = "Add Mapping";
 "adapter.sourceModelId" = "Source Model ID";

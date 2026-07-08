@@ -58,6 +58,7 @@ export function resolveAdapterRoute(
       thinking,
       input: model.input,
       max_tokens: adapter.max_tokens,
+      stream: adapter.stream,
     },
     inboundType: adapter.type,
   }

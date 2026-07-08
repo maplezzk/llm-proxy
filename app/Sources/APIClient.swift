@@ -123,7 +123,7 @@ class APIClient {
         var req = URLRequest(url: url)
         req.httpMethod = "PUT"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        let body = UpdateAdapterBody(name: adapter.name, type: adapter.type, models: mappings)
+        let body = UpdateAdapterBody(name: adapter.name, type: adapter.type, maxTokens: adapter.maxTokens, stream: adapter.stream, models: mappings)
         req.httpBody = try JSONEncoder().encode(body)
         let (data, resp) = try await URLSession.shared.data(for: req)
         try Self.validate(data: data, response: resp, context: "updateAdapter")
@@ -413,12 +413,12 @@ class APIClient {
 
     // MARK: - Adapters CRUD
 
-    func createAdapter(name: String, type: String, models: [UpdateModelMapping]) async throws {
+    func createAdapter(name: String, type: String, maxTokens: Int? = nil, stream: Bool? = nil, models: [UpdateModelMapping]) async throws {
         let url = URL(string: "\(baseURL)/admin/adapters")!
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        let body = UpdateAdapterBody(name: name, type: type, models: models)
+        let body = UpdateAdapterBody(name: name, type: type, maxTokens: maxTokens, stream: stream, models: models)
         req.httpBody = try JSONEncoder().encode(body)
         let (data, resp) = try await URLSession.shared.data(for: req)
         try Self.validate(data: data, response: resp, context: "createAdapter")

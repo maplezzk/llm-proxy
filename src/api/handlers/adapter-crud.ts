@@ -18,6 +18,7 @@ export function handleGetAdapters(ctx: ServerContext, req: IncomingMessage, res:
       name: a.name,
       type: a.type,
       max_tokens: a.max_tokens,
+      stream: a.stream,
       baseUrl: `http://${host}/${a.name}/v1`,
       models: a.models.map((m) => {
         const provider = config.providers.find((p) => p.name === m.provider)
@@ -39,7 +40,7 @@ export function handleGetAdapters(ctx: ServerContext, req: IncomingMessage, res:
 
 export async function handleCreateAdapter(ctx: ServerContext, req: IncomingMessage, res: ServerResponse): Promise<void> {
   const body = JSON.parse(await readBody(req))
-  const { name, type, max_tokens, models } = body
+  const { name, type, max_tokens, stream, models } = body
 
   if (!name || !type || !models || !Array.isArray(models)) {
     json(res, 400, { success: false, error: '缺少必填字段: name, type, models（models 需为数组）' })
@@ -57,7 +58,7 @@ export async function handleCreateAdapter(ctx: ServerContext, req: IncomingMessa
     return
   }
 
-  const newAdapter: AdapterConfig = { name, type, max_tokens, models }
+  const newAdapter: AdapterConfig = { name, type, max_tokens, stream, models }
   const errs = validateConfig({ providers: config.providers, adapters: [newAdapter] })
   if (errs.length > 0) {
     json(res, 400, { success: false, error: '校验失败', errors: errs })
@@ -80,7 +81,7 @@ export async function handleUpdateAdapter(ctx: ServerContext, req: IncomingMessa
   const adapterName = match[1]
 
   const body = JSON.parse(await readBody(req))
-  const { name: newName, type, max_tokens, models } = body
+  const { name: newName, type, max_tokens, stream, models } = body
 
   const { config } = ctx.store.getConfig()
   const idx = (config.adapters ?? []).findIndex((a) => a.name === adapterName)
@@ -101,6 +102,7 @@ export async function handleUpdateAdapter(ctx: ServerContext, req: IncomingMessa
     name: finalName,
     type: type ?? newConfig.adapters[idx].type,
     max_tokens: max_tokens,
+    stream: stream,
     models: models ?? newConfig.adapters[idx].models,
   }
 
