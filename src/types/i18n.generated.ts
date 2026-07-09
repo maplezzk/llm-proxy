@@ -319,6 +319,7 @@ export type TranslationKey =
   | 'cli.status.notRunning'
   | 'cli.status.port'
   | 'cli.status.running'
+  | 'cli.stop.forceKill'
   | 'cli.stop.notRunning'
   | 'cli.stop.stalePid'
   | 'cli.stop.stopping'

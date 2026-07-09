@@ -303,7 +303,8 @@
     "stop": {
       "notRunning": "No running proxy found",
       "stalePid": "Found stale PID file, cleaning up...",
-      "stopping": "Stopping proxy (PID: {{pid}})..."
+      "stopping": "Stopping proxy (PID: {{pid}})...",
+      "forceKill": "Process did not exit in time, force killed (PID: {{pid}})"
     },
     "status": {
       "notRunning": "Proxy is not running",

@@ -197,6 +197,27 @@ export async function cmdStop(): Promise<void> {
 
   console.error(t('cli.stop.stopping', { pid: String(state.pid) }))
   process.kill(state.pid, 'SIGTERM')
+
+  // 等待目标进程真正退出，避免命令返回但服务未死导致孤儿进程
+  await new Promise<void>((resolve) => {
+    const check = setInterval(() => {
+      if (!isProcessRunning(state.pid)) {
+        clearInterval(check)
+        resolve()
+      }
+    }, 100)
+    // 最多等 5 秒，超时强制 SIGKILL
+    setTimeout(() => {
+      clearInterval(check)
+      if (isProcessRunning(state.pid)) {
+        try { process.kill(state.pid, 'SIGKILL') } catch { /* ignore */ }
+        console.error(t('cli.stop.forceKill', { pid: String(state.pid) }))
+      }
+      resolve()
+    }, 5000)
+  })
+
+  try { unlinkSync(DEFAULT_PID_PATH) } catch { /* ignore */ }
 }
 
 export async function cmdStatus(): Promise<void> {
