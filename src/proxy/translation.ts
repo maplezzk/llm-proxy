@@ -1231,8 +1231,8 @@ export async function transformInboundRequest(
 
   if (sameProtocol) {
     const upstreamBody: Record<string, unknown> = { ...body, model: route.modelId }
-    // 客户端没传 stream 时，用路由级默认值（未配置则默认流式 true）
-    if (upstreamBody.stream === undefined) {
+    // 客户端没传 stream 时：route.stream=null 不注入（跟随），undefined 沿用内置默认 true，true/false 注入对应值
+    if (upstreamBody.stream === undefined && route.stream !== null) {
       upstreamBody.stream = route.stream ?? true
     }
     // max_tokens: 0 → 不传（让上游用默认值）, 应用路由级默认值
@@ -1305,8 +1305,8 @@ export async function transformInboundRequest(
   // 注入 thinking 配置到转换后的请求体（跨协议场景下携带客户端的 reasoning_effort）
   const clientReasoningEffort = extractClientReasoningEffort(params.reasoning)
   injectThinkingConfig(upstreamBody, route, clientReasoningEffort)
-  // 客户端没传 stream 时，用路由级默认值（未配置则默认流式 true）
-  if (upstreamBody.stream === undefined) {
+  // 客户端没传 stream 时：route.stream=null 不注入（跟随），undefined 沿用内置默认 true，true/false 注入对应值
+  if (upstreamBody.stream === undefined && route.stream !== null) {
     upstreamBody.stream = route.stream ?? true
   }
   // thinking 模式检测：配置开启了 或 消息中已有 thinking 块，都需要补全

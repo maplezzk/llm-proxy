@@ -135,7 +135,7 @@
 "adapter.streamFollow" = "Default (follow)";
 "adapter.streamOn" = "Stream";
 "adapter.streamOff" = "Non-stream";
-"adapter.requestDefaultsHint" = "Applied when the client omits these; 'Default (follow)' keeps streaming";
+"adapter.requestDefaultsHint" = "Applied when the client omits these; 'Default (follow)' passes through as-is";
 "adapter.modelMappings" = "Model Mappings";
 "adapter.addMapping" = "Add Mapping";
 "adapter.sourceModelId" = "Source Model ID";

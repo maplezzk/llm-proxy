@@ -58,7 +58,7 @@ export function resolveAdapterRoute(
       thinking,
       input: model.input,
       max_tokens: adapter.max_tokens,
-      stream: adapter.stream,
+      stream: adapter.stream ?? null,  // 未配置时为 null（跟随/不注入）
     },
     inboundType: adapter.type,
   }

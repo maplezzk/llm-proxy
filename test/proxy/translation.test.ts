@@ -1700,6 +1700,58 @@ describe('proxy/response-conversion', () => {
         '路由 stream 默认值为 true 时，未传应设为 true',
       )
     })
+
+    it('route.stream=null（跟随）: 同协议未传 stream → 不注入，保持 undefined', async () => {
+      const result = await transformInboundRequest(
+        'anthropic',
+        { ...anthropicRoute, stream: null },
+        {
+          model: 'claude-sonnet-4',
+          messages: [{ role: 'user', content: 'hi' }],
+          max_tokens: 100,
+        },
+      )
+      assert.strictEqual(
+        (result.body as Record<string, unknown>).stream,
+        undefined,
+        'route.stream=null 时不应注入 stream 字段',
+      )
+    })
+
+    it('route.stream=null（跟随）: 跨协议未传 stream → 不注入，保持 undefined', async () => {
+      const result = await transformInboundRequest(
+        'openai',
+        { ...anthropicRoute, stream: null },
+        {
+          model: 'claude-sonnet-4',
+          messages: [{ role: 'user', content: 'hi' }],
+          max_tokens: 100,
+        },
+      )
+      assert.strictEqual(result.crossProtocol, true)
+      assert.strictEqual(
+        (result.body as Record<string, unknown>).stream,
+        undefined,
+        '跨协议 route.stream=null 时不应注入 stream 字段',
+      )
+    })
+
+    it('route.stream=null（跟随）: 客户端显式 stream=true 仍保留', async () => {
+      const result = await transformInboundRequest(
+        'anthropic',
+        { ...anthropicRoute, stream: null },
+        {
+          model: 'claude-sonnet-4',
+          messages: [{ role: 'user', content: 'hi' }],
+          stream: true,
+        },
+      )
+      assert.strictEqual(
+        (result.body as Record<string, unknown>).stream,
+        true,
+        '客户端显式传的 stream 不受路由配置影响',
+      )
+    })
   })
 
   describe('Namespace 工具后处理 (CCX 兼容)', () => {

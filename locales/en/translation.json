@@ -223,7 +223,7 @@
       "streamFollow": "Default (follow)",
       "streamOn": "Stream",
       "streamOff": "Non-stream",
-      "requestDefaultsHint": "Applied when the client omits these; 'Default (follow)' keeps streaming",
+      "requestDefaultsHint": "Applied when the client omits these; 'Default (follow)' passes through as-is",
       "formModelMapping": "Model Mapping",
       "sourceModelId": "Source Model ID",
       "targetModelId": "Target Model ID",
