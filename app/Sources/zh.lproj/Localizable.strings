@@ -145,6 +145,12 @@
 "adapter.name" = "名称";
 "adapter.namePlaceholder" = "适配器名称";
 "adapter.type" = "类型";
+"adapter.requestDefaults" = "默认请求参数";
+"adapter.streamDefault" = "stream 默认";
+"adapter.streamFollow" = "默认（跟随）";
+"adapter.streamOn" = "流式";
+"adapter.streamOff" = "非流式";
+"adapter.requestDefaultsHint" = "下游未传该参数时生效；stream 选“默认（跟随）”时不注入，原样透传";
 "adapter.modelMappings" = "模型映射";
 "adapter.addMapping" = "添加映射";
 "adapter.sourceModelId" = "源模型 ID";

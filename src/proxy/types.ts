@@ -11,4 +11,6 @@ export interface RouterResult {
   input?: string[]
   /** 默认 max_tokens，客户端没传或传 0 时使用 */
   max_tokens?: number
+  /** 下游未传 stream 时的默认值。null=不注入（跟随/透传），true/false=注入对应值，undefined=内置默认(true) */
+  stream?: boolean | null
 }

@@ -44,6 +44,37 @@ struct AdapterFormView: View {
                         .pickerStyle(.segmented)
                     }
 
+                    // 默认请求参数（下游未传时生效）
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(loc("adapter.requestDefaults")).font(.caption).foregroundColor(.secondary)
+                        HStack(alignment: .bottom, spacing: 16) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("max_tokens").font(.caption2).foregroundColor(.secondary)
+                                TextField("16384", text: $vm.formMaxTokens)
+                                    .textFieldStyle(.roundedBorder)
+                                    .frame(width: 110)
+                            }
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(loc("adapter.streamDefault")).font(.caption2).foregroundColor(.secondary)
+                                Picker("", selection: $vm.formStream) {
+                                    Text(loc("adapter.streamFollow")).tag("")
+                                    Text(loc("adapter.streamOn")).tag("true")
+                                    Text(loc("adapter.streamOff")).tag("false")
+                                }
+                                .labelsHidden()
+                                .pickerStyle(.menu)
+                                .frame(width: 140)
+                            }
+                            Spacer()
+                        }
+                        Text(loc("adapter.requestDefaultsHint"))
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                    }
+                    .padding(10)
+                    .background(Color(nsColor: .controlBackgroundColor).opacity(0.5))
+                    .cornerRadius(6)
+
                     // 模型映射
                     VStack(alignment: .leading, spacing: 8) {
                         HStack {
@@ -112,7 +143,7 @@ struct AdapterFormView: View {
             }
             .padding()
         }
-        .frame(width: 560, height: 480)
+        .frame(width: 560, height: 560)
     }
 
     // MARK: - Mapping Row

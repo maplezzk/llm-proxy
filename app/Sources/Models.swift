@@ -332,8 +332,24 @@ struct AdapterModel: Codable {
 struct Adapter: Codable {
     let name: String
     let type: String
+    let maxTokens: Int?
+    let stream: Bool?
     let baseUrl: String?
     var models: [AdapterModel]
+
+    enum CodingKeys: String, CodingKey {
+        case name, type, stream, baseUrl, models
+        case maxTokens = "max_tokens"
+    }
+
+    init(name: String, type: String, maxTokens: Int? = nil, stream: Bool? = nil, baseUrl: String?, models: [AdapterModel]) {
+        self.name = name
+        self.type = type
+        self.maxTokens = maxTokens
+        self.stream = stream
+        self.baseUrl = baseUrl
+        self.models = models
+    }
 }
 
 struct AdaptersResponse: Codable {
@@ -348,7 +364,14 @@ struct AdaptersData: Codable {
 struct UpdateAdapterBody: Codable {
     let name: String
     let type: String
+    let maxTokens: Int?
+    let stream: Bool?
     let models: [UpdateModelMapping]
+
+    enum CodingKeys: String, CodingKey {
+        case name, type, stream, models
+        case maxTokens = "max_tokens"
+    }
 }
 
 struct UpdateModelMapping: Codable {

@@ -849,9 +849,22 @@ tbody tr:hover td { background: #f8f9fb; }
         <option value="openai-responses">OpenAI (Responses)</option>
         <option value="anthropic">Anthropic</option>
       </select>
-      <label x-text="$t('admin.adapters.formDefaultMaxTokens')"></label>
-      <input x-model="form.max_tokens" type="number" min="0" step="1" placeholder="16384" style="width:120px">
-      <span style="font-size:11px;color:var(--text-dim)" x-text="$t('admin.adapters.defaultMaxTokensHint')"></span>
+      <label x-text="$t('admin.adapters.formRequestDefaults')"></label>
+      <div style="display:flex;align-items:flex-end;gap:16px;flex-wrap:wrap;padding:10px 12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius)">
+        <div style="display:flex;flex-direction:column;gap:3px">
+          <span class="pm-label" style="font-size:11px">max_tokens</span>
+          <input x-model="form.max_tokens" type="number" min="0" step="1" placeholder="16384" style="width:110px">
+        </div>
+        <div style="display:flex;flex-direction:column;gap:3px">
+          <span class="pm-label" style="font-size:11px" x-text="$t('admin.adapters.formStreamDefault')"></span>
+          <select x-model="form.stream" style="width:130px">
+            <option value="" x-text="$t('admin.adapters.streamFollow')"></option>
+            <option value="true" x-text="$t('admin.adapters.streamOn')"></option>
+            <option value="false" x-text="$t('admin.adapters.streamOff')"></option>
+          </select>
+        </div>
+        <span style="font-size:11px;color:var(--text-dim);flex:1;min-width:180px;align-self:center" x-text="$t('admin.adapters.requestDefaultsHint')"></span>
+      </div>
       <label x-text="$t('admin.adapters.formModelMapping')"></label>
       <div class="dynamic-rows">
         <template x-for="(m, i) in form.models" :key="i">

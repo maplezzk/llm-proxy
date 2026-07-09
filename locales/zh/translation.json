@@ -218,6 +218,12 @@
       "formType": "类型",
       "formDefaultMaxTokens": "默认 Max Tokens",
       "defaultMaxTokensHint": "留空使用上游 API 的默认值",
+      "formRequestDefaults": "默认请求参数",
+      "formStreamDefault": "stream 默认",
+      "streamFollow": "默认（跟随）",
+      "streamOn": "流式",
+      "streamOff": "非流式",
+      "requestDefaultsHint": "下游未传该参数时生效；stream 选“默认（跟随）”时不注入，原样透传",
       "formModelMapping": "模型映射",
       "sourceModelId": "适配前模型 ID",
       "targetModelId": "适配后模型 ID",
@@ -297,7 +303,8 @@
     "stop": {
       "notRunning": "未找到运行中的代理",
       "stalePid": "发现残留 PID 文件，清理中...",
-      "stopping": "正在停止代理 (PID: {{pid}})..."
+      "stopping": "正在停止代理 (PID: {{pid}})...",
+      "forceKill": "进程未在限时内退出，已强制终止 (PID: {{pid}})"
     },
     "status": {
       "notRunning": "代理未运行",

@@ -15,6 +15,9 @@ final class AdaptersViewModel {
     var editingAdapter: Adapter? = nil
     var formName: String = ""
     var formType: String = "openai"
+    var formMaxTokens: String = ""
+    /// stream 默认值三态：""=默认（跟随）, "true"=流式, "false"=非流式
+    var formStream: String = ""
     var formMappings: [FormMappingRow] = []
 
     // 测试状态
@@ -59,12 +62,16 @@ final class AdaptersViewModel {
         if let adapter = adapter {
             formName = adapter.name
             formType = adapter.type
+            formMaxTokens = adapter.maxTokens.map(String.init) ?? ""
+            formStream = adapter.stream == true ? "true" : adapter.stream == false ? "false" : ""
             formMappings = adapter.models.map { m in
                 FormMappingRow(sourceModelId: m.sourceModelId, provider: m.provider, targetModelId: m.targetModelId)
             }
         } else {
             formName = ""
             formType = "openai"
+            formMaxTokens = ""
+            formStream = ""
             formMappings = []
         }
         if formMappings.isEmpty {
@@ -78,6 +85,8 @@ final class AdaptersViewModel {
         editingAdapter = nil
         formName = ""
         formType = "openai"
+        formMaxTokens = ""
+        formStream = ""
         formMappings = []
         error = nil
     }
@@ -149,11 +158,15 @@ final class AdaptersViewModel {
 
         let mappings = validMappings.map { UpdateModelMapping(sourceModelId: $0.sourceModelId, provider: $0.provider, targetModelId: $0.targetModelId) }
 
+        let trimmedMaxTokens = formMaxTokens.trimmingCharacters(in: .whitespaces)
+        let maxTokens: Int? = trimmedMaxTokens.isEmpty ? nil : Int(trimmedMaxTokens)
+        let streamDefault: Bool? = formStream == "true" ? true : formStream == "false" ? false : nil
+
         do {
             if editingAdapter != nil {
-                try await client.updateAdapter(Adapter(name: name, type: formType, baseUrl: nil, models: []), mappings: mappings)
+                try await client.updateAdapter(Adapter(name: name, type: formType, maxTokens: maxTokens, stream: streamDefault, baseUrl: nil, models: []), mappings: mappings)
             } else {
-                try await client.createAdapter(name: name, type: formType, models: mappings)
+                try await client.createAdapter(name: name, type: formType, maxTokens: maxTokens, stream: streamDefault, models: mappings)
             }
             closeForm()
             await load()
