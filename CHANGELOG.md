@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.22.0](https://github.com/maplezzk/llm-proxy/compare/v0.21.2...v0.22.0) (2026-07-09)
+
+
+### Features
+
+* 适配器支持 stream 默认值，前端重构为默认请求参数区块 ([#169](https://github.com/maplezzk/llm-proxy/issues/169)) ([940cc79](https://github.com/maplezzk/llm-proxy/commit/940cc79f3fc0d6d351e1c931faa62ea85863c396))
+
 ## [0.21.2](https://github.com/maplezzk/llm-proxy/compare/v0.21.1...v0.21.2) (2026-07-02)
 
 
