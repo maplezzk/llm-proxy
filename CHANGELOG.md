@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.22.1](https://github.com/maplezzk/llm-proxy/compare/v0.22.0...v0.22.1) (2026-07-09)
+
+
+### Bug Fixes
+
+* 重建 package-lock.json,resolved 指向 registry.npmjs.org ([#171](https://github.com/maplezzk/llm-proxy/issues/171)) ([91ab79b](https://github.com/maplezzk/llm-proxy/commit/91ab79bbb92de77cb4a4cc66600448917a478cf0))
+
 ## [0.22.0](https://github.com/maplezzk/llm-proxy/compare/v0.21.2...v0.22.0) (2026-07-09)
 
 
