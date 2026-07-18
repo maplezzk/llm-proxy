@@ -323,6 +323,30 @@ describe('proxy/stream-converter', () => {
       assert.strictEqual(delta.usage.output_tokens, 10, 'output_tokens 正确')
       assert.ok(!('cache_read_input_tokens' in delta.usage), 'cached_tokens=0 时不应输出 cache_read_input_tokens 字段')
     })
+
+    it('usage 嵌在 choices[0] 内（如 Kimi k3）时也能正确提取', async () => {
+      const { chunks, res } = makeResponse()
+      // k3 非标准格式：finish_reason chunk 把 usage 放在 choices[0] 内而非顶层
+      const reader = makeReader([
+        'data: {"choices":[{"delta":{"role":"assistant"},"index":0}]}\n\n',
+        'data: {"choices":[{"delta":{"content":"Hi"},"index":0}]}\n\n',
+        'data: {"choices":[{"delta":{},"finish_reason":"stop","index":0,"usage":{"prompt_tokens":17912,"completion_tokens":309,"total_tokens":18221,"prompt_tokens_details":{"cached_tokens":16896}}}]}\n\n',
+        'data: [DONE]\n\n',
+      ])
+      const usage = await convertOpenAIStreamToAnthropic(reader, res)
+      const output = chunks.join('')
+      const messageDeltaMatch = output.match(/event: message_delta\ndata: (\{[^\n]*\})/)
+      assert.ok(messageDeltaMatch, '应有 message_delta 事件')
+      const delta = JSON.parse(messageDeltaMatch![1])
+      // prompt_tokens=17912 - cached_tokens=16896 = 1016
+      assert.strictEqual(delta.usage.input_tokens, 1016, 'input_tokens = prompt_tokens - cached_tokens')
+      assert.strictEqual(delta.usage.output_tokens, 309, 'output_tokens 应来自 choices[0].usage')
+      assert.strictEqual(delta.usage.cache_read_input_tokens, 16896, 'cached_tokens 应映射为 cache_read_input_tokens')
+      // StreamUsage 也不应为 null（token 统计依赖返回值）
+      assert.ok(usage, 'StreamUsage 不应为 null')
+      assert.strictEqual(usage!.input_tokens, 1016, '返回值 input_tokens 应正确')
+      assert.strictEqual(usage!.output_tokens, 309, '返回值 output_tokens 应正确')
+    })
   })
 
   describe('OpenAI Responses SSE → Anthropic SSE', () => {

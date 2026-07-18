@@ -342,9 +342,13 @@ export async function convertOpenAIStreamToAnthropic(
       try { parsed = JSON.parse(dataStr) } catch { continue }
       rawLines.push(`[${ts()}] data: ${dataStr}`)
 
-      // 部分模型在每个 chunk 都带 usage，提前捕获
+      // 部分模型在每个 chunk 都带 usage，提前捕获。
+      // 标准 OpenAI 格式 usage 在顶层；部分上游（如 Kimi k3）嵌在 choices[0].usage。
       if (parsed?.usage) {
         lastUsage = parsed.usage as Record<string, unknown>
+      } else {
+        const choiceUsage = (parsed?.choices as Array<Record<string, unknown>> | undefined)?.[0]?.usage
+        if (choiceUsage) lastUsage = choiceUsage as Record<string, unknown>
       }
 
       const choices = parsed.choices as Array<Record<string, unknown>> | undefined
