@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.22.2](https://github.com/maplezzk/llm-proxy/compare/v0.22.1...v0.22.2) (2026-07-18)
+
+
+### Bug Fixes
+
+* OpenAI→Anthropic 流式转换兼容 choices[0] 内嵌 usage 的上游格式 ([#173](https://github.com/maplezzk/llm-proxy/issues/173)) ([888b2ae](https://github.com/maplezzk/llm-proxy/commit/888b2aeacb285446209b3a15620e39ca749b6103))
+
 ## [0.22.1](https://github.com/maplezzk/llm-proxy/compare/v0.22.0...v0.22.1) (2026-07-09)
 
 
