@@ -246,7 +246,7 @@ tbody tr:hover td { background: #f8f9fb; }
 
 /* Dynamic model/mapping rows */
 .dynamic-rows { display:flex; flex-direction:column; gap:4px; margin-top:4px; }
-.dynamic-row { display:flex; gap:6px; align-items:center; }
+.dynamic-row { display:flex; gap:6px; align-items:center; flex-wrap:wrap; }
 .dynamic-row input, .dynamic-row select { flex:1; min-width:0; padding:6px 8px; font-size:12px; border:1px solid var(--border); border-radius:var(--radius); background:var(--surface); }
 .pm-label { font-size:11px; color:var(--text-muted); white-space:nowrap; }
 
@@ -870,7 +870,7 @@ tbody tr:hover td { background: #f8f9fb; }
         <template x-for="(m, i) in form.models" :key="i">
           <div class="dynamic-row">
             <span class="pm-label" x-text="$t('admin.adapters.sourceModelId')"></span>
-            <input x-model="m.sourceModelId" x-bind:placeholder="$t('admin.adapters.sourcePlaceholder')" style="flex:1">
+            <input x-model="m.sourceModelId" x-bind:placeholder="$t('admin.adapters.sourcePlaceholder')" style="flex:1;min-width:120px">
             <span class="pm-label" x-text="$t('admin.adapters.provider')"></span>
             <select :value="m.provider" @change="m.provider = $event.target.value; onProviderChange(i)" style="flex:1;min-width:0">
               <option value="" x-text="$t('admin.adapters.selectProvider')"></option>
