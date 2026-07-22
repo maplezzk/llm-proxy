@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.22.3](https://github.com/maplezzk/llm-proxy/compare/v0.22.2...v0.22.3) (2026-07-21)
+
+
+### Bug Fixes
+
+* 修复适配器编辑表单中适配前模型 ID 输入框过窄无法输入的问题 ([#175](https://github.com/maplezzk/llm-proxy/issues/175)) ([a1e2e24](https://github.com/maplezzk/llm-proxy/commit/a1e2e24117a64f389bc097fb9806fff2c344b203))
+
 ## [0.22.2](https://github.com/maplezzk/llm-proxy/compare/v0.22.1...v0.22.2) (2026-07-18)
 
 
