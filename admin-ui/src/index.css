@@ -1,0 +1,5 @@
+@import 'tailwindcss';
+@import '@appica/ui-react/styles.css';
+
+/* node_modules 位于仓库根目录，index.css 在 admin-ui/src/ 下，需上溯两级 */
+@source '../../node_modules/@appica/ui-react/dist';
