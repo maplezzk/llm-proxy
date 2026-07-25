@@ -13,17 +13,12 @@ import { Textarea } from '@appica/ui-react/textarea'
 import { Switch } from '@appica/ui-react/switch'
 import { Eye, EyeOff } from '@appica/icons-react'
 import { fetchJson } from '../lib/api'
+import type { ApiRes } from '../lib/api-types'
+import { LABEL_CLS, extractError } from '../lib/form-helpers'
 import { useToast } from '../lib/toast'
 import { useConfirm } from '../lib/confirm'
 
 /* ────────────────────────── 类型 / 常量 ────────────────────────── */
-
-interface ApiRes<T> {
-  success?: boolean
-  data?: T
-  error?: string
-  errors?: Array<{ field?: string; message?: string }>
-}
 
 interface ProviderRef {
   name: string
@@ -48,29 +43,6 @@ interface CacheStats {
 /** 与后端 src/proxy/vision.ts DEFAULT_VISION_PROMPT 保持一致。 */
 const DEFAULT_VISION_PROMPT =
   '请详细描述这张图片的内容，包括其中的文字、物体、场景、颜色等关键信息。'
-
-function extractError(res: ApiRes<unknown> | null | undefined, fallback: string): string | null {
-  if (!res) return null
-  if (typeof res.error === 'object' && res.error !== null) {
-    const msg = (res.error as { message?: unknown }).message
-    return typeof msg === 'string' && msg ? msg : fallback
-  }
-  if (typeof res.error === 'string' && res.error) {
-    if (Array.isArray(res.errors) && res.errors.length > 0) {
-      const lines = res.errors.map((e) => {
-        const field = e.field || ''
-        const message = e.message || ''
-        return field ? `• ${field}: ${message}` : `• ${message}`
-      })
-      return res.error + '\n' + lines.join('\n')
-    }
-    return res.error
-  }
-  if (Array.isArray(res.errors) && res.errors.length > 0) {
-    return res.errors.map((e) => `• ${e.field || ''}: ${e.message || ''}`).join('\n')
-  }
-  return null
-}
 
 /** 卡片外壳（Appica 无 Card 组件，用样式 div）。 */
 function Card({
@@ -282,8 +254,6 @@ function VisionCard() {
         max: cache.maxEntries,
       })
     : t('admin.vision.cache.disabled')
-
-  const LABEL_CLS = 'text-[11.5px] font-medium text-muted-foreground'
 
   return (
     <Card icon="🖼️" title={t('admin.vision.title')} desc={t('admin.vision.desc')}>

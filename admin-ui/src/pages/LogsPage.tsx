@@ -32,6 +32,7 @@ import {
   ChevronUp,
 } from '@appica/icons-react'
 import { fetchJson } from '../lib/api'
+import type { ApiRes } from '../lib/api-types'
 import { useToast } from '../lib/toast'
 
 /* ────────────────────────── 类型 / 常量 ────────────────────────── */
@@ -42,11 +43,6 @@ interface LogEntry {
   level: string
   message: string
   details?: unknown
-}
-
-interface ApiRes<T> {
-  success?: boolean
-  data?: T
 }
 
 const PAGE_SIZE = 50
@@ -66,8 +62,6 @@ function levelVariant(level: string): 'error' | 'warning' | 'info' | 'secondary'
   }
 }
 
-const LABEL_CLS = 'text-[11px] text-muted-foreground'
-
 /* ────────────────────────── 工具 ────────────────────────── */
 
 function formatTime(ts: string): string {
@@ -85,7 +79,9 @@ function DetailCell({ details }: { details: unknown }) {
   const { toast } = useToast()
   const [expanded, setExpanded] = useState(false)
 
-  if (details == null) return <span className="text-muted-foreground">—</span>
+  if (details === null || details === undefined) {
+    return <span className="text-muted-foreground">—</span>
+  }
 
   const copy = () => {
     navigator.clipboard.writeText(JSON.stringify(details)).then(
@@ -302,7 +298,7 @@ export default function LogsPage() {
 
         {/* 日志级别 + 刷新 */}
         <div className="ms-auto flex items-center gap-2">
-          <span className={LABEL_CLS}>{t('admin.logs.logLevel')}</span>
+          <span className="text-[11px] text-muted-foreground">{t('admin.logs.logLevel')}</span>
           <Select
             size="sm"
             value={currentLogLevel}

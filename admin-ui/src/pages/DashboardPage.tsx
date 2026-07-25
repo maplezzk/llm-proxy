@@ -24,6 +24,7 @@ import {
 } from '@appica/icons-react'
 import { useApp } from '../lib/app-state'
 import { fetchJson } from '../lib/api'
+import type { ApiRes } from '../lib/api-types'
 import { useToast } from '../lib/toast'
 import { useConfirm } from '../lib/confirm'
 import TimelineChart from '../components/charts/TimelineChart'
@@ -35,13 +36,6 @@ interface DbInfo {
   events: number
   aggregates: number
   sizeBytes: number
-}
-
-/** 后端 /admin/* JSON 统一包裹（对齐 server json() 输出） */
-interface ApiRes<T> {
-  success?: boolean
-  data?: T
-  error?: string
 }
 
 /** config.providers 条目最小结构（仅取 models 计数，与 app-state 的 any 配置隔离） */

@@ -39,13 +39,20 @@ import {
 } from '@appica/icons-react'
 import { useApp } from '../lib/app-state'
 import { fetchJson } from '../lib/api'
+import type { ApiRes, ProviderType } from '../lib/api-types'
+import {
+  EffortSelect,
+  LABEL_CLS,
+  REASONING_EFFORTS,
+  THINKING_TYPES,
+  TYPE_LABELS,
+  extractError,
+} from '../lib/form-helpers'
 import { useToast } from '../lib/toast'
 import { useConfirm } from '../lib/confirm'
 import TestPanelDialog from '../components/TestPanelDialog'
 
 /* ────────────────────────── 类型 ────────────────────────── */
-
-type ProviderType = 'openai' | 'anthropic' | 'openai-responses'
 
 /** config.providers[]（共享 config 中的供应商，供映射下拉联动）。 */
 interface ProviderRef {
@@ -94,24 +101,7 @@ interface TestTarget {
   modelIds: string[]
 }
 
-/** 后端 /admin/* JSON 统一包裹。 */
-interface ApiRes<T> {
-  success?: boolean
-  data?: T
-  error?: string
-  errors?: Array<{ field?: string; message?: string }>
-}
-
 /* ────────────────────────── 常量 / 工具 ────────────────────────── */
-
-const REASONING_EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'] as const
-const THINKING_TYPES = ['adaptive', 'auto', 'enabled', 'disabled'] as const
-
-const TYPE_LABELS: Record<ProviderType, string> = {
-  openai: 'OpenAI (Chat)',
-  'openai-responses': 'OpenAI (Responses)',
-  anthropic: 'Anthropic',
-}
 
 const emptyMappingRow = (): MappingRow => ({
   sourceModelId: '',
@@ -128,60 +118,6 @@ const emptyForm = (): FormState => ({
   stream: '',
   models: [emptyMappingRow()],
 })
-
-/**
- * 从后端响应提取人类可读错误（对齐旧版 providers.ts extractError）。
- */
-function extractError(res: ApiRes<unknown> | null | undefined, fallback: string): string | null {
-  if (!res) return null
-  if (typeof res.error === 'object' && res.error !== null) {
-    const msg = (res.error as { message?: unknown }).message
-    return typeof msg === 'string' && msg ? msg : fallback
-  }
-  if (typeof res.error === 'string' && res.error) {
-    if (Array.isArray(res.errors) && res.errors.length > 0) {
-      const lines = res.errors.map((e) => {
-        const field = e.field || ''
-        const message = e.message || ''
-        return field ? `• ${field}: ${message}` : `• ${message}`
-      })
-      return res.error + '\n' + lines.join('\n')
-    }
-    return res.error
-  }
-  if (Array.isArray(res.errors) && res.errors.length > 0) {
-    return res.errors.map((e) => `• ${e.field || ''}: ${e.message || ''}`).join('\n')
-  }
-  return null
-}
-
-const LABEL_CLS = 'text-[11.5px] font-medium text-muted-foreground'
-
-/** reasoning_effort 下拉（'' ↔ sentinel 'default' 互转，文案复用 admin.providers.* key）。 */
-function EffortSelect({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  const { t } = useTranslation()
-  return (
-    <Select
-      size="sm"
-      value={value || 'default'}
-      onValueChange={(v) => onChange(v === 'default' ? '' : String(v ?? ''))}
-    >
-      <SelectTrigger className="w-24" aria-label={t('admin.providers.reasoningEffort')}>
-        <SelectValue>
-          {(v) => (!v || v === 'default' ? t('admin.providers.defaultEffort') : t(`admin.providers.${v}Effort`))}
-        </SelectValue>
-      </SelectTrigger>
-      <SelectContent>
-        <SelectItem value="default">{t('admin.providers.defaultEffort')}</SelectItem>
-        {REASONING_EFFORTS.map((eff) => (
-          <SelectItem key={eff} value={eff}>
-            {t(`admin.providers.${eff}Effort`)}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
-  )
-}
 
 /* ────────────────────────── 页面 ────────────────────────── */
 
