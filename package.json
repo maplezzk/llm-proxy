@@ -41,15 +41,14 @@
     "clean": "rm -rf dist",
     "prepublishOnly": "npm run build && npm test",
     "generate:i18n-types": "tsx scripts/generate-i18n-types.ts",
-    "prebuild": "npm run generate:i18n-types"
+    "prebuild": "npm run generate:i18n-types",
+    "dev:admin": "vite admin-ui"
   },
   "dependencies": {
     "@appica/icons-react": "^1.0.0",
     "@appica/ui-react": "^1.0.0",
     "@types/better-sqlite3": "^7.6.13",
-    "alpinejs": "^3.15.11",
     "better-sqlite3": "^12.11.1",
-    "chart.js": "^4.5.1",
     "i18next": "^26.0.8",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
@@ -59,7 +58,6 @@
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.0.0",
-    "@types/alpinejs": "^3.13.11",
     "@types/node": "^22.0.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
