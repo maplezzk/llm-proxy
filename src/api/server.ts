@@ -64,27 +64,8 @@ const handleAdminUI: RouteHandler = (_ctx, _req, res) => {
   res.end(getAdminUIHtml())
 }
 
-let adminAppJs: string | null = null
-function getAdminAppJs(): string {
-  if (adminAppJs) return adminAppJs
-  const __dirname = dirname(fileURLToPath(import.meta.url))
-  // Also check CWD for bun compiled binary
-  try { adminAppJs = readFileSync(join(process.cwd(), 'admin-app.js'), 'utf-8'); return adminAppJs } catch {}
-  for (const dir of [__dirname, join(__dirname, '..', '..', 'dist', 'api')]) {
-    try { adminAppJs = readFileSync(join(dir, 'admin-app.js'), 'utf-8'); return adminAppJs } catch {}
-  }
-  adminAppJs = 'console.warn("admin-app.js not found")'
-  return adminAppJs
-}
-
-const handleAdminAppJs: RouteHandler = (_ctx, _req, res) => {
-  res.writeHead(200, { 'Content-Type': 'application/javascript; charset=utf-8' })
-  res.end(getAdminAppJs())
-}
-
 const ROUTES: Route[] = [
   { method: 'GET', pattern: /^\/admin\/?(\?.*)?$/, handler: handleAdminUI },
-  { method: 'GET', pattern: /^\/admin-app\.js$/, handler: handleAdminAppJs },
   { method: 'GET', pattern: /^\/admin\/config$/, handler: handleGetConfig },
   { method: 'POST', pattern: /^\/admin\/config\/reload$/, handler: handleReload },
   { method: 'GET', pattern: /^\/admin\/health$/, handler: handleHealth },

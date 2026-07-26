@@ -218,16 +218,16 @@ export function handleGetTokenTimeline(ctx: ServerContext, req: IncomingMessage,
 }
 
 /**
- * 按维度分桶：'provider' | 'adapter' | 'model'。
+ * 按维度分桶：'provider' | 'adapter' | 'model'（供应商模型） | 'adapterModel'（适配器模型）。
  * GET /admin/token-stats/breakdown?dimension=provider&range=today|7d|30d|all
  * GET /admin/token-stats/breakdown?dimension=provider&startDate=YYYY-MM-DD&endDate=YYYY-MM-DD
  * 自定义日期范围优先；否则按 range（默认 'today'）。
  */
 export function handleGetTokenBreakdown(ctx: ServerContext, req: IncomingMessage, res: ServerResponse): void {
   const url = new URL(req.url ?? '/', 'http://localhost')
-  const dimension = (url.searchParams.get('dimension') ?? 'provider') as 'provider' | 'adapter' | 'model'
-  if (!['provider', 'adapter', 'model'].includes(dimension)) {
-    json(res, 400, { success: false, error: 'dimension 必须是 provider/adapter/model' })
+  const dimension = (url.searchParams.get('dimension') ?? 'provider') as 'provider' | 'adapter' | 'model' | 'adapterModel'
+  if (!['provider', 'adapter', 'model', 'adapterModel'].includes(dimension)) {
+    json(res, 400, { success: false, error: 'dimension 必须是 provider/adapter/model/adapterModel' })
     return
   }
   const startDate = url.searchParams.get('startDate')
@@ -257,14 +257,21 @@ export function handleGetTokenDbInfo(ctx: ServerContext, _req: IncomingMessage, 
 }
 
 /**
- * 清理 N 天前的历史数据。body: { days: 90 }。
+ * 清理历史数据。body: { days: 90 } 清理 N 天前；{ all: true } 清空全部。
  * POST /admin/token-stats/cleanup
  */
 export async function handlePostTokenCleanup(ctx: ServerContext, req: IncomingMessage, res: ServerResponse): Promise<void> {
-  let body: { days?: number } = {}
+  let body: { days?: number; all?: boolean } = {}
   try {
     body = JSON.parse(await (await import('../../lib/http-utils.js')).readBody(req))
   } catch { /* 允许空 body，默认 90 天 */ }
+  // all=true：清空全部用量数据（事件 + 预聚合），不可恢复
+  if (body.all === true) {
+    const result = ctx.usageStore.clearAll()
+    ctx.logger.log('system', 'Usage store cleared: all', result)
+    json(res, 200, { success: true, data: { all: true, ...result } })
+    return
+  }
   const days = typeof body.days === 'number' && body.days > 0 ? body.days : 90
   const result = ctx.usageStore.cleanup(days)
   ctx.logger.log('system', `Usage store cleaned: ${days}d`, { days, ...result })

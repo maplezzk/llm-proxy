@@ -19,6 +19,15 @@
       "portSetSuccessWithRestart": "Port saved, please restart the service",
       "portRestartHint": "restart to take effect"
     },
+    "general": {
+      "title": "General",
+      "desc": "Language, theme, port and config reload",
+      "language": "Language",
+      "theme": "Theme",
+      "themeSystem": "System",
+      "themeLight": "Light",
+      "themeDark": "Dark"
+    },
     "common": {
       "save": "Save",
       "cancel": "Cancel",
@@ -44,9 +53,12 @@
       "remove": "Remove",
       "hide": "Hide",
       "view": "View",
-    "reloadConfig": "Reload Config",
-    "configReloaded": "Config reloaded",
-    "reloadFailed": "Reload failed"
+      "reloadConfig": "Reload Config",
+      "configReloaded": "Config reloaded",
+      "reloadFailed": "Reload failed",
+      "requestFailed": "Request failed",
+      "copyFailed": "Copy failed",
+      "parseFailed": "Data parse failed"
     },
     "dashboard": {
       "status": "Status",
@@ -60,7 +72,7 @@
       "today": "Today",
       "output": "Output",
       "total": "Total",
-      "hitRate": "Hit Rate {{rate}}",
+      "hitRate": "Cache Hit Rate {{rate}}",
       "newCacheTokens": "New cache tokens written",
       "proxyKey": "Proxy API Key",
       "proxyKeyPlaceholder": "Leave empty to skip auth",
@@ -75,7 +87,8 @@
         "breakdownTitle": "Breakdown Comparison",
         "dimProvider": "Provider",
         "dimAdapter": "Adapter",
-        "dimModel": "Model",
+        "dimModel": "Provider Model",
+        "dimAdapterModel": "Adapter Model",
         "days1": "Today",
         "days7": "7 days",
         "days30": "30 days",
@@ -85,10 +98,20 @@
         "emptyDesc": "No proxy requests recorded in {{range}}. Send a request to see the trend here.",
         "storageTitle": "Usage Data Storage",
         "storageDesc": "{{events}} events · {{aggregates}} aggregates · {{size}}",
-        "cleanupBtn": "Clean up data older than 90 days",
+        "cleanupBtn": "Clean up",
+        "cleanupAllBtn": "Clear all",
+        "cleanupAllConfirm": "Are you sure you want to delete ALL usage data? This cannot be undone.",
         "cleanupConfirm": "Are you sure you want to delete all usage data older than {{days}} days? This cannot be undone.",
         "cleanupDone": "Cleaned {{events}} events / {{aggregates}} aggregates",
         "cleanupFailed": "Cleanup failed"
+      },
+      "chart": {
+        "input": "Input",
+        "output": "Output",
+        "cacheRead": "Cache Read",
+        "cacheCreate": "Cache Create",
+        "total": "Total",
+        "requests": "Requests"
       }
     },
     "logs": {
@@ -137,7 +160,7 @@
       "formModels": "Models",
       "formModelId": "Model ID",
       "formModelIdPlaceholder": "e.g. gpt-4o",
-      "addModel": "+ Add Model",
+      "addModel": "Add Model",
       "thinkingBudget": "Thinking Budget",
       "reasoningEffort": "Reasoning Effort",
       "defaultEffort": "Default",
@@ -229,7 +252,7 @@
       "targetModelId": "Target Model ID",
       "sourcePlaceholder": "Model ID from the tool",
       "provider": "Provider",
-      "addMapping": "+ Add Mapping",
+      "addMapping": "Add Mapping",
       "bulkImport": "Import All",
       "selectProviderFirst": "-- Select Provider --",
       "noModelsInProvider": "Provider \"{{provider}}\" has no models configured",
