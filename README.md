@@ -150,7 +150,6 @@ llm-proxy status    # Show status
 | `/api/admin/health` | GET | Health check |
 | `/api/admin/status/providers` | GET | Provider stats |
 | `/api/admin/logs` | GET | Request logs |
-| `/api/admin/logs/stats` | GET | Log statistics |
 | `/api/admin/token-stats` | GET | Token usage stats |
 | `/api/admin/log-level` | GET / PUT | Read / update log level |
 | `/api/admin/locale` | GET / PUT | Read / update UI locale (zh / en) |

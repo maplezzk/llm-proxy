@@ -150,7 +150,6 @@ llm-proxy status    # 查看状态
 | `/api/admin/health` | GET | 健康检查 |
 | `/api/admin/status/providers` | GET | Provider 状态统计 |
 | `/api/admin/logs` | GET | 请求日志 |
-| `/api/admin/logs/stats` | GET | 日志统计 |
 | `/api/admin/token-stats` | GET | Token 统计 |
 | `/api/admin/log-level` | GET / PUT | 查看 / 修改日志级别 |
 | `/api/admin/locale` | GET / PUT | 查看 / 修改界面语言（zh / en） |

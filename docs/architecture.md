@@ -16,13 +16,13 @@ graph TB
     subgraph Server["HTTP Server (api/server.ts)"]
         routeTable["路由表匹配<br/>method + regex"]
         subgraph AdminRoutes["管理路由 /api/admin/*"]
-            adminUI["Admin UI HTML"]
             adminConfig["配置 CRUD"]
             adminStatus["Provider 状态"]
             adminLogs["日志查询"]
             adminTest["模型测试"]
             adminPull["Pull Models"]
         end
+        adminUI["Admin UI HTML<br/>GET /admin（精确路由）"]
         subgraph ProxyRoutes["代理路由 /v1/*"]
             anthroHandler["/v1/messages<br/>Anthropic"]
             openaiHandler["/v1/chat/completions<br/>OpenAI"]
@@ -96,7 +96,7 @@ graph TB
     AdminRoutes --> statusTracker
     AdminRoutes --> logger
 
-    AdminRoutes -.->|"返回 HTML/JS"| adminUI
+    routeTable -.->|"GET /admin 精确路由"| adminUI
     adminUI --> app
     app --> components
     components --> store

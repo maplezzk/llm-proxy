@@ -229,6 +229,32 @@ describe('integration', { timeout: 15000 }, () => {
     assert.strictEqual(data.data.status, 'ok')
   })
 
+  // --- Admin UI route regression: GET /admin (precise) vs old /admin/health prefix ---
+
+  it('Admin UI: GET /admin 返回 200 + text/html', async () => {
+    const resp = await fetch(`http://127.0.0.1:${PROXY_PORT}/admin`)
+    assert.strictEqual(resp.status, 200)
+    const contentType = resp.headers.get('content-type') ?? ''
+    assert.ok(contentType.startsWith('text/html'), `期望 text/html，实际 ${contentType}`)
+    const html = await resp.text()
+    // 稳定行为：有构建产物 → 真实 admin-ui.html；无构建产物 → '<h1>Admin UI not found</h1>'。
+    // 两者均含开标签与闭标签，所以断言 HTML 结构而非具体内容。
+    assert.ok(/<[a-zA-Z][^>]*>/.test(html), '响应体应含 HTML 开标签')
+    assert.ok(/<\/[a-zA-Z][^>]*>/.test(html), '响应体应含 HTML 闭标签')
+  })
+
+  it('旧前缀 GET /admin/health 已迁移到 /api/admin/* → 返回 404', async () => {
+    const resp = await fetch(`http://127.0.0.1:${PROXY_PORT}/admin/health`)
+    assert.strictEqual(resp.status, 404)
+  })
+
+  it('管理 API: 新前缀 GET /api/admin/health 仍可用', async () => {
+    const resp = await fetch(`http://127.0.0.1:${PROXY_PORT}/api/admin/health`)
+    assert.strictEqual(resp.status, 200)
+    const data = await resp.json()
+    assert.strictEqual(data.success, true)
+  })
+
   it('管理 API: GET /api/admin/config 返回原始 Key', async () => {
     const resp = await fetch(`http://127.0.0.1:${PROXY_PORT}/api/admin/config`)
     const data = await resp.json()
