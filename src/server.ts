@@ -1,12 +1,12 @@
 /**
- * P0 Hono server assembly:
- *   middleware chain: req-id -> auth (optional PROXY_KEY) -> request log -> routes
+ * P0 Hono 服务装配：
+ *   middleware chain: req-id → auth（可选 PROXY_KEY）→ request log → 路由
  *
  * Endpoints:
- *   GET  /health      JSON status
- *   GET  /sse         server-sent events (zod count/intervalMs)
- *   POST /proxy-sse   upstream SSE pass-through (fetch + zero-copy pipe)
- *   GET  /db/insert   Drizzle probe insert (requires DATABASE_URL)
+ *   GET  /health      JSON 状态
+ *   GET  /sse         server-sent events（zod 校验 count / intervalMs）
+ *   POST /proxy-sse   上游 SSE 透传（fetch + zero-copy pipe）
+ *   GET  /db/insert   Drizzle 探针插入（需要 DATABASE_URL）
  */
 import { serve } from '@hono/node-server';
 import { Hono, type Context, type Next } from 'hono';

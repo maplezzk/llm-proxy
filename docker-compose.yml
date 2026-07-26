@@ -1,9 +1,8 @@
-# docker-compose for llm-proxy P0.
+# llm-proxy P0 的 docker-compose 文件。
 #
-# Only the app service is defined here; the database is assumed to exist on the
-# host as a sibling container named `postgres` reachable via DNS name `postgres`
-# on the `shared-net` external bridge network. Use scripts/init-db.sh once to
-# create the llmproxy_dev database.
+# 这里只定义 app 服务；数据库假定宿主机上已存在名为 `postgres` 的同级容器，
+# 通过外部 bridge 网络 `shared-net` 以 DNS 名 `postgres` 访问。
+# 首次创建 llmproxy_dev 数据库请执行 scripts/init-db.sh。
 
 services:
   app:

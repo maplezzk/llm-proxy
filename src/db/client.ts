@@ -1,14 +1,11 @@
 /**
- * postgres-js + Drizzle client (lazy singleton).
+ * postgres-js + Drizzle 客户端（懒加载单例）。
  *
- * Verified conventions from spike:
- * - `prepare: false`: required for compatibility with Pgbouncer transaction-mode
- *   pooling; safe for direct connections too.
- * - `max: 5 / idle_timeout: 5 / connect_timeout: 5`: bounded pool size to avoid
- *   exhausting the host PG.
- * - Lazy singleton: cache the client at module level; closeDb() resets the cache
- *   (idempotent) for test cleanup.
- * - Reads DATABASE_URL via loadEnv() so tests can stub env once.
+ * spike 阶段已验证的约定：
+ * - `prepare: false`：兼容 Pgbouncer 事务模式连接池，直连场景同样安全。
+ * - `max: 5 / idle_timeout: 5 / connect_timeout: 5`：受限的连接池上限，避免打满宿主机 PG。
+ * - 懒加载单例：客户端缓存在模块层；closeDb() 重置缓存（幂等），供测试清理使用。
+ * - 通过 loadEnv() 读取 DATABASE_URL，测试只需 stub 一次环境变量即可。
  */
 import postgres from 'postgres';
 import { drizzle, type PostgresJsDatabase } from 'drizzle-orm/postgres-js';
@@ -45,9 +42,8 @@ export const getDb = (): Db => {
   return cachedDb;
 };
 
-// Idempotent: safe to call multiple times; a no-op when nothing is open.
-// end() errors are logged but not rethrown, so test cleanup can proceed even
-// when the underlying connection is already torn down.
+// 幂等：可重复调用；没有打开的连接时为 no-op。
+// end() 错误仅记录不抛出，保证测试清理即使底层连接已断开也能继续。
 export const closeDb = async (): Promise<void> => {
   if (!cachedSql) return;
   try {
