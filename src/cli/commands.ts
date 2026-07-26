@@ -14,9 +14,9 @@ import { VisionCache } from '../proxy/vision-cache.js'
 const DEFAULT_CONFIG_PATH = `${process.env.HOME ?? '/tmp'}/.llm-proxy/config.yaml`
 const DEFAULT_DATA_DIR = `${process.env.HOME ?? '/tmp'}/.llm-proxy`
 /**
- * 默认 PID 文件路径，正式服务使用 `/tmp/llm-proxy.pid`。
- * dev wrapper 通过 `LLM_PROXY_PID_PATH` 覆盖为 `/tmp/llm-proxy-dev.pid`，
- * 保证正式与开发实例互不干扰。
+ * 默认 PID 文件路径：正式服务使用 `/tmp/llm-proxy.pid`。
+ * dev wrapper 必须通过显式 `--pid-path`（而非 env）传递自己的 PID 文件，
+ * 保证正式 CLI 不会被任意环境变量污染。
  */
 const DEFAULT_PID_PATH = '/tmp/llm-proxy.pid'
 const DEFAULT_HOST = '127.0.0.1'
@@ -29,7 +29,10 @@ interface StartOptions {
   logLevel?: string
   /** 运行时数据目录（日志、usage.db、vision-cache 等）。默认 ~/.llm-proxy */
   dataDir?: string
-  /** PID 文件路径覆盖（dev wrapper 用）。默认 /tmp/llm-proxy.pid */
+  /**
+   * PID 文件路径。仅接受显式参数；不读取 `LLM_PROXY_PID_PATH` 环境变量，
+   * 避免任意 shell env 污染正式服务。dev wrapper 通过 `--pid-path` 传入。
+   */
   pidPath?: string
 }
 
@@ -179,9 +182,9 @@ export async function cmdStart(opts: StartOptions): Promise<void> {
    * dev wrapper 通过 --data-dir 指向 ~/.llm-proxy/dev，避免污染正式实例。
    */
   const dataDir = opts.dataDir ?? DEFAULT_DATA_DIR
-  // PID 文件路径：opts.pidPath > LLM_PROXY_PID_PATH > /tmp/llm-proxy.pid。
-  // 用 `||` 而非 `??` 是为了在 env 显式置空时回退到默认值（原 resolvePidPath 行为）。
-  const pidPath = opts.pidPath || process.env.LLM_PROXY_PID_PATH || DEFAULT_PID_PATH
+  // PID 文件路径：仅 opts.pidPath 显式传入，否则默认 /tmp/llm-proxy.pid。
+  // 不读取 LLM_PROXY_PID_PATH 环境变量，防止任意 shell env 污染正式服务。
+  const pidPath = opts.pidPath ?? DEFAULT_PID_PATH
 
   let store: ConfigStore
   if (!existsSync(configPath)) {

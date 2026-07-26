@@ -1,7 +1,7 @@
 import { copyFileSync, existsSync, mkdirSync, openSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs'
+import { execFileSync, spawn } from 'node:child_process'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { spawn } from 'node:child_process'
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url))
 const PROJECT_ROOT = resolve(SCRIPT_DIR, '..')
@@ -15,16 +15,26 @@ const SOURCE_CONFIG_PATHS = [
 const DEFAULT_CONFIG_PATH = join(DEV_ROOT, 'config.yaml')
 const DEFAULT_DATA_DIR = DEV_ROOT
 const DEFAULT_PID_PATH = '/tmp/llm-proxy-dev.pid'
+/** 默认 dev 数据目录下的日志路径；显式 --data-dir 时跟随用户路径，保证 verification 中 usage/log/cache 不写默认目录。 */
+const DEFAULT_LOG_PATH = join(DEFAULT_DATA_DIR, 'server.log')
 const DEFAULT_HOST = '127.0.0.1'
 const DEFAULT_PORT = 9004
 const START_TIMEOUT_MS = 10_000
 
-/** 默认 dev 数据目录下的日志路径；显式 --data-dir 时跟随用户路径，保证 verification 中 usage/log/cache 不写默认目录。 */
-const DEFAULT_LOG_PATH = join(DEFAULT_DATA_DIR, 'server.log')
-
+/**
+ * dev PID/state 元数据：
+ * - pid/port/startedAt：cmdStart 写入的最小集（与正式 service 兼容）
+ * - host/configPath/dataDir/logPath：dev wrapper 在 health check 通过后补充，
+ *   用于 status 展示实际启动参数，并作为 PID 身份校验的可验证元数据。
+ */
 interface DevState {
   pid: number
   port: number
+  startedAt?: number
+  host?: string
+  configPath?: string
+  dataDir?: string
+  logPath?: string
 }
 
 interface DevOptions {
@@ -122,18 +132,71 @@ function resolveOptions(args: string[]): DevOptions {
   }
 }
 
-function readState(): DevState | null {
+type ParseOutcome =
+  | { kind: 'ok'; state: DevState }
+  | { kind: 'json-error'; reason: string }
+  | { kind: 'invalid-shape' }
+
+/**
+ * 把 PID JSON 解析为 DevState。纯函数：无 IO、无日志、无外部可变状态。
+ * 返回可辨识联合区分三种结果，调用方决定是否上报。
+ */
+function parseState(raw: string): ParseOutcome {
+  let parsed: Record<string, unknown>
   try {
-    const state = JSON.parse(readFileSync(DEFAULT_PID_PATH, 'utf8')) as Partial<DevState>
-    if (typeof state.pid !== 'number' || typeof state.port !== 'number') return null
-    return { pid: state.pid, port: state.port }
-  } catch {
+    parsed = JSON.parse(raw) as Record<string, unknown>
+  } catch (err) {
+    return { kind: 'json-error', reason: err instanceof Error ? err.message : String(err) }
+  }
+  if (typeof parsed.pid !== 'number' || typeof parsed.port !== 'number') {
+    return { kind: 'invalid-shape' }
+  }
+  const state: DevState = { pid: parsed.pid, port: parsed.port }
+  if (typeof parsed.startedAt === 'number') state.startedAt = parsed.startedAt
+  if (typeof parsed.host === 'string') state.host = parsed.host
+  if (typeof parsed.configPath === 'string') state.configPath = parsed.configPath
+  if (typeof parsed.dataDir === 'string') state.dataDir = parsed.dataDir
+  if (typeof parsed.logPath === 'string') state.logPath = parsed.logPath
+  return { kind: 'ok', state }
+}
+
+function readState(): DevState | null {
+  // 文件不存在是正常空状态（首次启动 / 已清理）。
+  if (!existsSync(DEFAULT_PID_PATH)) return null
+  let raw: string
+  try {
+    raw = readFileSync(DEFAULT_PID_PATH, 'utf8').trim()
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err)
+    console.error(`[dev] PID 文件读取失败 (${DEFAULT_PID_PATH}): ${reason}`)
     return null
   }
+  if (raw.length === 0) return null
+  const outcome = parseState(raw)
+  if (outcome.kind === 'json-error') {
+    console.error(`[dev] PID 文件 JSON 解析失败 (${DEFAULT_PID_PATH}): ${outcome.reason}`)
+    return null
+  }
+  if (outcome.kind === 'invalid-shape') {
+    console.error(`[dev] PID 文件结构不合法 (${DEFAULT_PID_PATH}): 缺少 pid/port`)
+    return null
+  }
+  return outcome.state
+}
+
+function writeState(state: DevState): void {
+  writeFileSync(DEFAULT_PID_PATH, JSON.stringify(state), 'utf-8')
 }
 
 function removeState(): void {
   try { unlinkSync(DEFAULT_PID_PATH) } catch { /* stale or missing PID file */ }
+}
+
+/** 用 cmdStart 已写入的最小集覆盖 host/configPath/dataDir/logPath，保留 startedAt。 */
+function addDevMetadata(extra: Required<Pick<DevState, 'host' | 'configPath' | 'dataDir' | 'logPath'>>): void {
+  const current = readState()
+  if (!current) return
+  writeState({ ...current, ...extra })
 }
 
 function isProcessRunning(pid: number): boolean {
@@ -143,6 +206,41 @@ function isProcessRunning(pid: number): boolean {
   } catch {
     return false
   }
+}
+
+/**
+ * 校验 PID 文件中的 pid 是否仍是 dev wrapper 启动的同一进程。
+ * 通过 `/bin/ps -o command=` 读取命令行，匹配 tsx 启动 + `--config <configPath>` 标记。
+ * 用于防止 PID 复用或 PID 文件被替换时误杀/误清理。
+ * 读取失败时返回 false（保守拒绝），编排层 validateState 据此归类为 mismatch。
+ */
+function isDevProcess(pid: number, configPath: string): boolean {
+  try {
+    const cmd = execFileSync('/bin/ps', ['-p', String(pid), '-o', 'command='], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    })
+    return /tsx/.test(cmd) && cmd.includes(`--config ${configPath}`)
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err)
+    console.error(`[dev] 无法读取 pid=${pid} 的命令行（${reason}）；保守判定为身份不匹配。`)
+    return false
+  }
+}
+
+type StateValidation = 'stale' | 'mismatch' | 'valid'
+
+/**
+ * 综合判定 PID/state 是否仍代表 dev 服务：
+ * - stale：pid 进程已不存在，PID 文件可清理
+ * - mismatch：pid 进程存活但身份不匹配 dev（PID 复用 / PID 文件被替换 / 无法验证），保留状态并报错
+ * - valid：pid 进程存活且身份匹配
+ */
+function validateState(state: DevState): StateValidation {
+  if (!isProcessRunning(state.pid)) return 'stale'
+  if (!state.configPath) return 'mismatch'
+  if (!isDevProcess(state.pid, state.configPath)) return 'mismatch'
+  return 'valid'
 }
 
 async function isHealthy(host: string, port: number): Promise<boolean> {
@@ -169,6 +267,15 @@ async function waitForHealth(host: string, port: number, timeoutMs: number): Pro
   return false
 }
 
+async function waitUntil(predicate: () => boolean, timeoutMs: number): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    if (predicate()) return true
+    await new Promise((resolve) => setTimeout(resolve, 100))
+  }
+  return predicate()
+}
+
 function printLogTail(logPath: string): void {
   try {
     const lines = readFileSync(logPath, 'utf8').trim().split('\n')
@@ -178,6 +285,17 @@ function printLogTail(logPath: string): void {
   }
 }
 
+/** 报告 PID/state 冲突并保留状态退出；start/stop/status 通用。 */
+function reportMismatch(state: DevState): never {
+  console.error(`冲突：dev PID/state 与实际进程身份不匹配。`)
+  console.error(`  PID 文件指向 pid=${state.pid}，但该进程不是由 dev wrapper 启动的 tsx 实例。`)
+  if (state.configPath) console.error(`  PID/configPath=${state.configPath}`)
+  if (state.port) console.error(`  PID/port=${state.port}`)
+  console.error(`  可能原因：PID 被复用 / PID 文件被替换 / 进程被替换为其他 llm-proxy 进程。`)
+  console.error(`  未执行 stop 操作；请人工检查后清理。`)
+  process.exit(1)
+}
+
 async function stopDev(): Promise<void> {
   const state = readState()
   if (!state) {
@@ -185,11 +303,13 @@ async function stopDev(): Promise<void> {
     return
   }
 
-  if (!isProcessRunning(state.pid)) {
+  const validation = validateState(state)
+  if (validation === 'stale') {
     removeState()
     console.log(`dev 服务已停止（清理过期 PID ${state.pid}）`)
     return
   }
+  if (validation === 'mismatch') reportMismatch(state)
 
   console.log(`正在停止 dev 服务: pid=${state.pid}, port=${state.port}`)
   process.kill(state.pid, 'SIGTERM')
@@ -203,22 +323,34 @@ async function stopDev(): Promise<void> {
   console.log('dev 服务已停止')
 }
 
-async function waitUntil(predicate: () => boolean, timeoutMs: number): Promise<boolean> {
-  const deadline = Date.now() + timeoutMs
-  while (Date.now() < deadline) {
-    if (predicate()) return true
-    await new Promise((resolve) => setTimeout(resolve, 100))
+async function runForeground(child: ReturnType<typeof spawn>, options: DevOptions): Promise<never> {
+  const result = await new Promise<{ code: number | null; signal: NodeJS.Signals | null; error?: Error }>((resolve) => {
+    child.once('exit', (code, signal) => resolve({ code, signal }))
+    child.once('error', (error) => resolve({ code: null, signal: null, error }))
+  })
+  if (result.error) {
+    console.error(`dev 子进程启动失败 (config=${options.configPath}, port=${options.port}, data-dir=${options.dataDir}): ${result.error.message}`)
+    process.exit(1)
   }
-  return predicate()
+  if (result.code !== null) {
+    process.exit(result.code)
+  }
+  // 信号退出（如 SIGTERM/SIGKILL）：信号无法直接作为退出码传播，按 1 退出避免被误认作成功。
+  process.exit(1)
 }
 
 async function startDev(options: DevOptions): Promise<void> {
   const current = readState()
-  if (current && isProcessRunning(current.pid)) {
-    console.error(`dev 服务已在运行: http://${DEFAULT_HOST}:${current.port} (pid=${current.pid})`)
-    process.exit(1)
+  if (current) {
+    const validation = validateState(current)
+    if (validation === 'valid') {
+      const host = current.host ?? DEFAULT_HOST
+      console.error(`dev 服务已在运行: http://${host}:${current.port} (pid=${current.pid})`)
+      process.exit(1)
+    }
+    if (validation === 'mismatch') reportMismatch(current)
+    if (validation === 'stale') removeState()
   }
-  if (current) removeState()
 
   mkdirSync(options.dataDir, { recursive: true })
   // 日志跟随 dataDir：与 cmdStart 中 usage.db/vision-cache/log 统一落在 dataDir 内。
@@ -237,21 +369,17 @@ async function startDev(options: DevOptions): Promise<void> {
     options.host,
     '--port',
     String(options.port),
+    '--pid-path',
+    DEFAULT_PID_PATH,
   ], {
     cwd: PROJECT_ROOT,
     detached: !options.foreground,
-    env: {
-      ...process.env,
-      LLM_PROXY_PID_PATH: DEFAULT_PID_PATH,
-    },
+    env: process.env,
     stdio: options.foreground ? 'inherit' : ['ignore', logFd, logFd],
   })
 
   if (options.foreground) {
-    await new Promise<void>((resolve) => {
-      child.once('exit', () => resolve())
-    })
-    return
+    await runForeground(child, options)
   }
 
   const started = await waitForHealth(options.host, options.port, START_TIMEOUT_MS)
@@ -264,6 +392,14 @@ async function startDev(options: DevOptions): Promise<void> {
   }
 
   child.unref()
+  // 在 child 写入的最小 PID JSON 上补充 dev 元数据，供 status 展示与身份校验使用。
+  addDevMetadata({
+    host: options.host,
+    configPath: options.configPath,
+    dataDir: options.dataDir,
+    logPath,
+  })
+
   const state = readState()
   console.log(`dev 服务已启动: http://${options.host}:${options.port}`)
   console.log(`管理界面: http://${options.host}:${options.port}/admin/`)
@@ -275,19 +411,31 @@ async function startDev(options: DevOptions): Promise<void> {
 
 async function showStatus(): Promise<void> {
   const state = readState()
-  if (!state || !isProcessRunning(state.pid)) {
-    if (state) removeState()
+  if (!state) {
     console.log('dev 服务未运行')
     return
   }
 
-  const healthy = await isHealthy(DEFAULT_HOST, state.port)
+  const validation = validateState(state)
+  if (validation === 'stale') {
+    removeState()
+    console.log('dev 服务未运行')
+    return
+  }
+  if (validation === 'mismatch') reportMismatch(state)
+
+  const host = state.host ?? DEFAULT_HOST
+  const configPath = state.configPath ?? DEFAULT_CONFIG_PATH
+  const dataDir = state.dataDir ?? DEFAULT_DATA_DIR
+  const logPath = state.logPath ?? DEFAULT_LOG_PATH
+
+  const healthy = await isHealthy(host, state.port)
   console.log(`dev 服务运行中: ${healthy ? 'healthy' : '进程存在但健康检查失败'}`)
-  console.log(`地址: http://${DEFAULT_HOST}:${state.port}`)
+  console.log(`地址: http://${host}:${state.port}`)
   console.log(`PID: ${state.pid}`)
-  console.log(`配置文件: ${DEFAULT_CONFIG_PATH}`)
-  console.log(`数据目录: ${DEFAULT_DATA_DIR}`)
-  console.log(`日志文件: ${DEFAULT_LOG_PATH}`)
+  console.log(`配置文件: ${configPath}`)
+  console.log(`数据目录: ${dataDir}`)
+  console.log(`日志文件: ${logPath}`)
 }
 
 async function main(): Promise<void> {

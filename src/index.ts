@@ -22,7 +22,9 @@ const COMMANDS: Record<string, () => Promise<void>> = {
     // --data-dir 让 dev wrapper 可以把日志/usage.db/vision-cache 等运行时数据
     // 隔离到独立目录，避免污染正式 ~/.llm-proxy。默认仍是 ~/.llm-proxy。
     const dataDir = readArg('--data-dir')
-    return cmdStart({ config, host, port, logLevel, dataDir })
+    // --pid-path 显式覆盖 PID 文件路径，仅 dev wrapper 使用，避免 env 污染正式服务。
+    const pidPath = readArg('--pid-path')
+    return cmdStart({ config, host, port, logLevel, dataDir, pidPath })
   },
   stop: () => {
     const port = readIntArg('--port')
@@ -35,7 +37,8 @@ const COMMANDS: Record<string, () => Promise<void>> = {
     const port = readIntArg('--port')
     const logLevel = readArg('--log-level')
     const dataDir = readArg('--data-dir')
-    return cmdRestart({ config, host, port, logLevel, dataDir })
+    const pidPath = readArg('--pid-path')
+    return cmdRestart({ config, host, port, logLevel, dataDir, pidPath })
   },
   reload: () => {
     const port = readIntArg('--port')
@@ -61,6 +64,7 @@ llm-proxy — 本地统一 LLM 模型代理
   --port <port>        端口 (默认: 9000，也可在 config.yaml 中设置 port)
   --log-level <level>  日志级别: debug, info, warn, error (默认: info)
   --data-dir <path>    运行时数据目录（日志、usage.db、vision-cache，默认 ~/.llm-proxy）
+  --pid-path <path>   PID 文件路径覆盖（仅显式传入，默认 /tmp/llm-proxy.pid）
 `)
 }
 
