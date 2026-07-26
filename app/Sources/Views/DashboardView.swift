@@ -78,15 +78,27 @@ struct DashboardView: View {
         }
     }
 
+    /// 卡片头：彩色图标 tile + 标题（统一视觉语言，macOS 设置风格）
+    private func cardHeader(icon: String, color: Color, title: String) -> some View {
+        HStack(spacing: 8) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                    .fill(color.opacity(0.15))
+                    .frame(width: 22, height: 22)
+                Image(systemName: icon)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(color)
+            }
+            Text(title)
+                .font(.headline)
+            Spacer()
+        }
+    }
+
     // MARK: - Trend Chart Card（全宽）
     private var trendChartCard: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 8) {
-                Image(systemName: "chart.xyaxis.line").foregroundColor(.blue)
-                Text(loc("dashboard.usage.trendTitle"))
-                    .font(.headline)
-                Spacer()
-            }
+            cardHeader(icon: "chart.xyaxis.line", color: .blue, title: loc("dashboard.usage.trendTitle"))
             .padding(.horizontal, 16)
             .padding(.top, 14)
             .padding(.bottom, 2)
@@ -328,11 +340,7 @@ struct DashboardView: View {
     // 分维度柱状图
     private var breakdownCard: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 8) {
-                Image(systemName: "chart.bar.xaxis").foregroundColor(.purple)
-                Text(loc("dashboard.usage.breakdownTitle")).font(.headline)
-                Spacer()
-            }
+            cardHeader(icon: "chart.bar.xaxis", color: .purple, title: loc("dashboard.usage.breakdownTitle"))
             .padding(.horizontal, 14)
             .padding(.top, 14)
             .padding(.bottom, 8)
@@ -453,7 +461,14 @@ struct DashboardView: View {
     // MARK: - Storage Card
     private var storageCard: some View {
         HStack(spacing: 14) {
-            Image(systemName: "externaldrive.fill").font(.title3).foregroundColor(.gray)
+            ZStack {
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .fill(Color.gray.opacity(0.15))
+                    .frame(width: 30, height: 30)
+                Image(systemName: "externaldrive.fill")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(.gray)
+            }
             VStack(alignment: .leading, spacing: 2) {
                 Text(loc("dashboard.usage.storageTitle")).font(.subheadline).fontWeight(.semibold)
                 if let info = viewModel.dbInfo {
@@ -614,8 +629,8 @@ struct DashboardHeroView: View {
                 .foregroundStyle(tint)
         }
         .padding(18)
-        .background(RoundedRectangle(cornerRadius: 14).fill(tint.opacity(0.07)))
-        .overlay(RoundedRectangle(cornerRadius: 14).stroke(tint.opacity(0.18), lineWidth: 1))
+        .background(RoundedRectangle(cornerRadius: 12).fill(tint.opacity(0.07)))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(tint.opacity(0.18), lineWidth: 1))
     }
 }
 
@@ -628,11 +643,11 @@ struct TodayUsageStripView: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            metricBlock(title: loc("dashboard.totalTokens"), value: total, accent: .blue)
+            metricBlock(title: loc("dashboard.totalTokens"), value: total, accent: .primary)
             metricDivider
-            metricBlock(title: loc("dashboard.inputTokens"), value: input, accent: .accentColor)
+            metricBlock(title: loc("dashboard.inputTokens"), value: input, accent: .blue)
             metricDivider
-            metricBlock(title: loc("dashboard.outputTokens"), value: output, accent: .gray)
+            metricBlock(title: loc("dashboard.outputTokens"), value: output, accent: .purple)
             metricDivider
             metricBlock(title: loc("dashboard.hitRate"), value: hitRate, accent: .green)
         }

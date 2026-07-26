@@ -134,6 +134,11 @@
 "providers.pullModels.new" = "%d 个新模型";
 "providers.pullModels.empty" = "API 未返回模型";
 "providers.pullModels.importAll" = "全部导入";
+"providers.pullModels.importCount" = "导入选中 (%d)";
+"providers.pullModels.search" = "搜索模型 ID 或描述…";
+"providers.pullModels.selectAll" = "全选";
+"providers.pullModels.invert" = "反选";
+"providers.pullModels.clear" = "清空";
 "providers.pullModels.imported" = "已导入 %d 个模型";
 "providers.pullModels.importedWithSkip" = "已导入 %d 个模型，%d 个已存在";
 

@@ -3,6 +3,36 @@ import SwiftUI
 struct ProviderFormView: View {
     @Bindable var viewModel: ProvidersViewModel
     @State private var selectedPullModelIds: Set<String> = []
+    @State private var pullModelSearch = ""
+
+    /// 按搜索词过滤后的拉取模型（搜索 ID 或描述）
+    private var filteredPullModels: [PullModelItem] {
+        guard let result = viewModel.pullModelsResult else { return [] }
+        let q = pullModelSearch.trimmingCharacters(in: .whitespaces).lowercased()
+        guard !q.isEmpty else { return result.models }
+        return result.models.filter {
+            $0.id.lowercased().contains(q) || ($0.description?.lowercased().contains(q) ?? false)
+        }
+    }
+
+    /// 对过滤结果中可勾选（非已存在）的模型批量操作
+    private func setFilteredSelection(_ mode: SelectionMode) {
+        let existing = Set(viewModel.pullModelsResult?.existing ?? [])
+        for item in filteredPullModels where !existing.contains(item.id) {
+            switch mode {
+            case .all: selectedPullModelIds.insert(item.id)
+            case .clear: selectedPullModelIds.remove(item.id)
+            case .invert:
+                if selectedPullModelIds.contains(item.id) {
+                    selectedPullModelIds.remove(item.id)
+                } else {
+                    selectedPullModelIds.insert(item.id)
+                }
+            }
+        }
+    }
+
+    private enum SelectionMode { case all, invert, clear }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -83,6 +113,31 @@ struct ProviderFormView: View {
                         .padding(.horizontal, 16)
                         .padding(.top, 8)
 
+                        // 搜索 + 批量选择工具栏
+                        HStack(spacing: 8) {
+                            HStack(spacing: 6) {
+                                Image(systemName: "magnifyingglass")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                                TextField(loc("providers.pullModels.search"), text: $pullModelSearch)
+                                    .textFieldStyle(.plain)
+                                    .font(.callout)
+                            }
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 5)
+                            .background(RoundedRectangle(cornerRadius: 6).fill(Color.secondary.opacity(0.08)))
+
+                            Spacer()
+
+                            Button(loc("providers.pullModels.selectAll")) { setFilteredSelection(.all) }
+                            Button(loc("providers.pullModels.invert")) { setFilteredSelection(.invert) }
+                            Button(loc("providers.pullModels.clear")) { setFilteredSelection(.clear) }
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .padding(.horizontal, 16)
+                        .padding(.top, 4)
+
                         Divider()
 
                         if result.models.isEmpty {
@@ -93,7 +148,7 @@ struct ProviderFormView: View {
                         } else {
                             ScrollView {
                                 LazyVStack(alignment: .leading, spacing: 2) {
-                                    ForEach(result.models, id: \.id) { item in
+                                    ForEach(filteredPullModels, id: \.id) { item in
                                         pullModelRow(item)
                                     }
                                 }
@@ -110,7 +165,7 @@ struct ProviderFormView: View {
             HStack {
                 Spacer()
                 if viewModel.pullModelsResult != nil && !viewModel.pullModelsLoading {
-                    Button(loc("providers.pullModels.importAll")) {
+                    Button(loc("providers.pullModels.importCount", selectedPullModelIds.count)) {
                         importSelectedModels()
                     }
                     .buttonStyle(.borderedProminent)
@@ -121,8 +176,9 @@ struct ProviderFormView: View {
         }
         .frame(width: 460, height: 420)
         .onAppear {
-            // 默认全选新模型
+            // 默认全选新模型，清空上次搜索
             selectedPullModelIds = Set(viewModel.pullModelsNewItems.map { $0.id })
+            pullModelSearch = ""
         }
         .onChange(of: viewModel.pullModelsResult?.models.count) { _, _ in
             selectedPullModelIds = Set(viewModel.pullModelsNewItems.map { $0.id })

@@ -121,6 +121,11 @@
 "providers.pullModels.new" = "%d new";
 "providers.pullModels.empty" = "No models returned from API";
 "providers.pullModels.importAll" = "Import Selected";
+"providers.pullModels.importCount" = "Import Selected (%d)";
+"providers.pullModels.search" = "Search model ID or description…";
+"providers.pullModels.selectAll" = "Select All";
+"providers.pullModels.invert" = "Invert";
+"providers.pullModels.clear" = "Clear";
 "providers.pullModels.imported" = "Imported %d model(s)";
 "providers.pullModels.importedWithSkip" = "Imported %d model(s), %d already existed";
 "adapter.searchPlaceholder" = "Search adapters...";
