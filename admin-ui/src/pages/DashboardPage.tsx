@@ -334,9 +334,11 @@ export default function DashboardPage() {
     const out = ts.output_tokens || 0
     const cr = ts.cache_read_input_tokens || 0
     const cc = ts.cache_creation_input_tokens || 0
-    // DB 统一语义：inp = 计费部分（不含缓存），cr/cc 独立字段
+    // DB 统一语义：inp = 计费部分（不含缓存），cr/cc 独立字段。
+    // 卡片「输入」与趋势图输入线同口径（仅计费输入），避免缓存占主导时卡片与图表对不上；
+    // 缓存流量由缓存命中率卡片与图表缓存读取/创建线表达。
     const totalTokens = inp + out + cr + cc
-    const totalInput = inp + cr + cc
+    const totalInput = inp
     return [
       { label: t('admin.dashboard.total'), value: fmtNum(totalTokens), icon: Stack, accent: 'primary' },
       {
