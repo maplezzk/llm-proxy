@@ -1,6 +1,6 @@
 import { readFileSync, writeFileSync } from 'node:fs'
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
-import type { Config, ConfigFile } from './types.js'
+import type { Config, ConfigFile, ProviderType } from './types.js'
 
 const ENV_VAR_PATTERN = /\$\{(\w+)\}/g
 
@@ -54,11 +54,14 @@ export function loadConfigFromYaml(filePath: string): Config {
   return {
     providers: interpolated.providers.map((p) => ({
       name: p.name,
-      type: p.type,
       apiKey: p.api_key,
       apiBase: p.api_base,
+      ...(p.type ? { type: p.type } : {}),
+      ...(p.protocols ? { protocols: p.protocols.map((protocol) => ({ type: protocol.type, apiBase: protocol.api_base })) } : {}),
       models: p.models.map((m) => ({
         id: m.id,
+        protocols: m.protocols as ProviderType[] | undefined,
+        protocol: m.protocol as ProviderType | undefined,
         thinking: parseThinkingConfig(m),
         input: m.input as import('./types.js').InputModality[] | undefined,
       })),
@@ -91,8 +94,11 @@ export function serializeConfigToYaml(config: Config): string {
       type: p.type,
       api_key: p.apiKey,
       api_base: p.apiBase,
+      ...(p.protocols !== undefined ? { protocols: p.protocols.map((protocol) => ({ type: protocol.type, api_base: protocol.apiBase })) } : {}),
       models: p.models.map((m) => ({
         id: m.id,
+        ...(m.protocols?.length ? { protocols: m.protocols } : {}),
+        ...(m.protocol ? { protocol: m.protocol } : {}),
         ...(m.thinking?.budget_tokens ? { thinking: { budget_tokens: m.thinking.budget_tokens } } : {}),
         ...(m.thinking?.type && !m.thinking.budget_tokens ? { thinking: { type: m.thinking.type } } : {}),
         ...(m.thinking?.type && m.thinking.budget_tokens ? { thinking: { budget_tokens: m.thinking.budget_tokens, type: m.thinking.type } } : {}),

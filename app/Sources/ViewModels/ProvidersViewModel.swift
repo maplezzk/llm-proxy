@@ -5,15 +5,59 @@ import Observation
 
 struct ProviderFormData {
     var name = ""
-    var type = "openai"
     var apiKey = ""
-    var apiBase = ""
+    var protocols: [ProviderProtocolFormData] = [ProviderProtocolFormData()]
     var models: [ProviderModelFormData] = [ProviderModelFormData()]
+
+    init(
+        name: String = "",
+        type: String = "openai",
+        apiKey: String = "",
+        apiBase: String = "",
+        protocols: [ProviderProtocolFormData]? = nil,
+        models: [ProviderModelFormData] = [ProviderModelFormData()]
+    ) {
+        self.name = name
+        self.apiKey = apiKey
+        self.protocols = protocols ?? [ProviderProtocolFormData(type: type, apiBase: apiBase)]
+        self.models = models
+    }
+
+    /// 旧 UI/调用方兼容：type 和 apiBase 代表首个（主）协议。
+    var type: String {
+        get { protocols.first?.type ?? "openai" }
+        set {
+            if protocols.isEmpty { protocols = [ProviderProtocolFormData(type: newValue)] }
+            else { protocols[0].type = newValue }
+        }
+    }
+
+    var apiBase: String {
+        get { protocols.first?.apiBase ?? "" }
+        set {
+            if protocols.isEmpty { protocols = [ProviderProtocolFormData(apiBase: newValue)] }
+            else { protocols[0].apiBase = newValue }
+        }
+    }
+
+    var protocolTypes: [String] { protocols.map(\.type) }
+}
+
+struct ProviderProtocolFormData: Identifiable {
+    let id = UUID()
+    var type: String
+    var apiBase: String
+
+    init(type: String = "openai", apiBase: String = "") {
+        self.type = type
+        self.apiBase = apiBase
+    }
 }
 
 struct ProviderModelFormData: Identifiable {
     let id = UUID()
     var modelId = ""
+    var protocols: Set<String> = ["openai"]
     var budgetTokens = ""
     var reasoningEffort = ""
     var thinkingType = ""
@@ -127,6 +171,9 @@ final class ProvidersViewModel {
             type: provider.type,
             apiKey: provider.api_key,
             apiBase: provider.api_base,
+            protocols: provider.supportedProtocols.map {
+                ProviderProtocolFormData(type: $0.type, apiBase: $0.api_base ?? "")
+            },
             models: provider.models.isEmpty
                 ? [ProviderModelFormData()]
                 : provider.models.map { model in
@@ -134,6 +181,7 @@ final class ProvidersViewModel {
                     let inputSet = Set(model.input ?? ["text"])
                     return ProviderModelFormData(
                         modelId: model.id,
+                        protocols: Set(model.protocols ?? model.protocol.map { [$0] } ?? provider.supportedProtocols.map(\.type)),
                         budgetTokens: bt > 0 ? String(bt) : "",
                         reasoningEffort: model.reasoning_effort ?? "",
                         thinkingType: model.thinking?.type ?? "",
@@ -174,20 +222,13 @@ final class ProvidersViewModel {
         // 构建模型输入
         let modelInputs = validModels.map { model -> ProviderModelInput in
             var thinking: ThinkingInput? = nil
-            if formData.type == "anthropic" {
-                if let bt = Int(model.budgetTokens), bt > 0 {
-                    thinking = ThinkingInput(budget_tokens: bt, reasoning_effort: nil, type: model.thinkingType.isEmpty ? nil : model.thinkingType)
-                } else if !model.thinkingType.isEmpty {
-                    // 仅设置 type（如 MiniMax adaptive）
-                    thinking = ThinkingInput(budget_tokens: nil, reasoning_effort: nil, type: model.thinkingType)
-                }
-            } else {
-                // OpenAI / OpenAI Responses
-                let re: String? = model.reasoningEffort.isEmpty ? nil : model.reasoningEffort
-                let tt: String? = model.thinkingType.isEmpty ? nil : model.thinkingType
-                if re != nil || tt != nil {
-                    thinking = ThinkingInput(budget_tokens: nil, reasoning_effort: re, type: tt)
-                }
+            let budgetTokens: Int? = model.protocols.contains("anthropic") ? Int(model.budgetTokens).flatMap { $0 > 0 ? $0 : nil } : nil
+            let reasoningEffort: String? = (model.protocols.contains("openai") || model.protocols.contains("openai-responses")) && !model.reasoningEffort.isEmpty
+                ? model.reasoningEffort
+                : nil
+            let thinkingType: String? = model.thinkingType.isEmpty ? nil : model.thinkingType
+            if budgetTokens != nil || reasoningEffort != nil || thinkingType != nil {
+                thinking = ThinkingInput(budget_tokens: budgetTokens, reasoning_effort: reasoningEffort, type: thinkingType)
             }
             // 输入模态：按设定顺序输出；只要勾选了任何模态（含 text）就发送，让后端能看到用户的意图
             let allowedModalities: [String] = ["text", "image", "audio", "video", "file"]
@@ -195,6 +236,7 @@ final class ProvidersViewModel {
             let inputField: [String]? = selectedModalities.isEmpty ? nil : selectedModalities
             return ProviderModelInput(
                 id: model.modelId.trimmingCharacters(in: .whitespaces),
+                protocols: model.protocols.isEmpty ? nil : Array(model.protocols),
                 thinking: thinking,
                 input: inputField
             )
@@ -207,6 +249,7 @@ final class ProvidersViewModel {
                     type: formData.type,
                     apiKey: formData.apiKey,
                     apiBase: formData.apiBase,
+                    protocols: formData.protocols.map { ProviderProtocolDetail(type: $0.type, api_base: $0.apiBase.isEmpty ? nil : $0.apiBase) },
                     models: modelInputs
                 )
                 successMessage = loc("providers.updated")
@@ -216,6 +259,7 @@ final class ProvidersViewModel {
                     type: formData.type,
                     apiKey: formData.apiKey,
                     apiBase: formData.apiBase,
+                    protocols: formData.protocols.map { ProviderProtocolDetail(type: $0.type, api_base: $0.apiBase.isEmpty ? nil : $0.apiBase) },
                     models: modelInputs
                 )
                 successMessage = loc("providers.created")
@@ -229,7 +273,7 @@ final class ProvidersViewModel {
     }
 
     func addModelRow() {
-        formData.models.append(ProviderModelFormData())
+        formData.models.append(ProviderModelFormData(protocols: Set(formData.protocolTypes)))
     }
 
     func removeModelRow(at index: Int) {
@@ -245,6 +289,51 @@ final class ProvidersViewModel {
             return
         }
         formData.models.remove(at: index)
+    }
+
+    func addProtocol() {
+        let used = Set(formData.protocolTypes)
+        let next = ["openai", "anthropic", "openai-responses"].first { !used.contains($0) } ?? "openai"
+        formData.protocols.append(ProviderProtocolFormData(type: next))
+    }
+
+    func toggleProtocol(type: String, enabled: Bool) {
+        let exists = formData.protocolTypes.contains(type)
+        if enabled && !exists {
+            formData.protocols.append(ProviderProtocolFormData(type: type))
+        } else if !enabled && exists && formData.protocols.count > 1 {
+            removeProtocol(id: formData.protocols.first(where: { $0.type == type })!.id)
+        }
+    }
+
+    func updateProtocolBase(type: String, apiBase: String) {
+        guard let index = formData.protocols.firstIndex(where: { $0.type == type }) else { return }
+        formData.protocols[index].apiBase = apiBase
+    }
+
+    func removeProtocol(id: UUID) {
+        guard formData.protocols.count > 1,
+              let index = formData.protocols.firstIndex(where: { $0.id == id }) else { return }
+        let removedType = formData.protocols[index].type
+        formData.protocols.remove(at: index)
+        let remainingType = formData.protocols[0].type
+        for index in formData.models.indices {
+            formData.models[index].protocols.remove(removedType)
+            if formData.models[index].protocols.isEmpty {
+                formData.models[index].protocols.insert(remainingType)
+            }
+        }
+    }
+
+    func updateProtocolType(id: UUID, to type: String) {
+        guard let index = formData.protocols.firstIndex(where: { $0.id == id }) else { return }
+        let oldType = formData.protocols[index].type
+        guard oldType != type else { return }
+        formData.protocols[index].type = type
+        for modelIndex in formData.models.indices where formData.models[modelIndex].protocols.contains(oldType) {
+            formData.models[modelIndex].protocols.remove(oldType)
+            formData.models[modelIndex].protocols.insert(type)
+        }
     }
 
     // MARK: - Delete
@@ -282,7 +371,8 @@ final class ProvidersViewModel {
         pullModelsResult = nil
 
         do {
-            pullModelsResult = try await api.pullModels(providerName: providerName, type: formData.type, apiKey: formData.apiKey, apiBase: formData.apiBase)
+            let protocolConfig = formData.protocols.first ?? ProviderProtocolFormData()
+            pullModelsResult = try await api.pullModels(providerName: providerName, type: protocolConfig.type, apiKey: formData.apiKey, apiBase: protocolConfig.apiBase)
         } catch {
             pullModelsError = error.localizedDescription
         }
@@ -337,8 +427,8 @@ final class ProvidersViewModel {
                 modelId: firstModel.id,
                 provider: providerName,
                 apiKey: provider.api_key,
-                apiBase: provider.api_base,
-                type: provider.type
+                apiBase: provider.supportedProtocols.first?.api_base ?? provider.api_base,
+                type: provider.supportedProtocols.first?.type ?? provider.type
             )
             testResults[providerName] = result
         } catch {

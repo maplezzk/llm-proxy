@@ -169,6 +169,20 @@ final class ModelsTests: XCTestCase {
         XCTAssertEqual(resp.data?.aggregates, 10)
     }
 
+    func testClearAllResponseDecoding() throws {
+        let json = """
+        {"success": true, "data": {"all": true, "events": 123, "aggregates": 45}}
+        """
+        let data = json.data(using: .utf8)!
+        let resp = try JSONDecoder().decode(CleanupResponse.self, from: data)
+
+        XCTAssertTrue(resp.success)
+        XCTAssertEqual(resp.data?.all, true)
+        XCTAssertNil(resp.data?.days)
+        XCTAssertEqual(resp.data?.events, 123)
+        XCTAssertEqual(resp.data?.aggregates, 45)
+    }
+
     // MARK: - LogEntry
 
     func testLogEntryDecoding() throws {

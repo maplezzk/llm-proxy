@@ -109,24 +109,24 @@ describe('status/usage-store', () => {
       store.record({ provider: 'p1', adapter: null, model: 'gpt-4', upstreamModel: 'gpt-4', protocol: 'openai', source: 'proxy', inputTokens: 50, outputTokens: 25, cacheRead: 0, cacheCreate: 0 })
       const breakdown = store.getBreakdown('model', { range: 'today' })
       assert.strictEqual(breakdown.length, 2)
-      assert.strictEqual(breakdown[0].key, 'gpt-3.5')  // 200 > 150
-      assert.strictEqual(breakdown[1].key, 'gpt-4')
+      assert.strictEqual(breakdown[0].key, 'p1/gpt-3.5')  // 200 > 150
+      assert.strictEqual(breakdown[1].key, 'p1/gpt-4')
       assert.strictEqual(breakdown[1].request_count, 2)
     })
 
-    it('getBreakdown by model 按上游真实模型分组（适配器虚拟名不出现）', () => {
+    it('getBreakdown by model 按供应商/上游真实模型分组', () => {
       // 适配器请求：model 是虚拟名，upstreamModel 是真实模型 id
       store.record({ provider: 'p1', adapter: 'my-tool', model: 'GPT', upstreamModel: 'gpt-5.5', protocol: 'openai', source: 'my-tool', inputTokens: 300, outputTokens: 100, cacheRead: 0, cacheCreate: 0 })
       // 直连请求：model 与 upstreamModel 相同
       store.record({ provider: 'p1', adapter: null, model: 'gpt-5.5', upstreamModel: 'gpt-5.5', protocol: 'openai', source: 'proxy', inputTokens: 100, outputTokens: 50, cacheRead: 0, cacheCreate: 0 })
       const breakdown = store.getBreakdown('model', { range: 'today' })
       assert.strictEqual(breakdown.length, 1, '同一上游模型应合并为一组')
-      assert.strictEqual(breakdown[0].key, 'gpt-5.5')
+      assert.strictEqual(breakdown[0].key, 'p1/gpt-5.5')
       assert.strictEqual(breakdown[0].input_tokens, 400)
       assert.strictEqual(breakdown[0].request_count, 2)
     })
 
-    it('getBreakdown by adapterModel 只含适配器请求的虚拟模型名', () => {
+    it('getBreakdown by adapterModel 按适配器/虚拟模型分组', () => {
       // 适配器请求：虚拟名 GPT/MAX
       store.record({ provider: 'p1', adapter: 'my-tool', model: 'GPT', upstreamModel: 'gpt-5.5', protocol: 'openai', source: 'my-tool', inputTokens: 300, outputTokens: 100, cacheRead: 0, cacheCreate: 0 })
       store.record({ provider: 'p1', adapter: 'my-tool', model: 'MAX', upstreamModel: 'claude-opus-4', protocol: 'anthropic', source: 'my-tool', inputTokens: 200, outputTokens: 80, cacheRead: 0, cacheCreate: 0 })
@@ -134,9 +134,9 @@ describe('status/usage-store', () => {
       store.record({ provider: 'p1', adapter: null, model: 'gpt-5.5', upstreamModel: 'gpt-5.5', protocol: 'openai', source: 'proxy', inputTokens: 999, outputTokens: 50, cacheRead: 0, cacheCreate: 0 })
       const breakdown = store.getBreakdown('adapterModel', { range: 'today' })
       assert.strictEqual(breakdown.length, 2)
-      assert.strictEqual(breakdown[0].key, 'GPT') // 300 > 200
-      assert.strictEqual(breakdown[1].key, 'MAX')
-      assert.ok(!breakdown.some((b) => b.key === 'gpt-5.5'), '直连请求的真实模型不应混入')
+      assert.strictEqual(breakdown[0].key, 'my-tool/GPT') // 300 > 200
+      assert.strictEqual(breakdown[1].key, 'my-tool/MAX')
+      assert.ok(!breakdown.some((b) => b.key === 'p1/gpt-5.5'), '直连请求的真实模型不应混入')
     })
   })
 

@@ -137,6 +137,15 @@ function createTestConfig(): Config {
         apiBase: `http://127.0.0.1:${MOCK_PORT}`,
         models: [{ id: 'gpt-4o-test' }, { id: 'claude-test' }, { id: 'gpt-4o-resp' }],
       },
+      {
+        name: 'test-multi-protocol',
+        apiKey: 'sk-multi-test',
+        protocols: [
+          { type: 'openai', apiBase: `http://127.0.0.1:${MOCK_PORT}` },
+          { type: 'anthropic', apiBase: `http://127.0.0.1:${MOCK_PORT}` },
+        ],
+        models: [{ id: 'shared-model', protocols: ['openai', 'anthropic'] }],
+      },
     ],
     adapters: [
       { name: 'my-tool', type: 'openai', models: [{ sourceModelId: 'gpt-test', provider: 'test-openai', targetModelId: 'gpt-4o-test' }] },
@@ -192,6 +201,26 @@ describe('integration', { timeout: 15000 }, () => {
     const text = await resp.text()
     assert.ok(text.includes('content'), '流式应含 content')
     assert.ok(text.includes('[DONE]'), '流式应以 [DONE] 结束')
+  })
+
+  it('多协议模型：OpenAI 入站优先直通 OpenAI 上游', async () => {
+    const resp = await fetch(`http://127.0.0.1:${PROXY_PORT}/v1/chat/completions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: 'shared-model', messages: [{ role: 'user', content: 'hi' }], stream: false }),
+    })
+    assert.strictEqual(resp.status, 200)
+    assert.strictEqual(mockRequests[mockRequests.length - 1].url, '/v1/chat/completions')
+  })
+
+  it('多协议模型：Anthropic 入站优先直通 Anthropic 上游', async () => {
+    const resp = await fetch(`http://127.0.0.1:${PROXY_PORT}/v1/messages`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: 'shared-model', max_tokens: 10, messages: [{ role: 'user', content: 'hi' }], stream: false }),
+    })
+    assert.strictEqual(resp.status, 200)
+    assert.strictEqual(mockRequests[mockRequests.length - 1].url, '/v1/messages')
   })
 
   // --- Anthropic format → OpenAI backend (cross-protocol) ---

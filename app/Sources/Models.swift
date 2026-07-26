@@ -93,7 +93,8 @@ struct CleanupResponse: Codable {
 }
 
 struct CleanupResult: Codable {
-    let days: Int
+    let days: Int?
+    let all: Bool?
     let events: Int
     let aggregates: Int
 }
@@ -211,14 +212,44 @@ struct CaptureControlResponse: Codable {
 
 // MARK: - Provider (完整详情)
 
+struct ProviderProtocolDetail: Codable, Hashable, Identifiable {
+    let type: String
+    let api_base: String?
+
+    var id: String { type }
+
+    init(type: String, api_base: String? = nil) {
+        self.type = type
+        self.api_base = api_base
+    }
+}
+
 struct ProviderModelDetail: Codable {
     let id: String
+    let protocols: [String]?
+    let `protocol`: String?
     let thinking: ThinkingConfig?
     let reasoning_effort: String?
     let input: [String]?
 
     enum CodingKeys: String, CodingKey {
-        case id, thinking, reasoning_effort, input
+        case id, protocols, `protocol`, thinking, reasoning_effort, input
+    }
+
+    init(
+        id: String,
+        protocols: [String]? = nil,
+        protocol: String? = nil,
+        thinking: ThinkingConfig?,
+        reasoning_effort: String?,
+        input: [String]?
+    ) {
+        self.id = id
+        self.protocols = protocols
+        self.protocol = `protocol`
+        self.thinking = thinking
+        self.reasoning_effort = reasoning_effort
+        self.input = input
     }
 }
 
@@ -232,7 +263,44 @@ struct ProviderDetail: Codable {
     let type: String
     let api_key: String
     let api_base: String
+    let protocols: [ProviderProtocolDetail]?
     let models: [ProviderModelDetail]
+
+    init(
+        name: String,
+        type: String,
+        api_key: String,
+        api_base: String,
+        protocols: [ProviderProtocolDetail]? = nil,
+        models: [ProviderModelDetail]
+    ) {
+        self.name = name
+        self.type = type
+        self.api_key = api_key
+        self.api_base = api_base
+        self.protocols = protocols
+        self.models = models
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        name = try container.decode(String.self, forKey: .name)
+        type = try container.decodeIfPresent(String.self, forKey: .type) ?? "openai"
+        api_key = try container.decodeIfPresent(String.self, forKey: .api_key) ?? ""
+        api_base = try container.decodeIfPresent(String.self, forKey: .api_base) ?? ""
+        protocols = try container.decodeIfPresent([ProviderProtocolDetail].self, forKey: .protocols)
+        models = try container.decodeIfPresent([ProviderModelDetail].self, forKey: .models) ?? []
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case name, type, api_key, api_base, protocols, models
+    }
+
+    /// 兼容旧服务返回的单协议字段；新服务返回 protocols 时优先使用它。
+    var supportedProtocols: [ProviderProtocolDetail] {
+        if let protocols, !protocols.isEmpty { return protocols }
+        return [ProviderProtocolDetail(type: type, api_base: api_base.isEmpty ? nil : api_base)]
+    }
 }
 
 struct ProvidersListResponse: Codable {
@@ -247,13 +315,38 @@ struct CreateProviderBody: Codable {
     let type: String
     let api_key: String
     let api_base: String
+    let protocols: [ProviderProtocolDetail]?
     let models: [ProviderModelInput]
+
+    init(
+        name: String,
+        type: String,
+        api_key: String,
+        api_base: String,
+        protocols: [ProviderProtocolDetail]? = nil,
+        models: [ProviderModelInput]
+    ) {
+        self.name = name
+        self.type = type
+        self.api_key = api_key
+        self.api_base = api_base
+        self.protocols = protocols
+        self.models = models
+    }
 }
 
 struct ProviderModelInput: Codable {
     let id: String
+    let protocols: [String]?
     let thinking: ThinkingInput?
     let input: [String]?
+
+    init(id: String, protocols: [String]? = nil, thinking: ThinkingInput?, input: [String]?) {
+        self.id = id
+        self.protocols = protocols
+        self.thinking = thinking
+        self.input = input
+    }
 }
 
 struct ThinkingInput: Codable {
@@ -267,7 +360,24 @@ struct UpdateProviderBody: Codable {
     let type: String
     let api_key: String
     let api_base: String
+    let protocols: [ProviderProtocolDetail]?
     let models: [ProviderModelInput]
+
+    init(
+        name: String,
+        type: String,
+        api_key: String,
+        api_base: String,
+        protocols: [ProviderProtocolDetail]? = nil,
+        models: [ProviderModelInput]
+    ) {
+        self.name = name
+        self.type = type
+        self.api_key = api_key
+        self.api_base = api_base
+        self.protocols = protocols
+        self.models = models
+    }
 }
 
 // MARK: - Test Result
@@ -389,7 +499,22 @@ struct Provider: Codable {
     let type: String
     let api_key: String?
     let api_base: String?
+    let protocols: [ProviderProtocolDetail]?
     let models: [ProviderModel]
+
+    init(name: String, type: String, api_key: String?, api_base: String?, protocols: [ProviderProtocolDetail]? = nil, models: [ProviderModel]) {
+        self.name = name
+        self.type = type
+        self.api_key = api_key
+        self.api_base = api_base
+        self.protocols = protocols
+        self.models = models
+    }
+
+    var supportedProtocols: [ProviderProtocolDetail] {
+        if let protocols, !protocols.isEmpty { return protocols }
+        return [ProviderProtocolDetail(type: type, api_base: api_base)]
+    }
 }
 
 struct ConfigData: Codable {

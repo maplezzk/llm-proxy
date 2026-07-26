@@ -35,3 +35,18 @@ providers:
     models:
       - id: o3-mini
         reasoning_effort: high
+
+  # 同一供应商支持多个协议时，使用 protocols 配置各协议的 API Base，
+  # 并在模型上通过 protocol 指定实际使用的协议。
+  - name: multi-protocol-provider
+    api_key: ${MULTI_PROTOCOL_API_KEY}
+    protocols:
+      - type: openai
+        api_base: https://gateway.example.com/openai
+      - type: anthropic
+        api_base: https://gateway.example.com/anthropic
+    models:
+      - id: chat-model
+        protocols: [openai, anthropic]
+      - id: messages-model
+        protocols: [anthropic]

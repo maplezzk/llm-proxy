@@ -14,6 +14,10 @@ export interface ThinkingConfig {
 
 export interface Model {
   id: string
+  /** 模型支持的上游协议；未配置时继承供应商的全部协议 */
+  protocols?: ProviderType[]
+  /** 上一版本的单协议字段，保留兼容 */
+  protocol?: ProviderType
   thinking?: ThinkingConfig
   /** 模型支持的输入模态列表，如 ["text", "image"]。未配置时默认 ["text"] */
   input?: InputModality[]
@@ -31,10 +35,38 @@ export interface VisionConfig {
 
 export interface Provider {
   name: string
-  type: ProviderType
   apiKey: string
+  /** 新格式：同一供应商可配置多个协议及各自的 API Base。 */
+  protocols?: ProviderProtocol[]
+  /** 旧格式字段，保留用于兼容已有配置。 */
+  type?: ProviderType
   apiBase?: string
   models: Model[]
+}
+
+export interface ProviderProtocol {
+  type: ProviderType
+  apiBase?: string
+}
+
+/** 将新旧两种配置格式统一为协议列表。 */
+export function getProviderProtocols(provider: Provider): ProviderProtocol[] {
+  if (provider.protocols !== undefined) return provider.protocols
+  return provider.type ? [{ type: provider.type, apiBase: provider.apiBase }] : []
+}
+
+/** 返回供应商在状态列表等只需要一个类型的场景下使用的主协议。 */
+export function getProviderPrimaryType(provider: Provider): ProviderType {
+  const protocol = getProviderProtocols(provider)[0]
+  if (!protocol) throw new Error(`供应商 "${provider.name}" 未配置协议`)
+  return protocol.type
+}
+
+/** 返回模型支持的协议。旧模型默认支持其供应商配置的全部协议。 */
+export function getModelProtocols(provider: Provider, model: Model): ProviderType[] {
+  if (model.protocols?.length) return model.protocols
+  if (model.protocol) return [model.protocol]
+  return getProviderProtocols(provider).map((protocol) => protocol.type)
 }
 
 export interface AdapterModelMapping {
@@ -78,10 +110,11 @@ export interface ThinkingConfigFile {
 
 export interface ProviderConfigFile {
   name: string
-  type: ProviderType
+  type?: ProviderType
   api_key: string
   api_base?: string
-  models: { id: string; thinking?: ThinkingConfigFile; reasoning_effort?: string; input?: string[] }[]
+  protocols?: { type: ProviderType; api_base?: string }[]
+  models: { id: string; protocols?: ProviderType[]; protocol?: ProviderType; thinking?: ThinkingConfigFile; reasoning_effort?: string; input?: string[] }[]
 }
 
 export interface AdapterConfigFile {

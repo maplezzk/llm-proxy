@@ -209,7 +209,10 @@ Config {
 }
 
 Provider {
-  name, type(anthropic|openai|openai-responses), apiKey, apiBase?, models[]
+  name, apiKey, protocols[], models[]
+  // protocols[]: { type(anthropic|openai|openai-responses), apiBase? }
+  // models[]: { id, protocols?, ... }
+  // 未配置 protocols 时，模型默认支持供应商的全部协议；旧的 protocol 也兼容
 }
 
 AdapterConfig {
