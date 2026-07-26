@@ -95,7 +95,7 @@ struct TestPanelView: View {
                 if let p = selectedProvider {
                     selectedType = p.supportedProtocols.first?.type ?? p.type
                     apiKey = p.api_key ?? ""
-                    apiBase = p.supportedProtocols.first?.api_base ?? p.api_base ?? ""
+                    apiBase = p.apiBase(for: selectedType)
                     if let first = p.models.first { selectedModelId = first.id }
                 }
             }
@@ -114,6 +114,10 @@ struct TestPanelView: View {
                 ForEach(types, id: \.self) { t in Text(t).tag(t) }
             }
             .pickerStyle(.segmented)
+            .onChange(of: selectedType) { _, type in
+                guard selectedProvider != nil else { return }
+                apiBase = selectedProvider?.apiBase(for: type) ?? ""
+            }
 
             SecureField(loc("test.apiKey"), text: $apiKey).textFieldStyle(.roundedBorder)
             TextField(loc("test.apiBase"), text: $apiBase).textFieldStyle(.roundedBorder)
@@ -162,7 +166,7 @@ struct TestPanelView: View {
             if mode == .provider {
                 let type = selectedType
                 let key = apiKey.isEmpty ? (selectedProvider?.api_key ?? "") : apiKey
-                let base = apiBase.isEmpty ? (selectedProvider?.api_base ?? "") : apiBase
+                let base = apiBase
                 testResult = try await api.testProvider(modelId: selectedModelId, provider: selectedProviderName, apiKey: key, apiBase: base, type: type)
             } else {
                 testResult = try await api.testAdapter(name: selectedAdapterName, modelId: adapterModelId)
@@ -231,7 +235,7 @@ struct TestPanelView: View {
         let curl: String
         if mode == .provider {
             let key = apiKey.isEmpty ? (selectedProvider?.api_key ?? "") : apiKey
-            let base = apiBase.isEmpty ? (selectedProvider?.api_base ?? "") : apiBase
+            let base = apiBase
             curl = generateProviderCurl(type: selectedType, model: selectedModelId, apiKey: key, apiBase: base)
         } else {
             let port = APIClient.storedPort()
