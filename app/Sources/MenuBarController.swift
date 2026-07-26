@@ -167,14 +167,14 @@ class MenuBarController: NSObject {
         let consoleItem = NSMenuItem(title: loc("console.openConsole"), action: #selector(openConsole), keyEquivalent: "o")
         consoleItem.target = self
         if #available(macOS 11.0, *) {
-            consoleItem.image = NSImage(systemSymbolName: "sidebar.left", accessibilityDescription: loc("console.openConsole"))
+            consoleItem.image = coloredIcon("sidebar.left", .systemBlue)
         }
         menu.addItem(consoleItem)
 
         let adminItem = NSMenuItem(title: loc("action.openAdmin"), action: #selector(openAdmin), keyEquivalent: "")
         adminItem.target = self
         if #available(macOS 11.0, *) {
-            adminItem.image = NSImage(systemSymbolName: "globe", accessibilityDescription: loc("action.openAdmin"))
+            adminItem.image = coloredIcon("globe", .systemTeal)
         }
         menu.addItem(adminItem)
 
@@ -184,7 +184,7 @@ class MenuBarController: NSObject {
         let logsItem = NSMenuItem(title: loc("action.openLogs"), action: #selector(openLogs), keyEquivalent: "")
         logsItem.target = self
         if #available(macOS 11.0, *) {
-            logsItem.image = NSImage(systemSymbolName: "folder", accessibilityDescription: loc("action.openLogs"))
+            logsItem.image = coloredIcon("folder", .systemYellow)
         }
 
         let settingsMenu = NSMenu()
@@ -192,7 +192,7 @@ class MenuBarController: NSObject {
         // 端口设置（子菜单）
         let portItem = NSMenuItem(title: loc("action.port", String(currentPort)), action: nil, keyEquivalent: "")
         if #available(macOS 11.0, *) {
-            portItem.image = NSImage(systemSymbolName: "number", accessibilityDescription: loc("action.port", String(currentPort)))
+            portItem.image = coloredIcon("number", .systemIndigo)
         }
         let portMenu = NSMenu()
         // 常用端口快捷选项
@@ -212,7 +212,7 @@ class MenuBarController: NSObject {
 
         let logLevelItem = NSMenuItem(title: loc("action.logLevel", currentLogLevel), action: nil, keyEquivalent: "")
         if #available(macOS 11.0, *) {
-            logLevelItem.image = NSImage(systemSymbolName: "ellipsis.circle", accessibilityDescription: loc("action.logLevel", currentLogLevel))
+            logLevelItem.image = coloredIcon("ellipsis.circle", .systemOrange)
         }
         let logLevelMenu = NSMenu()
         for level in ["debug", "info", "warn", "error"] {
@@ -230,7 +230,7 @@ class MenuBarController: NSObject {
         let langLabel = currentLang == "zh" ? "中文" : "English"
         let langItem = NSMenuItem(title: loc("action.language", langLabel), action: nil, keyEquivalent: "")
         if #available(macOS 11.0, *) {
-            langItem.image = NSImage(systemSymbolName: "character.book.closed", accessibilityDescription: loc("action.language", langLabel))
+            langItem.image = coloredIcon("character.book.closed", .systemPurple)
         }
         let langMenu = NSMenu()
         for (langCode, langName) in [("zh", "中文"), ("en", "English")] {
@@ -247,20 +247,17 @@ class MenuBarController: NSObject {
 
         let settingsItem = NSMenuItem(title: loc("menu.settings"), action: nil, keyEquivalent: "")
         if #available(macOS 11.0, *) {
-            settingsItem.image = NSImage(systemSymbolName: "gearshape", accessibilityDescription: loc("menu.settings"))
+            settingsItem.image = coloredIcon("gearshape", .systemGray)
         }
         settingsItem.submenu = settingsMenu
         menu.addItem(settingsItem)
-
-        // ── 更新区 ──
-        menu.addItem(.separator())
 
         // 版本号与检查更新合并为一行（点击即检查）
         let versionItem = NSMenuItem(title: loc("menu.versionCheck", currentVersion()), action: #selector(checkForUpdates), keyEquivalent: "")
         versionItem.target = self
         versionItem.isEnabled = !isCheckingUpdate && !isDownloadingUpdate
         if #available(macOS 11.0, *) {
-            versionItem.image = NSImage(systemSymbolName: "info.circle", accessibilityDescription: loc("menu.versionCheck", currentVersion()))
+            versionItem.image = coloredIcon("info.circle", .systemGreen)
         }
         menu.addItem(versionItem)
 
@@ -310,7 +307,7 @@ class MenuBarController: NSObject {
         let quitItem = NSMenuItem(title: loc("action.quit"), action: #selector(quitApp), keyEquivalent: "q")
         quitItem.target = self
         if #available(macOS 11.0, *) {
-            quitItem.image = NSImage(systemSymbolName: "xmark", accessibilityDescription: loc("action.quit"))
+            quitItem.image = coloredIcon("xmark", .systemRed)
         }
         menu.addItem(quitItem)
 
@@ -356,6 +353,17 @@ class MenuBarController: NSObject {
         }
 
         statusItem.menu = menu
+    }
+
+    /// 生成带主题色的 SF Symbol 菜单图标（非 template，高亮时保持彩色，ClashMac 风格）
+    private func coloredIcon(_ name: String, _ color: NSColor) -> NSImage? {
+        guard #available(macOS 12.0, *) else {
+            return NSImage(systemSymbolName: name, accessibilityDescription: nil)
+        }
+        let config = NSImage.SymbolConfiguration(paletteColors: [color])
+        let img = NSImage(systemSymbolName: name, accessibilityDescription: nil)?.withSymbolConfiguration(config)
+        img?.isTemplate = false
+        return img
     }
 
     /// 将 SwiftUI 卡片包装成菜单项（CodexBar 风格富菜单）

@@ -49,12 +49,29 @@ struct StatusCardView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 8) {
+            // 品牌头行：App 图标 + 名称 + 状态（ClashMac 风格）
+            HStack(spacing: 10) {
+                Image(nsImage: NSApp.applicationIconImage)
+                    .resizable()
+                    .frame(width: 28, height: 28)
+                    .clipShape(RoundedRectangle(cornerRadius: 6.5, style: .continuous))
+                Text(loc("app.title"))
+                    .font(.system(size: 13, weight: .semibold))
+                Spacer()
                 Circle()
                     .fill(model.statusColor)
                     .frame(width: 8, height: 8)
                 Text(model.statusText)
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.secondary)
+            }
+
+            HStack {
+                if let tokens = model.todayTokensText {
+                    Text(loc("menu.todayUsage", tokens, model.hitRateText ?? "–"))
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                }
                 Spacer()
                 Text(verbatim: ":\(model.port)")
                     .font(.system(size: 11, weight: .medium, design: .monospaced))
@@ -64,19 +81,13 @@ struct StatusCardView: View {
                     .background(Capsule().fill(Color.secondary.opacity(0.12)))
             }
 
-            if let tokens = model.todayTokensText {
-                Text(loc("menu.todayUsage", tokens, model.hitRateText ?? "–"))
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-            }
-
             HStack(spacing: 8) {
                 if model.state == .running {
-                    controlButton(loc("menu.btn.stop"), systemImage: "stop.fill", action: onStop)
-                    controlButton(loc("menu.btn.restart"), systemImage: "arrow.clockwise", action: onRestart)
-                    controlButton(loc("menu.btn.reload"), systemImage: "arrow.triangle.2.circlepath", action: onReload)
+                    CardButton(title: loc("menu.btn.stop"), systemImage: "stop", action: onStop)
+                    CardButton(title: loc("menu.btn.restart"), systemImage: "arrow.clockwise", action: onRestart)
+                    CardButton(title: loc("menu.btn.reload"), systemImage: "arrow.triangle.2.circlepath", action: onReload)
                 } else {
-                    controlButton(loc("menu.btn.start"), systemImage: "play.fill", action: onStart)
+                    CardButton(title: loc("menu.btn.start"), systemImage: "play", action: onStart)
                 }
             }
             .frame(maxWidth: .infinity)
@@ -86,15 +97,28 @@ struct StatusCardView: View {
         .padding(.vertical, 10)
         .frame(width: MenuCardMetrics.width, alignment: .leading)
     }
+}
 
-    private func controlButton(_ title: String, systemImage: String, action: @escaping () -> Void) -> some View {
+/// 菜单卡片内的轻量按钮：浅灰底 + 悬停加深 + 描线图标（避免 AppKit bordered 的厚重灰盒）
+struct CardButton: View {
+    let title: String
+    let systemImage: String
+    let action: () -> Void
+    @State private var isHovered = false
+
+    var body: some View {
         Button(action: action) {
             Label(title, systemImage: systemImage)
                 .font(.system(size: 11, weight: .medium))
                 .frame(maxWidth: .infinity)
+                .padding(.vertical, 5)
+                .background(
+                    RoundedRectangle(cornerRadius: 6)
+                        .fill(Color.secondary.opacity(isHovered ? 0.16 : 0.08))
+                )
         }
-        .buttonStyle(.bordered)
-        .controlSize(.regular)
+        .buttonStyle(.plain)
+        .onHover { isHovered = $0 }
     }
 }
 
