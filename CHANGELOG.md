@@ -1,5 +1,41 @@
 # Changelog
 
+## [0.23.0](https://github.com/maplezzk/llm-proxy/compare/v0.22.3...v0.23.0) (2026-07-26)
+
+
+### Features
+
+* Adapters 页——映射表/批量导入/请求默认/连通性测试（U5） ([fcda474](https://github.com/maplezzk/llm-proxy/commit/fcda474af1944c238f7bfe576218dcf9c4616c10))
+* admin-ui 应用外壳——导航/全局状态/i18n/Toast/Confirm/端口设置 ([c73bc79](https://github.com/maplezzk/llm-proxy/commit/c73bc7943f4dba2f2418188806f4f5e2657f4198))
+* Capture 页——SSE 实时抓包/pairId 合并/jsoneditor 四阶段对比（U7） ([0be2f55](https://github.com/maplezzk/llm-proxy/commit/0be2f5534ca8d5591c7e76ac381aaa3338446899))
+* Dashboard 页——统计卡片 + recharts 用量图表 + 存储清理（U3） ([f3e3100](https://github.com/maplezzk/llm-proxy/commit/f3e31007fe761124aeebd1efeacb38f9afafdd9d))
+* Logs 页——类型/级别/日期/搜索筛选、分页、日志级别切换、详情展开复制（U6） ([86b74b8](https://github.com/maplezzk/llm-proxy/commit/86b74b87c7eeb265b9204cec1452058becc1d0a9))
+* macOS App 菜单栏 + Dashboard 重新设计（参考 CodexBar / ClashMac） ([e2a23bf](https://github.com/maplezzk/llm-proxy/commit/e2a23bf433f3572afacb7aba5199d898cbadf232))
+* macOS 菜单栏与 Dashboard 参考 CodexBar 重新设计 ([4289061](https://github.com/maplezzk/llm-proxy/commit/4289061e8b70bdbf6925bb236eb80ed033836d64))
+* Providers 页 + 共享连通性测试弹窗 TestPanelDialog（U4） ([57731e5](https://github.com/maplezzk/llm-proxy/commit/57731e55823c9e7e9bf6b57f36f75a87bf7855d7))
+* Settings 页——Proxy Key 设置/移除 + Vision 回退配置与缓存（U8） ([bf68406](https://github.com/maplezzk/llm-proxy/commit/bf68406a351a18d2107ceec7df304fac9e21b744))
+* 拉取模型弹窗加搜索+批量选择；Dashboard 视觉语言统一 ([3541f18](https://github.com/maplezzk/llm-proxy/commit/3541f18d8065e654498620bf6266555f938cfc9b))
+* 新增 admin-ui Vite+React19+Appica 构建管线与骨架 (U1) ([dbe8af7](https://github.com/maplezzk/llm-proxy/commit/dbe8af79741769259500cd113757c070b80584e1))
+* 服务控制按钮加语义色（停止红/重启橙/重载蓝/启动绿） ([3ff432b](https://github.com/maplezzk/llm-proxy/commit/3ff432bfb413dce11d7dce243c919312c6ec0a40))
+* 模型维度拆分供应商/适配器模型 + 维度选中实心主色 + 操作列彩色语义按钮 ([79bbcf7](https://github.com/maplezzk/llm-proxy/commit/79bbcf723c07598e14cdb0368f5d66dded33f997))
+* 管理页细节优化——按钮统一/图表 i18n 与紧凑数字/存储清理增强/模型维度修正/通用设置收纳 ([3971f04](https://github.com/maplezzk/llm-proxy/commit/3971f04b4bee814b0ac7bf459d542618b5316865))
+* 菜单中间区精简重构 ([a8b3754](https://github.com/maplezzk/llm-proxy/commit/a8b3754fb7092f0999428ec6e67cca817cc08ad5))
+* 菜单向 ClashMac 视觉对齐 ([a01281d](https://github.com/maplezzk/llm-proxy/commit/a01281d3c9f8a7c40f465ebfadec7d0c0efb6e00))
+* 菜单操作区上移至状态卡下方，适配器模型列表移至最底部 ([666c421](https://github.com/maplezzk/llm-proxy/commit/666c4219bd84400a667e7904958a2e1897e469d5))
+
+
+### Bug Fixes
+
+* 修复 Responses 协议转换与用量统计 ([06f8c15](https://github.com/maplezzk/llm-proxy/commit/06f8c155eb90b089715947c202b4880177d129d6))
+* 修复 Responses 协议转换与用量统计 ([665eafd](https://github.com/maplezzk/llm-proxy/commit/665eafd37367ae5b9b7ed885927e3f2b57a75a93))
+* 修复菜单栏服务停止与退出竞态 ([d1b14d5](https://github.com/maplezzk/llm-proxy/commit/d1b14d53338eb37664437be2e4885674182709dc))
+* 修复菜单栏服务停止与退出竞态 ([b7bde64](https://github.com/maplezzk/llm-proxy/commit/b7bde64a85cfbd95cf82985902d83ec2fa352bfb))
+* 模型切换改回悬停子菜单（NSPopUpButton 在 NSMenu 内不响应） ([4106d3e](https://github.com/maplezzk/llm-proxy/commit/4106d3e680c06c7a6ff24cd366b02ca646b33440))
+* 消除管理页静默吞异常——失败可见化（toast+console.warn）与 Capture SSE 兜底 ([6026440](https://github.com/maplezzk/llm-proxy/commit/602644054e8d1cca4c2c0defeaec0f415a12c74a))
+* 状态卡宽度对齐菜单宽度，服务控制按钮等宽撑满整行 ([2e6fbd0](https://github.com/maplezzk/llm-proxy/commit/2e6fbd02be21ca8f4bee590caf51bcc1fb318462))
+* 移除添加模型/添加映射文案中重复的加号前缀 ([8f8da4e](https://github.com/maplezzk/llm-proxy/commit/8f8da4eaa95747bfc286b43b37d939fa05a43f17))
+* 输入 TOKEN 卡片与趋势图同口径（仅计费输入，不含缓存读取/创建） ([67537b7](https://github.com/maplezzk/llm-proxy/commit/67537b74dacd199111695353d9135c2063d66670))
+
 ## [0.22.3](https://github.com/maplezzk/llm-proxy/compare/v0.22.2...v0.22.3) (2026-07-21)
 
 
