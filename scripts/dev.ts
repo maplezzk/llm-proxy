@@ -55,16 +55,24 @@ interface DevOptions {
   dataDir: string
   host: string
   port: number
-  foreground: boolean
+  /**
+   * 运行模式：false=前台（默认，stdio inherit + Ctrl-C 退出），true=后台 detach（logFd 重定向 + unref）。
+   * --foreground 兼容旧调用，等价于默认前台；-d/--background 显式后台。
+   */
+  background: boolean
 }
 
 function usage(): never {
   console.error(`用法:
   npm run dev -- init [--config <path>]
-  npm run dev -- start [--config <path>] [--data-dir <path>] [--port <port>] [--host <host>]
+  npm run dev -- start   [--config <path>] [--data-dir <path>] [--port <port>] [--host <host>] [-d|--background]
   npm run dev -- stop
-  npm run dev -- restart [--config <path>] [--data-dir <path>] [--port <port>] [--host <host>]
+  npm run dev -- restart [--config <path>] [--data-dir <path>] [--port <port>] [--host <host>] [-d|--background]
   npm run dev -- status
+
+默认前台运行（与 npm run dev 业界惯例一致：阻塞终端、实时日志、Ctrl-C 终止）。
+  -d / --background   切换为后台 detach（秒返回，日志写 server.log，用 stop / restart 关闭）。
+  --foreground        兼容旧调用，等价于默认前台；与 -d/--background 同时给出时报错。
 
 默认配置: ${DEFAULT_CONFIG_PATH}
 初始化来源（仅首次初始化时读取）: config.mirror.yaml > config.yaml.migrated > config.yaml
@@ -136,12 +144,21 @@ function resolveOptions(args: string[]): DevOptions {
   const port = parsePort(getOption(args, '--port')) ?? DEFAULT_PORT
   const host = getOption(args, '--host') ?? DEFAULT_HOST
 
+  const foreground = args.includes('--foreground')
+  const background = args.includes('-d') || args.includes('--background')
+  // --foreground 是兼容旧调用的同义词：单独出现时默认就是前台（background=false），
+  // 与 -d/--background 同时给出时报错，避免用户以为两个开关会“叠加”。
+  if (foreground && background) {
+    console.error('参数冲突: --foreground 与 -d/--background 不能同时使用（二选一）')
+    usage()
+  }
+
   return {
     configPath,
     dataDir,
     host,
     port,
-    foreground: args.includes('--foreground'),
+    background,
   }
 }
 
@@ -435,24 +452,51 @@ async function startDev(options: DevOptions): Promise<void> {
   mkdirSync(options.dataDir, { recursive: true })
   const logPath = join(options.dataDir, 'server.log')
   const logFd = openSync(logPath, 'a')
-  const child = spawn(process.execPath, [
+  /**
+   * 内部判定：默认前台，-d/--background 显式后台。`--foreground` 兼容旧调用，等价于前台。
+   * - 前台：stdio: 'inherit'（实时日志）+ detached: false（共享进程组，Ctrl-C 一次清场）
+   * - 后台：stdio 重定向到 logFd + detached: true（独立进程组），PID 文件供 stop 使用
+   */
+  const runInBackground = options.background
+  const backendArgs = [
     '--import', 'tsx', join(PROJECT_ROOT, 'src/index.ts'), 'start',
     '--config', options.configPath, '--data-dir', options.dataDir,
     '--host', '127.0.0.1', '--port', String(backendPort), '--pid-path', DEFAULT_PID_PATH,
-  ], {
-    cwd: PROJECT_ROOT, detached: !options.foreground, env: process.env,
-    stdio: options.foreground ? 'inherit' : ['ignore', logFd, logFd],
-  })
-  const vite = spawn(join(PROJECT_ROOT, 'node_modules/.bin/vite'), [
+  ] as const
+  const viteArgs = [
     'admin-ui', '--port', String(options.port), '--host', options.host,
-  ], {
-    cwd: PROJECT_ROOT, detached: !options.foreground, env: {
-      ...process.env, LLM_PROXY_DEV_BACKEND_PORT: String(backendPort),
-    },
-    stdio: options.foreground ? 'inherit' : ['ignore', logFd, logFd],
-  })
+  ] as const
+  // stdio 在 spawn 的重载 union 下，三元表达式会推为 'inherit' | array 的混合类型，
+  // 分支传参让 TS 各自精确匹配重载，避免 cast。
+  const child = runInBackground
+    ? spawn(process.execPath, [...backendArgs], {
+        cwd: PROJECT_ROOT, detached: true, env: process.env,
+        stdio: ['ignore', logFd, logFd],
+      })
+    : spawn(process.execPath, [...backendArgs], {
+        cwd: PROJECT_ROOT, detached: false, env: process.env,
+        stdio: 'inherit',
+      })
+  const vite = runInBackground
+    ? spawn(join(PROJECT_ROOT, 'node_modules/.bin/vite'), [...viteArgs], {
+        cwd: PROJECT_ROOT, detached: true, env: {
+          ...process.env, LLM_PROXY_DEV_BACKEND_PORT: String(backendPort),
+        },
+        stdio: ['ignore', logFd, logFd],
+      })
+    : spawn(join(PROJECT_ROOT, 'node_modules/.bin/vite'), [...viteArgs], {
+        cwd: PROJECT_ROOT, detached: false, env: {
+          ...process.env, LLM_PROXY_DEV_BACKEND_PORT: String(backendPort),
+        },
+        stdio: 'inherit',
+      })
 
-  if (options.foreground) await runForeground([{ child, label: '后端' }, { child: vite, label: 'Vite' }], options)
+  if (!runInBackground) {
+    // 前台：wrapper 阻塞直到任一子进程退出；runForeground 内部会向其他子进程发 SIGTERM 并传播退出码。
+    // 不写 PID 元数据（前台模式下 stop 不可用；用户用 Ctrl-C / 进程组 SIGINT 终止）。
+    await runForeground([{ child, label: '后端' }, { child: vite, label: 'Vite' }], options)
+    return
+  }
 
   // strictPort / 配置错误等场景下 Vite 会立即 exit，非零退出码；
   // 与 waitForHealth 并发 race，一旦 Vite 退出带错误就立即报错，不要等到 10s 超时。
