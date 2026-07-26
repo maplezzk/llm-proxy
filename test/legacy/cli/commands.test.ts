@@ -1,0 +1,166 @@
+// P1.12 阶段 A：从 legacy-test/cli/commands.test.ts 机械迁移（node:test → vitest）
+// 断言语义保持不变，仅替换测试栈与断言 API。
+import { describe, it, expect, afterEach } from 'vitest'
+import { existsSync, unlinkSync, writeFileSync } from 'node:fs'
+import { installShutdownHandlers } from '../../../legacy-src/cli/commands.js'
+
+describe('cli/commands', () => {
+  afterEach(() => {
+    // 清理注册的 listener，避免跨测试污染
+    process.removeAllListeners('SIGTERM')
+    process.removeAllListeners('SIGINT')
+  })
+
+  it('模块可正常加载且导出命令函数', async () => {
+    const mod = await import('../../../legacy-src/cli/commands.js')
+    expect(typeof mod.cmdStart === 'function', '应导出 cmdStart').toBeTruthy()
+    expect(typeof mod.cmdStop === 'function', '应导出 cmdStop').toBeTruthy()
+    expect(typeof mod.cmdStatus === 'function', '应导出 cmdStatus').toBeTruthy()
+    expect(typeof mod.cmdReload === 'function', '应导出 cmdReload').toBeTruthy()
+  })
+
+  it('cmdReload 参数接口正确', () => {
+    // 验证可选参数通过接口传递
+    const opts: { port?: number } = { port: 9000 }
+    expect(opts.port).toBe(9000)
+  })
+
+  it('cmdStart 参数接口正确', () => {
+    const opts: { config?: string; host?: string; port?: number; logLevel?: string; dataDir?: string; pidPath?: string } = {
+      config: '/tmp/test.yaml',
+      host: '127.0.0.1',
+      port: 9000,
+      logLevel: 'debug',
+      dataDir: '/tmp/dev-data',
+      pidPath: '/tmp/dev.pid',
+    }
+    expect(opts.config).toBe('/tmp/test.yaml')
+    expect(opts.host).toBe('127.0.0.1')
+    expect(opts.port).toBe(9000)
+    expect(opts.logLevel).toBe('debug')
+    expect(opts.dataDir).toBe('/tmp/dev-data')
+    expect(opts.pidPath).toBe('/tmp/dev.pid')
+  })
+
+  describe('installShutdownHandlers', () => {
+    /**
+     * 验证 SIGTERM/SIGINT handler 即使中间步骤抛错，仍会调用 process.exit(0)。
+     *
+     * 背景：Node.js 注册 signal listener 后，默认自动退出行为被移除。
+     * 如果 handler 中某一步抛错而没有 process.exit() 兜底，进程会残留。
+     * 表现为：菜单栏退出后，后台 llm-proxy 服务进程变孤儿进程。
+     */
+    function withMockedProcessExit(fn: () => void): { exitCalled: boolean; exitCode: number | undefined } {
+      const result = { exitCalled: false, exitCode: undefined as number | undefined }
+      const originalExit = process.exit
+      // @ts-expect-error - 劫持 process.exit，记录参数但不退出
+      process.exit = (code?: number) => {
+        result.exitCalled = true
+        result.exitCode = code
+        throw new Error('__TEST_PROCESS_EXIT__')
+      }
+      try {
+        fn()
+      } catch (e) {
+        if (!(e instanceof Error) || e.message !== '__TEST_PROCESS_EXIT__') throw e
+      } finally {
+        process.exit = originalExit
+      }
+      return result
+    }
+
+    it('SIGTERM 触发后即使 visionCache.flushSync 抛错，仍调用 process.exit(0)', () => {
+      const mockServer = { close: () => {} }
+      const mockCache = {
+        flushSync: () => { throw new Error('disk full') },
+      }
+
+      const { exitCalled, exitCode } = withMockedProcessExit(() => {
+        installShutdownHandlers({
+          server: mockServer as never,
+          visionCache: mockCache,
+          t: (k: string) => k,
+          pidPath: '/tmp/__nonexistent_for_test__.pid',
+          signalTarget: 'SIGTERM',
+        })
+        // 触发 SIGTERM：handler 调用 process.exit(0)，会被劫持后抛出特殊错误
+        process.emit('SIGTERM')
+      })
+
+      expect(exitCalled, 'process.exit 必须被调用').toBe(true)
+      expect(exitCode, '退出码应为 0').toBe(0)
+    })
+
+    it('SIGINT 触发后即使 server.close 抛错，仍调用 process.exit(0)', () => {
+      const mockServer = { close: () => { throw new Error('socket busy') } }
+      const mockCache = { flushSync: () => {} }
+
+      const { exitCalled, exitCode } = withMockedProcessExit(() => {
+        installShutdownHandlers({
+          server: mockServer as never,
+          visionCache: mockCache,
+          t: (k: string) => k,
+          pidPath: '/tmp/__nonexistent_for_test__.pid',
+          signalTarget: 'SIGINT',
+        })
+        process.emit('SIGINT')
+      })
+
+      expect(exitCalled, 'process.exit 必须被调用').toBe(true)
+      expect(exitCode, '退出码应为 0').toBe(0)
+    })
+
+    it('正常路径：所有清理步骤依次执行', () => {
+      let tCalled = false
+      let cacheFlushed = false
+      let serverClosed = false
+
+      const mockServer = {
+        close: () => { serverClosed = true },
+      }
+      const mockCache = {
+        flushSync: () => { cacheFlushed = true },
+      }
+
+      const { exitCalled, exitCode } = withMockedProcessExit(() => {
+        installShutdownHandlers({
+          server: mockServer as never,
+          visionCache: mockCache,
+          t: (k: string) => { tCalled = true; return k },
+          pidPath: '/tmp/__nonexistent_for_test__.pid',
+          signalTarget: 'SIGTERM',
+        })
+        process.emit('SIGTERM')
+      })
+
+      expect(tCalled, 'i18n 应被调用').toBe(true)
+      expect(cacheFlushed, 'visionCache.flushSync 应被调用').toBe(true)
+      expect(serverClosed, 'server.close 应被调用').toBe(true)
+      expect(exitCalled, 'process.exit 必须被调用').toBe(true)
+      expect(exitCode, '退出码应为 0').toBe(0)
+    })
+
+    it('旧进程退出时不应删除新实例的 PID 文件', () => {
+      const pidPath = `/tmp/llm-proxy-shutdown-race-${process.pid}.pid`
+      // 模拟旧实例收到 SIGTERM 后，新实例已经把自己的状态写入 PID 文件。
+      writeFileSync(pidPath, JSON.stringify({ pid: 999999999, port: 9000, startedAt: Date.now() }))
+
+      try {
+        withMockedProcessExit(() => {
+          installShutdownHandlers({
+            server: { close: () => {} } as never,
+            visionCache: { flushSync: () => {} },
+            t: (k: string) => k,
+            pidPath,
+            signalTarget: 'SIGTERM',
+          })
+          process.emit('SIGTERM')
+        })
+
+        expect(existsSync(pidPath), '新实例的 PID 文件必须保留').toBe(true)
+      } finally {
+        try { unlinkSync(pidPath) } catch { /* ignore */ }
+      }
+    })
+  })
+})

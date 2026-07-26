@@ -1,0 +1,138 @@
+// P1.12 阶段 B：从 legacy-test/api/handlers.test.ts 机械迁移（node:test → vitest）
+// 断言语义保持不变，仅替换测试栈与断言 API。
+import { describe, it, expect } from 'vitest'
+import { ConfigStore } from '../../../legacy-src/config/store.js'
+import { StatusTracker } from '../../../legacy-src/status/tracker.js'
+import { Logger } from '../../../legacy-src/log/logger.js'
+import type { Config } from '../../../legacy-src/config/types.js'
+import { handleGetConfig, handleReload, handleHealth, handleStatus, handleGetLocale, handleSetLocale } from '../../../legacy-src/api/handlers/index.js'
+import type { OutgoingHttpHeaders } from 'node:http'
+
+function createConfig(): Config {
+  return {
+    providers: [
+      { name: 'p1', type: 'openai', apiKey: 'sk-123', models: [{ id: 'mv1' }] },
+    ],
+  }
+}
+
+function mockRes() {
+  let body = ''
+  let status = 200
+  return {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    writeHead: (s: number, _headers?: OutgoingHttpHeaders) => {
+      status = s
+    },
+    end: (data: string) => {
+      body = data
+    },
+    setHeader: () => {},
+    getHeader: () => undefined,
+    getStatus: () => status,
+    getBody: () => body,
+  }
+}
+
+type MockRes = ReturnType<typeof mockRes>
+
+describe('api/handlers', () => {
+  it('GET /api/admin/config 返回脱敏配置', () => {
+    const store = new ConfigStore('/fake', createConfig())
+    const tracker = new StatusTracker()
+    const ctx = { store, tracker, logger: new Logger() }
+    const res = mockRes()
+    handleGetConfig(ctx, {} as never, res as never)
+    const data = JSON.parse(res.getBody())
+    expect(data.success).toBe(true)
+    expect(data.data.providers[0].api_key).toBe('sk-123')
+  })
+
+  it('GET /api/admin/health 返回 ok', () => {
+    const store = new ConfigStore('/fake', createConfig())
+    const tracker = new StatusTracker()
+    const ctx = { store, tracker, logger: new Logger() }
+    const res = mockRes()
+    handleHealth(ctx, {} as never, res as never)
+    const data = JSON.parse(res.getBody())
+    expect(data.data.status).toBe('ok')
+  })
+
+  it('POST /api/admin/config/reload 失败时返回错误', async () => {
+    const store = new ConfigStore('/nonexistent', createConfig())
+    const tracker = new StatusTracker()
+    const ctx = { store, tracker, logger: new Logger() }
+    const res = mockRes()
+    await handleReload(ctx, {} as never, res as never)
+    const data = JSON.parse(res.getBody())
+    expect(data.success).toBe(false)
+  })
+
+  it('GET /api/admin/status/providers 返回结构', () => {
+    const store = new ConfigStore('/fake', createConfig())
+    const tracker = new StatusTracker()
+    const ctx = { store, tracker, logger: new Logger() }
+    const res = mockRes()
+    handleStatus(ctx, {} as never, res as never)
+    const data = JSON.parse(res.getBody())
+    expect(data.success).toBe(true)
+    expect(Array.isArray(data.data.providers)).toBeTruthy()
+    expect(data.data.providers.length).toBe(1)
+    expect(data.data.providers[0].name).toBe('p1')
+  })
+
+  it('GET /api/admin/locale 返回默认 locale en', () => {
+    const store = new ConfigStore('/fake', createConfig())
+    const ctx = { store, tracker: new StatusTracker(), logger: new Logger() }
+    const res = mockRes()
+    handleGetLocale(ctx, {} as never, res as never)
+    const data = JSON.parse(res.getBody())
+    expect(data.success).toBe(true)
+    expect(data.data.locale).toBe('en')
+  })
+
+  it('GET /api/admin/locale 返回配置中的 locale', () => {
+    const config = createConfig()
+    config.locale = 'zh'
+    const store = new ConfigStore('/fake', config)
+    const ctx = { store, tracker: new StatusTracker(), logger: new Logger() }
+    const res = mockRes()
+    handleGetLocale(ctx, {} as never, res as never)
+    const data = JSON.parse(res.getBody())
+    expect(data.success).toBe(true)
+    expect(data.data.locale).toBe('zh')
+  })
+
+  it('PUT /api/admin/locale 设置 locale 为 zh', async () => {
+    const tmpDir = (await import('node:fs')).mkdtempSync((await import('node:os')).tmpdir() + '/llm-proxy-test-')
+    const configPath = tmpDir + '/config.yaml'
+    const store = new ConfigStore(configPath, createConfig())
+    const ctx = { store, tracker: new StatusTracker(), logger: new Logger() }
+    const req = new(await import('stream')).Readable()
+    req.push(JSON.stringify({ locale: 'zh' }))
+    req.push(null)
+    const res = mockRes()
+    await handleSetLocale(ctx, req as never, res as never)
+    const data = JSON.parse(res.getBody())
+    expect(data.success).toBe(true)
+    expect(data.data.locale).toBe('zh')
+    // 验证配置已更新
+    const res2 = mockRes()
+    handleGetLocale(ctx, {} as never, res2 as never)
+    const data2 = JSON.parse(res2.getBody())
+    expect(data2.data.locale).toBe('zh')
+  })
+
+  it('PUT /api/admin/locale 无效参数返回 400', async () => {
+    const tmpDir = (await import('node:fs')).mkdtempSync((await import('node:os')).tmpdir() + '/llm-proxy-test-')
+    const configPath = tmpDir + '/config.yaml'
+    const store = new ConfigStore(configPath, createConfig())
+    const ctx = { store, tracker: new StatusTracker(), logger: new Logger() }
+    const req = new(await import('stream')).Readable()
+    req.push(JSON.stringify({ locale: 'fr' }))
+    req.push(null)
+    const res = mockRes()
+    await handleSetLocale(ctx, req, res as never)
+    expect(res.getStatus()).toBe(400)
+  })
+})

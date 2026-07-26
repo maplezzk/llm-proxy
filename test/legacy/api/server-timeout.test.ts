@@ -1,0 +1,72 @@
+// P1.12 阶段 B：从 legacy-test/api/server-timeout.test.ts 机械迁移（node:test → vitest）
+// 断言语义保持不变，仅替换测试栈与断言 API。
+import { describe, it, expect } from 'vitest'
+import { mkdtempSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { ConfigStore } from '../../../legacy-src/config/store.js'
+import { StatusTracker } from '../../../legacy-src/status/tracker.js'
+import { UsageStore } from '../../../legacy-src/status/usage-store.js'
+import { Logger } from '../../../legacy-src/log/logger.js'
+import { createProxyServer } from '../../../legacy-src/api/server.js'
+import type { Config } from '../../../legacy-src/config/types.js'
+
+function createConfig(): Config {
+  return {
+    providers: [
+      { name: 'p1', type: 'openai', apiKey: 'sk-123', models: [{ id: 'mv1' }] },
+    ],
+  }
+}
+
+function makeUsageStore(): UsageStore {
+  return new UsageStore(join(mkdtempSync(join(tmpdir(), 'usage-')), 'usage.db'))
+}
+
+describe('api/server 超时配置（防止 socket 累积）', () => {
+  it('createProxyServer 设置了 keepAliveTimeout / headersTimeout / requestTimeout / timeout', () => {
+    const store = new ConfigStore('/fake/server-timeout-test', createConfig())
+    const server = createProxyServer({
+      adminHost: '127.0.0.1',
+      adminPort: 0,
+      proxyHost: '127.0.0.1',
+      proxyPort: 0,
+      store,
+      tracker: new StatusTracker(),
+      usageStore: makeUsageStore(),
+      logger: new Logger(10),
+    })
+
+    try {
+      // 显式检查关键超时值是否被设置（防止 Node 默认行为变更时静默变化）
+      expect(server.keepAliveTimeout, 'keepAliveTimeout 应为 30s').toBe(30_000)
+      expect(server.headersTimeout, 'headersTimeout 应为 60s').toBe(60_000)
+      expect(server.requestTimeout, 'requestTimeout 应为 5min').toBe(300_000)
+      expect(server.timeout, 'socket timeout 应为 0（不限时，允许长流式响应）').toBe(0)
+    } finally {
+      server.close()
+    }
+  })
+
+  it('server.timeout = 0 允许流式响应持续数分钟不被 kill', () => {
+    // 流式 LLM 响应可能持续 1-5 分钟，socket timeout 必须为 0
+    // 否则长流会在到达超时阈值时被强制关闭，破坏客户端体验
+    const store = new ConfigStore('/fake/server-timeout-test-2', createConfig())
+    const server = createProxyServer({
+      adminHost: '127.0.0.1',
+      adminPort: 0,
+      proxyHost: '127.0.0.1',
+      proxyPort: 0,
+      store,
+      tracker: new StatusTracker(),
+      usageStore: makeUsageStore(),
+      logger: new Logger(10),
+    })
+
+    try {
+      expect(server.timeout).toBe(0)
+    } finally {
+      server.close()
+    }
+  })
+})
