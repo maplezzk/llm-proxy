@@ -5,6 +5,12 @@ struct ProviderFormView: View {
     @State private var selectedPullModelIds: Set<String> = []
     @State private var pullModelSearch = ""
 
+    private let supportedProtocolTypes: [(String, String)] = [
+        ("openai", "OpenAI (Chat)"),
+        ("openai-responses", "OpenAI (Responses)"),
+        ("anthropic", "Anthropic"),
+    ]
+
     /// 按搜索词过滤后的拉取模型（搜索 ID 或描述）
     private var filteredPullModels: [PullModelItem] {
         guard let result = viewModel.pullModelsResult else { return [] }
@@ -261,17 +267,6 @@ struct ProviderFormView: View {
                     .textFieldStyle(.roundedBorder)
             }
 
-            // 类型
-            VStack(alignment: .leading, spacing: 4) {
-                Text(loc("providers.form.type")).font(.caption).foregroundColor(.secondary)
-                Picker("", selection: $viewModel.formData.type) {
-                    Text("OpenAI").tag("openai")
-                    Text("Anthropic").tag("anthropic")
-                    Text("OpenAI Responses").tag("openai-responses")
-                }
-                .pickerStyle(.segmented)
-            }
-
             // API Key
             VStack(alignment: .leading, spacing: 4) {
                 Text(loc("providers.form.apiKey")).font(.caption).foregroundColor(.secondary)
@@ -279,11 +274,48 @@ struct ProviderFormView: View {
                     .textFieldStyle(.roundedBorder)
             }
 
-            // API Base
-            VStack(alignment: .leading, spacing: 4) {
-                Text(loc("providers.form.apiBase")).font(.caption).foregroundColor(.secondary)
-                TextField("https://api.openai.com", text: $viewModel.formData.apiBase)
-                    .textFieldStyle(.roundedBorder)
+            protocolsSection
+        }
+    }
+
+    // MARK: - Protocols
+
+    private var protocolsSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text(loc("providers.form.protocols")).font(.caption).foregroundColor(.secondary)
+                Spacer()
+            }
+            Text(loc("providers.form.protocolsHint"))
+                .font(.caption2)
+                .foregroundColor(.secondary)
+
+            ForEach(supportedProtocolTypes, id: \.0) { protocolType, label in
+                let isSelected = viewModel.formData.protocolTypes.contains(protocolType)
+                VStack(alignment: .leading, spacing: 6) {
+                    Toggle(isOn: Binding(
+                        get: { viewModel.formData.protocolTypes.contains(protocolType) },
+                        set: { viewModel.toggleProtocol(type: protocolType, enabled: $0) }
+                    )) {
+                        Text(label)
+                            .font(.callout)
+                            .fontWeight(.medium)
+                    }
+                    .toggleStyle(.checkbox)
+
+                    if isSelected {
+                        TextField(loc("providers.form.apiBase"), text: Binding(
+                            get: { viewModel.formData.protocols.first(where: { $0.type == protocolType })?.apiBase ?? "" },
+                            set: { viewModel.updateProtocolBase(type: protocolType, apiBase: $0) }
+                        ))
+                        .textFieldStyle(.roundedBorder)
+                        .padding(.leading, 20)
+                    }
+                }
+                .padding(8)
+                .background(isSelected ? Color.accentColor.opacity(0.08) : Color.primary.opacity(0.03))
+                .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(isSelected ? Color.accentColor.opacity(0.35) : Color.primary.opacity(0.08), lineWidth: 1))
+                .cornerRadius(6)
             }
         }
     }
@@ -320,99 +352,104 @@ struct ProviderFormView: View {
     }
 
     private func modelRow(model: Binding<ProviderModelFormData>) -> some View {
-        HStack(spacing: 8) {
-            // 模型 ID
-            TextField(loc("providers.form.modelIdPlaceholder"), text: model.modelId)
-                .textFieldStyle(.roundedBorder)
-                .frame(minWidth: 120)
-
-            // Anthropic: budget_tokens
-            if viewModel.formData.type == "anthropic" {
-                TextField(loc("providers.form.budgetTokens"), text: model.budgetTokens)
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                TextField(loc("providers.form.modelIdPlaceholder"), text: model.modelId)
                     .textFieldStyle(.roundedBorder)
-                    .frame(width: 80)
-                    .help(loc("providers.form.budgetTokensHelp"))
-            }
 
-            // OpenAI: reasoning_effort
-            if viewModel.formData.type == "openai" || viewModel.formData.type == "openai-responses" {
-                Picker("", selection: model.reasoningEffort) {
-                    Text(loc("providers.form.reasoningNone")).tag("")
-                    Text("Low").tag("low")
-                    Text("Medium").tag("medium")
-                    Text("High").tag("high")
+                Spacer()
+
+                Button(action: { viewModel.removeModelRow(id: model.wrappedValue.id) }) {
+                    Image(systemName: "minus.circle")
+                        .foregroundColor(.red)
+                        .font(.title3)
                 }
-                .frame(width: 90)
-                .labelsHidden()
+                .buttonStyle(.borderless)
             }
 
-            // thinking.type (对所有 provider type 生效，如 MiniMax adaptive)
-            Picker("", selection: model.thinkingType) {
-                Text(loc("providers.form.thinkingTypeNone")).tag("")
-                Text("adaptive").tag("adaptive")
-                Text("auto").tag("auto")
-                Text("enabled").tag("enabled")
-                Text("disabled").tag("disabled")
-            }
-            .frame(width: 100)
-            .labelsHidden()
-            .help(loc("providers.form.thinkingTypeHelp"))
-
-            // 输入模态勾选（当前仅支持 text 和 image）
+            // 一个模型可以同时声明多个上游协议；路由会优先选择与入站请求一致的协议。
             HStack(spacing: 6) {
-                Text(loc("providers.form.inputModalities"))
+                Text(loc("providers.form.modelProtocols"))
                     .font(.caption2)
                     .foregroundColor(.secondary)
-                ForEach(["text", "image"], id: \.self) { mod in
-                    // 用元素 binding 访问 modelId/input，避免捕获陈旧 index
-                    let isVisionLockedRow = mod == "image" && viewModel.isVisionModelRow(providerName: viewModel.formData.name, modelId: model.wrappedValue.modelId)
-                    let isChecked = model.wrappedValue.input.contains(mod)
+                ForEach(viewModel.formData.protocolTypes, id: \.self) { protocolType in
                     Toggle(isOn: Binding(
-                        get: { model.wrappedValue.input.contains(mod) },
-                        set: { newValue in
-                            // vision 模型的 image 勾选被锁：不能取消（后端校验会拒绝）
-                            if isVisionLockedRow && !newValue {
-                                viewModel.errorMessage = loc("providers.form.visionImageLockedHint")
-                                return
-                            }
-                            if newValue { model.wrappedValue.input.insert(mod) }
-                            else { model.wrappedValue.input.remove(mod) }
-                            // 至少保留 text
-                            if model.wrappedValue.input.isEmpty {
-                                model.wrappedValue.input.insert("text")
-                            }
+                        get: { model.wrappedValue.protocols.contains(protocolType) },
+                        set: { enabled in
+                            if enabled { model.wrappedValue.protocols.insert(protocolType) }
+                            else if model.wrappedValue.protocols.count > 1 { model.wrappedValue.protocols.remove(protocolType) }
                         }
                     )) {
-                        HStack(spacing: 2) {
-                            Text(modalityIcon(mod))
-                                .font(.system(size: 10))
-                            if isVisionLockedRow {
-                                Image(systemName: "lock.fill")
-                                    .font(.system(size: 8))
-                            }
-                        }
+                        Text(protocolType)
                     }
                     .toggleStyle(.button)
                     .controlSize(.mini)
-                    .help(isVisionLockedRow ? loc("providers.form.visionImageLockedHint") : loc("providers.form.inputModality." + mod))
-                    .overlay(
-                        isVisionLockedRow && isChecked ?
-                        RoundedRectangle(cornerRadius: 4)
-                            .strokeBorder(Color.orange, lineWidth: 1)
-                        : nil
-                    )
                 }
             }
 
-            Spacer()
+            HStack(spacing: 8) {
+                if viewModel.formData.protocolTypes.contains("anthropic") {
+                    TextField(loc("providers.form.budgetTokens"), text: model.budgetTokens)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 130)
+                        .help(loc("providers.form.budgetTokensHelp"))
+                }
 
-            // 删除按钮：通过 model.id 找到当前元素再删除，避免使用易过时的索引
-            Button(action: { viewModel.removeModelRow(id: model.wrappedValue.id) }) {
-                Image(systemName: "minus.circle")
-                    .foregroundColor(.red)
-                    .font(.title3)
+                if viewModel.formData.protocolTypes.contains("openai") || viewModel.formData.protocolTypes.contains("openai-responses") {
+                    Picker("", selection: model.reasoningEffort) {
+                        Text(loc("providers.form.reasoningNone")).tag("")
+                        Text("Low").tag("low")
+                        Text("Medium").tag("medium")
+                        Text("High").tag("high")
+                    }
+                    .frame(width: 90)
+                    .labelsHidden()
+                }
+
+                Picker("", selection: model.thinkingType) {
+                    Text(loc("providers.form.thinkingTypeNone")).tag("")
+                    Text("adaptive").tag("adaptive")
+                    Text("auto").tag("auto")
+                    Text("enabled").tag("enabled")
+                    Text("disabled").tag("disabled")
+                }
+                .frame(width: 100)
+                .labelsHidden()
+                .help(loc("providers.form.thinkingTypeHelp"))
+
+                Spacer()
+
+                HStack(spacing: 6) {
+                    Text(loc("providers.form.inputModalities"))
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                    ForEach(["text", "image"], id: \.self) { mod in
+                        let isVisionLockedRow = mod == "image" && viewModel.isVisionModelRow(providerName: viewModel.formData.name, modelId: model.wrappedValue.modelId)
+                        let isChecked = model.wrappedValue.input.contains(mod)
+                        Toggle(isOn: Binding(
+                            get: { model.wrappedValue.input.contains(mod) },
+                            set: { newValue in
+                                if isVisionLockedRow && !newValue {
+                                    viewModel.errorMessage = loc("providers.form.visionImageLockedHint")
+                                    return
+                                }
+                                if newValue { model.wrappedValue.input.insert(mod) }
+                                else { model.wrappedValue.input.remove(mod) }
+                                if model.wrappedValue.input.isEmpty { model.wrappedValue.input.insert("text") }
+                            }
+                        )) {
+                            HStack(spacing: 2) {
+                                Text(modalityIcon(mod)).font(.system(size: 10))
+                                if isVisionLockedRow { Image(systemName: "lock.fill").font(.system(size: 8)) }
+                            }
+                        }
+                        .toggleStyle(.button)
+                        .controlSize(.mini)
+                        .help(isVisionLockedRow ? loc("providers.form.visionImageLockedHint") : loc("providers.form.inputModality." + mod))
+                        .overlay(isVisionLockedRow && isChecked ? RoundedRectangle(cornerRadius: 4).strokeBorder(Color.orange, lineWidth: 1) : nil)
+                    }
+                }
             }
-            .buttonStyle(.borderless)
         }
         .padding(8)
         .background(Color.primary.opacity(0.04))

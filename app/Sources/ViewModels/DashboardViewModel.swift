@@ -175,13 +175,24 @@ final class DashboardViewModel: ObservableObject {
         }
     }
 
-    /// 清理 90 天前的历史数据
+    /// 清理指定天数前的历史数据。
     @MainActor
     func cleanupUsage(days: Int = 90) async -> CleanupResult? {
+        await performUsageCleanup(days: days, all: false)
+    }
+
+    /// 一次性清空全部用量数据。
+    @MainActor
+    func clearAllUsage() async -> CleanupResult? {
+        await performUsageCleanup(days: 90, all: true)
+    }
+
+    @MainActor
+    private func performUsageCleanup(days: Int, all: Bool) async -> CleanupResult? {
         isCleaningUp = true
         defer { isCleaningUp = false }
         do {
-            let result = try await client.cleanupTokenUsage(days: days)
+            let result = try await client.cleanupTokenUsage(days: days, all: all)
             await loadCharts()
             await loadDbInfo()
             return result

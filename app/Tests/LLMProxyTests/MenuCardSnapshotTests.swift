@@ -31,6 +31,15 @@ final class MenuCardSnapshotTests: XCTestCase {
         // 亮色 + 暗色两种外观
         for (appearanceName, suffix) in [("aqua", "light"), ("darkAqua", "dark")] {
             _ = appearanceName
+            let usagePoints = [
+                MenuUsagePoint(date: "2026-07-20", tokens: 2_000_000),
+                MenuUsagePoint(date: "2026-07-21", tokens: 0),
+                MenuUsagePoint(date: "2026-07-22", tokens: 4_000_000),
+                MenuUsagePoint(date: "2026-07-23", tokens: 1_000_000),
+                MenuUsagePoint(date: "2026-07-24", tokens: 0),
+                MenuUsagePoint(date: "2026-07-25", tokens: 6_000_000),
+                MenuUsagePoint(date: "2026-07-26", tokens: 52_000_000),
+            ]
             let statusModel = StatusCardModel(
                 state: .running,
                 port: 9000,
@@ -39,7 +48,16 @@ final class MenuCardSnapshotTests: XCTestCase {
                 isOperationInProgress: false,
                 transientText: nil
             )
-            let status = StatusCardView(model: statusModel, onStart: {}, onStop: {}, onRestart: {}, onReload: {})
+            let status = VStack(spacing: 0) {
+                ServiceStatusCardView(model: statusModel)
+                MenuUsageChartCardView(points: usagePoints)
+                ServiceControlCardView(
+                    model: statusModel,
+                    onStart: {}, onStop: {}, onRestart: {}, onReload: {}
+                )
+            }
+
+            let detailStatus = status
 
             let header = AdapterHeaderCardView(name: "my-tool", type: "anthropic")
             let adapter = VStack(spacing: 0) {
@@ -48,9 +66,21 @@ final class MenuCardSnapshotTests: XCTestCase {
                 MappingRowView(sourceModelId: "gpt-4o", currentLabel: "deepseek/deepseek-chat")
             }
 
-            let stopped = StatusCardView(
-                model: StatusCardModel(state: .stopped, port: 9000, todayTokensText: nil, hitRateText: nil, isOperationInProgress: false, transientText: nil),
-                onStart: {}, onStop: {}, onRestart: {}, onReload: {})
+            let stoppedModel = StatusCardModel(
+                state: .stopped,
+                port: 9000,
+                todayTokensText: nil,
+                hitRateText: nil,
+                isOperationInProgress: false,
+                transientText: nil
+            )
+            let stopped = VStack(spacing: 0) {
+                ServiceStatusCardView(model: stoppedModel)
+                ServiceControlCardView(
+                    model: stoppedModel,
+                    onStart: {}, onStop: {}, onRestart: {}, onReload: {}
+                )
+            }
 
             let hint = MenuHintCardView(text: "无法连接到 llm-proxy", isLoading: false)
 
@@ -68,6 +98,7 @@ final class MenuCardSnapshotTests: XCTestCase {
             .background(Color.gray)
 
             render(status.environment(\.colorScheme, suffix == "dark" ? .dark : .light), width: MenuCardMetrics.width, name: "card-status-\(suffix)")
+            render(detailStatus.environment(\.colorScheme, suffix == "dark" ? .dark : .light), width: MenuCardMetrics.width, name: "card-status-detail-\(suffix)")
             render(adapter.environment(\.colorScheme, suffix == "dark" ? .dark : .light), width: MenuCardMetrics.width, name: "card-adapter-\(suffix)")
             render(stopped.environment(\.colorScheme, suffix == "dark" ? .dark : .light), width: MenuCardMetrics.width, name: "card-stopped-\(suffix)")
             render(hint.environment(\.colorScheme, suffix == "dark" ? .dark : .light), width: MenuCardMetrics.width, name: "card-hint-\(suffix)")

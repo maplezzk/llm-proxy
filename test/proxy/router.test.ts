@@ -92,4 +92,30 @@ describe('proxy/router', () => {
     const result = routeModel(store, 'm1')
     assert.strictEqual(result.thinking, undefined)
   })
+
+  it('同一供应商的不同模型可路由到不同协议和 apiBase', () => {
+    const config: Config = {
+      providers: [{
+        name: 'multi',
+        apiKey: 'k1',
+        protocols: [
+          { type: 'openai', apiBase: 'https://example.test/openai' },
+          { type: 'anthropic', apiBase: 'https://example.test/anthropic' },
+        ],
+        models: [{ id: 'shared-model', protocols: ['openai', 'anthropic'] }, { id: 'messages-model', protocols: ['anthropic'] }],
+      }],
+    }
+    const store = new ConfigStore('/fake', config)
+    const openai = routeModel(store, 'shared-model', 'openai')
+    assert.strictEqual(openai.providerName, 'multi')
+    assert.strictEqual(openai.providerType, 'openai')
+    assert.strictEqual(openai.apiBase, 'https://example.test/openai')
+
+    const anthropic = routeModel(store, 'shared-model', 'anthropic')
+    assert.strictEqual(anthropic.providerType, 'anthropic')
+    assert.strictEqual(anthropic.apiBase, 'https://example.test/anthropic')
+
+    const convertedFallback = routeModel(store, 'messages-model', 'openai')
+    assert.strictEqual(convertedFallback.providerType, 'anthropic', '不支持入站协议时应回退到模型支持的协议并转换')
+  })
 })

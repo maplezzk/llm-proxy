@@ -3,7 +3,7 @@ import assert from 'node:assert'
 import { writeFileSync, mkdtempSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { loadConfigFromYaml } from '../../src/config/parser.js'
+import { loadConfigFromYaml, serializeConfigToYaml } from '../../src/config/parser.js'
 
 let tmpDir: string
 
@@ -162,5 +162,48 @@ providers:
     const config = loadConfigFromYaml(path)
     assert.strictEqual(config.providers[0].models[0].thinking?.type, 'adaptive')
     assert.strictEqual(config.providers[0].models[0].thinking?.budget_tokens, undefined)
+  })
+
+  it('解析多协议供应商及模型协议', () => {
+    process.env.K = 'sk-multi-1'
+    const path = writeConfig(`
+providers:
+  - name: multi
+    api_key: \${K}
+    protocols:
+      - type: openai
+        api_base: https://example.test/openai
+      - type: anthropic
+        api_base: https://example.test/anthropic
+    models:
+      - id: chat-model
+        protocols: [openai, anthropic]
+      - id: messages-model
+        protocols: [anthropic]
+    `)
+    const config = loadConfigFromYaml(path)
+    assert.deepStrictEqual(config.providers[0].protocols, [
+      { type: 'openai', apiBase: 'https://example.test/openai' },
+      { type: 'anthropic', apiBase: 'https://example.test/anthropic' },
+    ])
+    assert.deepStrictEqual(config.providers[0].models[0].protocols, ['openai', 'anthropic'])
+    assert.deepStrictEqual(config.providers[0].models[1].protocols, ['anthropic'])
+  })
+
+  it('序列化多协议供应商时保留协议和模型绑定', () => {
+    const yaml = serializeConfigToYaml({
+      providers: [{
+        name: 'multi',
+        apiKey: 'k1',
+        protocols: [
+          { type: 'openai', apiBase: 'https://example.test/openai' },
+          { type: 'anthropic', apiBase: 'https://example.test/anthropic' },
+        ],
+        models: [{ id: 'chat', protocols: ['openai', 'anthropic'] }, { id: 'messages', protocols: ['anthropic'] }],
+      }],
+    })
+    assert.match(yaml, /protocols:/)
+    assert.match(yaml, /api_base: https:\/\/example\.test\/anthropic/)
+    assert.match(yaml, /models:[\s\S]*protocols:\n\s+- openai\n\s+- anthropic/)
   })
 })

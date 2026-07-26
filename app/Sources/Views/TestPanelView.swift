@@ -93,9 +93,9 @@ struct TestPanelView: View {
             }
             .onChange(of: selectedProviderName) { _, name in
                 if let p = selectedProvider {
-                    selectedType = p.type
+                    selectedType = p.supportedProtocols.first?.type ?? p.type
                     apiKey = p.api_key ?? ""
-                    apiBase = p.api_base ?? ""
+                    apiBase = p.supportedProtocols.first?.api_base ?? p.api_base ?? ""
                     if let first = p.models.first { selectedModelId = first.id }
                 }
             }
