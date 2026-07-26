@@ -162,17 +162,43 @@ class MenuBarController: NSObject {
         menu.addItem(makeCardItem(statusCard, interactive: true))
         menu.addItem(.separator())
 
-        // ── 适配器卡片（每行内联下拉直接切换模型，无多级菜单）──
+        // ── 适配器区（悬停映射行即展开模型子菜单，零点击切换）──
         if adapters.isEmpty {
             let isLoading = serviceState == .starting
             let hint = isLoading ? loc("status.loading") : loc("status.cannotConnect")
             menu.addItem(makeCardItem(MenuHintCardView(text: hint, isLoading: isLoading), interactive: false))
         } else {
-            for card in makeAdapterCardModels(adapters: adapters, providers: providers) {
-                let cardView = AdapterCardView(model: card) { [weak self] sourceModelId, provider, targetModelId in
-                    self?.handleCardSwitch(adapterName: card.name, sourceModelId: sourceModelId, provider: provider, targetModelId: targetModelId)
+            for card in makeAdapterCardModels(adapters: adapters) {
+                // 适配器头：名称 + 协议类型（不可点击）
+                menu.addItem(makeCardItem(AdapterHeaderCardView(name: card.name, type: card.type), interactive: false))
+                // 每个映射一行：悬停自动展开模型子菜单
+                for mapping in card.mappings {
+                    let row = MappingRowView(sourceModelId: mapping.sourceModelId, currentLabel: mapping.currentLabel)
+                    let item = makeCardItem(row, interactive: true)
+                    if let adapter = adapters.first(where: { $0.name == card.name }) {
+                        let submenu = buildMappingSubMenu(
+                            adapter: adapter,
+                            sourceModelId: mapping.sourceModelId,
+                            currentProvider: mapping.provider,
+                            currentTarget: mapping.targetModelId
+                        )
+                        if submenu.items.isEmpty {
+                            item.isEnabled = false
+                        } else {
+                            item.submenu = submenu
+                            item.target = self
+                            item.action = #selector(menuCardNoOp(_:))
+                        }
+                    } else {
+                        item.isEnabled = false
+                    }
+                    menu.addItem(item)
                 }
-                menu.addItem(makeCardItem(cardView, interactive: true))
+                menu.addItem(.separator())
+            }
+            // 移除最后多余的 separator
+            if menu.items.last?.isSeparatorItem == true {
+                menu.removeItem(at: menu.items.count - 1)
             }
         }
 
@@ -349,20 +375,39 @@ class MenuBarController: NSObject {
         return item
     }
 
-    /// 适配器卡片行内下拉选择模型后回调
-    private func handleCardSwitch(adapterName: String, sourceModelId: String, provider: String, targetModelId: String) {
-        guard let adapter = adapters.first(where: { $0.name == adapterName }) else { return }
-        // 选择未变化时不发请求
-        guard adapter.models.contains(where: {
-            $0.sourceModelId == sourceModelId && ($0.provider != provider || $0.targetModelId != targetModelId)
-        }) else { return }
+    /// 构建映射行的模型切换子菜单（勾选当前项，按 provider 分组）
+    private func buildMappingSubMenu(adapter: Adapter, sourceModelId: String, currentProvider: String, currentTarget: String) -> NSMenu {
+        let submenu = NSMenu()
+        for provider in providers {
+            for model in provider.models {
+                let item = NSMenuItem(title: "\(provider.name)/\(model.id)", action: #selector(switchMapping(_:)), keyEquivalent: "")
+                item.target = self
+                item.representedObject = SwitchAction(
+                    adapter: adapter,
+                    sourceModelId: sourceModelId,
+                    provider: provider.name,
+                    targetModelId: model.id
+                )
+                if provider.name == currentProvider && model.id == currentTarget {
+                    item.state = .on
+                }
+                submenu.addItem(item)
+            }
+            submenu.addItem(.separator())
+        }
+        if submenu.items.last?.isSeparatorItem == true {
+            submenu.removeItem(at: submenu.items.count - 1)
+        }
+        return submenu
+    }
+
+    /// 带子菜单的卡片项需要 action 才能悬停展开，点击本身不做任何事
+    @objc private func menuCardNoOp(_ sender: NSMenuItem) {}
+
+    @objc func switchMapping(_ sender: NSMenuItem) {
+        guard let action = sender.representedObject as? SwitchAction else { return }
         Task { @MainActor in
-            await performSwitch(SwitchAction(
-                adapter: adapter,
-                sourceModelId: sourceModelId,
-                provider: provider,
-                targetModelId: targetModelId
-            ))
+            await performSwitch(action)
         }
     }
 

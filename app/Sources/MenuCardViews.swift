@@ -102,140 +102,77 @@ struct AdapterCardModel {
     struct Mapping: Identifiable {
         var id: String { sourceModelId }
         let sourceModelId: String
-        /// 当前映射展示文本 "provider/targetModelId"
-        let currentLabel: String
-        let options: [Option]
-    }
-
-    struct Option: Identifiable {
-        var id: String { "\(provider)/\(modelId)" }
         let provider: String
-        let modelId: String
-        let isCurrent: Bool
+        let targetModelId: String
+        /// 当前映射展示文本 "provider/targetModelId"
+        var currentLabel: String { "\(provider)/\(targetModelId)" }
     }
 }
 
-struct AdapterCardView: View {
-    let model: AdapterCardModel
-    let onSwitch: (_ sourceModelId: String, _ provider: String, _ targetModelId: String) -> Void
+// MARK: - 适配器头（名称 + 协议类型，不可点击）
+
+struct AdapterHeaderCardView: View {
+    let name: String
+    let type: String
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 6) {
-                Image(systemName: "bolt.fill")
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(.orange)
-                Text(model.name)
-                    .font(.system(size: 12.5, weight: .semibold))
-                Text(model.type)
-                    .font(.system(size: 9.5, weight: .medium))
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 5)
-                    .padding(.vertical, 1.5)
-                    .background(Capsule().fill(Color.secondary.opacity(0.12)))
-                Spacer()
-            }
-
-            VStack(spacing: 4) {
-                ForEach(model.mappings) { mapping in
-                    HStack(spacing: 8) {
-                        Text(mapping.sourceModelId)
-                            .font(.system(size: 12, weight: .medium))
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-                            .layoutPriority(1)
-                        Spacer(minLength: 8)
-                        ModelSwitchPopUp(
-                            currentLabel: mapping.currentLabel,
-                            options: mapping.options,
-                            onSelect: { option in
-                                onSwitch(mapping.sourceModelId, option.provider, option.modelId)
-                            }
-                        )
-                        .fixedSize()
-                    }
-                }
-            }
+        HStack(spacing: 6) {
+            Image(systemName: "bolt.fill")
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(.orange)
+            Text(name)
+                .font(.system(size: 12.5, weight: .semibold))
+            Text(type)
+                .font(.system(size: 9.5, weight: .medium))
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 5)
+                .padding(.vertical, 1.5)
+                .background(Capsule().fill(Color.secondary.opacity(0.12)))
+            Spacer()
         }
         .padding(.horizontal, 14)
-        .padding(.vertical, 10)
+        .padding(.top, 8)
+        .padding(.bottom, 2)
         .frame(width: MenuCardMetrics.width, alignment: .leading)
     }
 }
 
-// MARK: - 行内模型切换下拉（NSPopUpButton，菜单内点击直接弹出选项）
+// MARK: - 映射行（悬停高亮 + 展开模型子菜单，无需点击）
 
-struct ModelSwitchPopUp: NSViewRepresentable {
+struct MappingRowView: View {
+    let sourceModelId: String
     let currentLabel: String
-    let options: [AdapterCardModel.Option]
-    let onSelect: (AdapterCardModel.Option) -> Void
+    @State private var isHovered = false
 
-    func makeCoordinator() -> Coordinator {
-        Coordinator(onSelect: onSelect, options: options)
-    }
-
-    func makeNSView(context: Context) -> NSPopUpButton {
-        let button = NSPopUpButton(frame: .zero, pullsDown: false)
-        button.isBordered = false
-        button.font = NSFont.systemFont(ofSize: 11)
-        button.target = context.coordinator
-        button.action = #selector(Coordinator.changed(_:))
-        button.lineBreakMode = .byTruncatingMiddle
-        button.widthAnchor.constraint(lessThanOrEqualToConstant: 150).isActive = true
-        button.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        rebuildItems(button, coordinator: context.coordinator)
-        return button
-    }
-
-    func updateNSView(_ button: NSPopUpButton, context: Context) {
-        context.coordinator.options = options
-        context.coordinator.onSelect = onSelect
-        rebuildItems(button, coordinator: context.coordinator)
-    }
-
-    private func rebuildItems(_ button: NSPopUpButton, coordinator: Coordinator) {
-        let selectedIndex = options.firstIndex(where: { $0.isCurrent })
-        button.removeAllItems()
-        for option in options {
-            button.addItem(withTitle: "\(option.provider)/\(option.modelId)")
-            if let item = button.itemArray.last, option.isCurrent {
-                item.state = .on
+    var body: some View {
+        HStack(spacing: 8) {
+            Text(sourceModelId)
+                .font(.system(size: 12.5, weight: .medium))
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .layoutPriority(1)
+            Spacer(minLength: 8)
+            Text(currentLabel)
+                .font(.system(size: 11.5))
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .foregroundStyle(isHovered ? Color.white.opacity(0.85) : Color.secondary)
+            Image(systemName: "chevron.right")
+                .font(.system(size: 9, weight: .semibold))
+                .foregroundStyle(isHovered ? Color.white.opacity(0.85) : Color.secondary)
+        }
+        .foregroundStyle(isHovered ? Color.white : Color.primary)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 5)
+        .background {
+            if isHovered {
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(Color(nsColor: .selectedContentBackgroundColor))
+                    .padding(.horizontal, 5)
             }
         }
-        if let selectedIndex {
-            button.selectItem(at: selectedIndex)
-        }
-        applyTitleStyle(button)
-    }
-
-    /// 让按钮标题呈现弱化样式（11pt secondary），选择后需重贴
-    static func applyTitleStyle(_ button: NSPopUpButton) {
-        let title = button.titleOfSelectedItem ?? button.title
-        button.attributedTitle = NSAttributedString(string: title, attributes: [
-            .font: NSFont.systemFont(ofSize: 11),
-            .foregroundColor: NSColor.secondaryLabelColor,
-        ])
-    }
-
-    private func applyTitleStyle(_ button: NSPopUpButton) {
-        Self.applyTitleStyle(button)
-    }
-
-    final class Coordinator: NSObject {
-        var options: [AdapterCardModel.Option]
-        var onSelect: (AdapterCardModel.Option) -> Void
-
-        init(onSelect: @escaping (AdapterCardModel.Option) -> Void, options: [AdapterCardModel.Option]) {
-            self.onSelect = onSelect
-            self.options = options
-        }
-
-        @objc func changed(_ sender: NSPopUpButton) {
-            let index = sender.indexOfSelectedItem
-            guard options.indices.contains(index) else { return }
-            ModelSwitchPopUp.applyTitleStyle(sender)
-            onSelect(options[index])
-        }
+        .frame(width: MenuCardMetrics.width, alignment: .leading)
+        .onHover { isHovered = $0 }
     }
 }
 
@@ -269,7 +206,7 @@ struct MenuHintCardView: View {
 
 // MARK: - 纯函数：由 adapters/providers 构建卡片模型（便于测试）
 
-func makeAdapterCardModels(adapters: [Adapter], providers: [Provider]) -> [AdapterCardModel] {
+func makeAdapterCardModels(adapters: [Adapter]) -> [AdapterCardModel] {
     adapters.map { adapter in
         AdapterCardModel(
             name: adapter.name,
@@ -277,16 +214,8 @@ func makeAdapterCardModels(adapters: [Adapter], providers: [Provider]) -> [Adapt
             mappings: adapter.models.map { mapping in
                 AdapterCardModel.Mapping(
                     sourceModelId: mapping.sourceModelId,
-                    currentLabel: "\(mapping.provider)/\(mapping.targetModelId)",
-                    options: providers.flatMap { provider in
-                        provider.models.map { model in
-                            AdapterCardModel.Option(
-                                provider: provider.name,
-                                modelId: model.id,
-                                isCurrent: provider.name == mapping.provider && model.id == mapping.targetModelId
-                            )
-                        }
-                    }
+                    provider: mapping.provider,
+                    targetModelId: mapping.targetModelId
                 )
             }
         )
