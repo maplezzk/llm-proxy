@@ -3,7 +3,9 @@ import AppKit
 
 /// 菜单栏卡片统一宽度（CodexBar 风格富菜单）
 enum MenuCardMetrics {
-    static let width: CGFloat = 300
+    /// 需 ≥ 原生菜单项（图标 + 文案 + 快捷键）的自然宽度，
+    /// 否则卡片右侧会出现空隙（菜单宽度由最宽的项决定）
+    static let width: CGFloat = 340
 }
 
 // MARK: - 状态卡片
@@ -75,6 +77,7 @@ struct StatusCardView: View {
                     controlButton(loc("action.start"), systemImage: "play.fill", action: onStart)
                 }
             }
+            .frame(maxWidth: .infinity)
             .disabled(model.isOperationInProgress)
         }
         .padding(.horizontal, 14)
@@ -86,9 +89,10 @@ struct StatusCardView: View {
         Button(action: action) {
             Label(title, systemImage: systemImage)
                 .font(.system(size: 11, weight: .medium))
+                .frame(maxWidth: .infinity)
         }
         .buttonStyle(.bordered)
-        .controlSize(.small)
+        .controlSize(.regular)
     }
 }
 
