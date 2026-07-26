@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.23.2](https://github.com/maplezzk/llm-proxy/compare/v0.23.1...v0.23.2) (2026-07-26)
+
+
+### Bug Fixes
+
+* 固定兼容 Node 20 的 npm 版本 ([e978a62](https://github.com/maplezzk/llm-proxy/commit/e978a62c32f6d0e2ff21bd5b8d3d73a739f33ec3))
+* 固定兼容 Node 20 的 npm 版本 ([03b2447](https://github.com/maplezzk/llm-proxy/commit/03b244768b157331cea3012c9821fc810cb1a07e))
+
 ## [0.23.1](https://github.com/maplezzk/llm-proxy/compare/v0.23.0...v0.23.1) (2026-07-26)
 
 
