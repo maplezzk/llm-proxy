@@ -83,11 +83,11 @@ struct StatusCardView: View {
 
             HStack(spacing: 8) {
                 if model.state == .running {
-                    CardButton(title: loc("menu.btn.stop"), systemImage: "stop", action: onStop)
-                    CardButton(title: loc("menu.btn.restart"), systemImage: "arrow.clockwise", action: onRestart)
-                    CardButton(title: loc("menu.btn.reload"), systemImage: "arrow.triangle.2.circlepath", action: onReload)
+                    CardButton(title: loc("menu.btn.stop"), systemImage: "stop", tint: .red, action: onStop)
+                    CardButton(title: loc("menu.btn.restart"), systemImage: "arrow.clockwise", tint: .orange, action: onRestart)
+                    CardButton(title: loc("menu.btn.reload"), systemImage: "arrow.triangle.2.circlepath", tint: .blue, action: onReload)
                 } else {
-                    CardButton(title: loc("menu.btn.start"), systemImage: "play", action: onStart)
+                    CardButton(title: loc("menu.btn.start"), systemImage: "play", tint: Color(red: 0.20, green: 0.68, blue: 0.30), action: onStart)
                 }
             }
             .frame(maxWidth: .infinity)
@@ -99,10 +99,11 @@ struct StatusCardView: View {
     }
 }
 
-/// 菜单卡片内的轻量按钮：浅灰底 + 悬停加深 + 描线图标（避免 AppKit bordered 的厚重灰盒）
+/// 菜单卡片内的轻量按钮：语义色 tinted 底 + 悬停加深 + 描线图标
 struct CardButton: View {
     let title: String
     let systemImage: String
+    let tint: Color
     let action: () -> Void
     @State private var isHovered = false
 
@@ -110,11 +111,12 @@ struct CardButton: View {
         Button(action: action) {
             Label(title, systemImage: systemImage)
                 .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(tint)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 5)
                 .background(
                     RoundedRectangle(cornerRadius: 6)
-                        .fill(Color.secondary.opacity(isHovered ? 0.16 : 0.08))
+                        .fill(tint.opacity(isHovered ? 0.22 : 0.13))
                 )
         }
         .buttonStyle(.plain)
