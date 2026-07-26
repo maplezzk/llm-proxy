@@ -821,8 +821,9 @@ describe('proxy/responses-protocol — OpenAI Responses → Anthropic (inbound)'
         { type: 'item_reference', id: 'resp_abc_0' } as Record<string, unknown>,
       ],
     })
-    // 不崩即可
-    assert.ok(result.body.messages)
+    // item_reference 转为占位 user 消息，避免上下文完全丢失
+    const messages = result.body.messages as Array<Record<string, unknown>>
+    assert.ok(messages.length >= 1, 'item_reference 不应被静默丢弃')
   })
 
   it('input 数组 message content 是 object（不规范）→ 不崩', async () => {
@@ -835,6 +836,25 @@ describe('proxy/responses-protocol — OpenAI Responses → Anthropic (inbound)'
     })
     // 应保留或转为字符串，不崩
     assert.ok(result.body.messages)
+  })
+
+  it('input 是空数组 → 跨协议路由到 Chat 上游时不发空 messages（占位 user message）', async () => {
+    // 空 input 数组如果直接转 messages=[] 上游 Chat 会拒；以最小占位 user 消息填充
+    const result = await transformInboundRequest('openai-responses', openaiRoute, {
+      model: 'o3-mini',
+      input: [],
+    })
+    const messages = result.body.messages as Array<Record<string, unknown>>
+    assert.ok(messages.length >= 1, '不能发空 messages 上游')
+    assert.strictEqual(messages[0].role, 'user')
+  })
+
+  it('input 是空数组 → 路由到 Responses 上游时透传 input=[]', async () => {
+    const result = await transformInboundRequest('openai-responses', openaiResponsesRoute, {
+      model: 'o3-mini',
+      input: [],
+    })
+    assert.deepStrictEqual(result.body.input, [])
   })
 })
 
@@ -1296,6 +1316,28 @@ describe('proxy/responses-protocol — Responses response conversion', () => {
       // arguments 必须是合法 JSON 字符串
       assert.strictEqual(typeof fcItem!.arguments, 'string')
       assert.deepStrictEqual(JSON.parse(fcItem!.arguments as string), { city: 'NYC' })
+    })
+
+    it('tool_use input 已是 string 时不重复 stringify（避免双重转义）', () => {
+      // 场景：上游传递 input 为已序列化的 JSON 字符串，必须原样使用而不是多重 stringify
+      const rawArgs = '{"city":"NYC","unit":"celsius"}'
+      const responses = convertAnthropicResponseToOpenAIResponses({
+        id: 'msg_1',
+        type: 'message',
+        role: 'assistant',
+        model: 'claude-sonnet',
+        stop_reason: 'tool_use',
+        content: [
+          { type: 'tool_use', id: 'tu_1', name: 'get_weather', input: rawArgs as unknown as Record<string, unknown> },
+        ],
+        usage: { input_tokens: 0, output_tokens: 0 },
+      })
+      const fcItem = (responses.output as Array<Record<string, unknown>>).find(
+        (i) => i.type === 'function_call'
+      )
+      assert.ok(fcItem)
+      assert.strictEqual(fcItem!.arguments, rawArgs, 'input 是 string 时须原样传递，不可双重 stringify')
+      assert.deepStrictEqual(JSON.parse(fcItem!.arguments as string), { city: 'NYC', unit: 'celsius' })
     })
 
     it('computer tool_use → computer_call output item', () => {

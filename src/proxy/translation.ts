@@ -26,6 +26,18 @@ function budgetToReasoningEffort(budget: number): string | undefined {
   return 'max'
 }
 
+/**
+ * 将 tool_use 的 input 序列化为 Responses/Chat 都接受的 JSON 字符串 arguments。
+ * - input 是 string/array 时直接使用（避免双重 stringify 导致上游解析失败）
+ * - input 是对象/undefined 时 JSON.stringify 为 '{}' 或对应 JSON 串
+ */
+function stringifyArguments(input: unknown): string {
+  if (typeof input === 'string') return input
+  if (input === undefined || input === null) return ''
+  // 数组在 Responses 里不合法，强制以 JSON 字符串传入
+  return JSON.stringify(input)
+}
+
 // --- CodexToolContext (CCX-style lookup table for namespace/custom tool remapping) ---
 
 interface CodexToolFunctionSpec {
@@ -530,7 +542,13 @@ function convertResponsesInputToMessages(input: unknown[]): unknown[] {
         content,
       })
     } else if (it.type === 'item_reference') {
-      // Skip item references (they reference previous response items, not applicable to stateless chat)
+      // item_reference 引用上一轮 response item（如加密 reasoning）；Chat/Anthropic 无原生对应物
+      // 为避免上下文断链，转为 user 消息占位（多轮 reasoning 场景仍会因 stateful session 丢一些信息，
+      // 但至少上游知道有引用）
+      messages.push({
+        role: 'user',
+        content: `[item_reference:${(it.id as string) ?? ''}]`,
+      })
     } else {
       // Unknown item type, pass through as-is
       messages.push(it)
@@ -1296,8 +1314,13 @@ function extractFullOpenAIResponses(body: Record<string, unknown>): FullParams {
       }
     }
     messages = convertResponsesInputToMessages(rawInput)
+    // 空 input 数组：上游 Chat Completions 会拒空 messages，以占位 user message 代替
+    // （仅在跨协议路由到 Chat/Anthropic 时需要；同 Responses 协议透传由 builder 处理）
+    if (messages.length === 0) {
+      messages = [{ role: 'user', content: '' }]
+    }
   } else {
-    messages = []
+    messages = [{ role: 'user', content: '' }]
   }
   // instructions 优先；input 数组里 system 次之
   const system = body.instructions ?? inputSystem
@@ -1959,7 +1982,8 @@ export function convertAnthropicResponseToOpenAIResponses(anthropicBody: Record<
             id: `fc_${Date.now().toString(36)}_${(block.id as string) ?? ''}`,
             call_id: block.id as string,
             name,
-            arguments: JSON.stringify(block.input ?? {}),
+            // arguments 必须是合法 JSON 字符串。input 已是 string/array 时不再 stringify
+            arguments: stringifyArguments(block.input),
             status: 'completed',
           })
         }
@@ -2108,7 +2132,7 @@ export function convertAnthropicResponseToOpenAI(anthropicBody: Record<string, u
           type: 'function',
           function: {
             name: block.name,
-            arguments: JSON.stringify(block.input ?? {}),
+            arguments: stringifyArguments(block.input),
           },
         })
       }

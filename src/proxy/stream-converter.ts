@@ -1023,8 +1023,20 @@ export async function convertAnthropicStreamToOpenAIResponses(
 
     if (innerType === 'content_block_stop') {
       if (currentBlockType === 'thinking') {
-        // Thinking block ended, emit reasoning_text.done
-        writeRaw(`event: response.reasoning_text.done\ndata: {"type":"response.reasoning_text.done","output_index":0,"reasoning_text":${JSON.stringify(thinkingText)}}\n\n`)
+        // Thinking block ended, emit reasoning_summary_text.done（OpenAI Responses 标准事件名）
+        // 保留 reasoning_text.done 作为别名以兼容不同 Responses 客户端
+        const summaryPayload = JSON.stringify({
+          type: 'response.reasoning_summary_text.done',
+          output_index: 0,
+          summary_text: thinkingText,
+        })
+        const aliasPayload = JSON.stringify({
+          type: 'response.reasoning_text.done',
+          output_index: 0,
+          reasoning_text: thinkingText,
+        })
+        writeRaw(`event: response.reasoning_summary_text.done\ndata: ${summaryPayload}\n\n`)
+        writeRaw(`event: response.reasoning_text.done\ndata: ${aliasPayload}\n\n`)
         thinkingStarted = false
       } else if (currentBlockType === 'text') {
         writeRaw(`event: response.output_text.done\ndata: {"type":"response.output_text.done","output_index":0,"content_index":0,"text":${JSON.stringify(acc.content)}}\n\n`)
