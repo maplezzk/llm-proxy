@@ -321,6 +321,40 @@ function convertToolChoiceToOpenAI(toolChoice: unknown): unknown {
   return toolChoice
 }
 
+/** Convert tools to the flat function schema required by the Responses API. */
+function convertToolsToOpenAIResponses(tools: unknown[]): unknown[] | undefined {
+  const chatTools = convertToolsToOpenAI(tools)
+  if (!chatTools) return undefined
+
+  return chatTools.map((tool) => {
+    const item = tool as Record<string, unknown>
+    const fn = item.function as Record<string, unknown> | undefined
+    if (item.type !== 'function' || !fn) return item
+
+    const result: Record<string, unknown> = {
+      type: 'function',
+      name: fn.name ?? '',
+      parameters: fn.parameters ?? {},
+    }
+    if (fn.description !== undefined) result.description = fn.description
+    if (fn.strict !== undefined) result.strict = fn.strict
+    return result
+  })
+}
+
+/** Convert a Chat/Anthropic tool choice to the flat Responses API form. */
+function convertToolChoiceToOpenAIResponses(toolChoice: unknown): unknown {
+  const converted = convertToolChoiceToOpenAI(toolChoice)
+  if (!converted || typeof converted !== 'object') return converted
+
+  const choice = converted as Record<string, unknown>
+  if (choice.type === 'function' && choice.function) {
+    const fn = choice.function as Record<string, unknown>
+    return { type: 'function', name: fn.name ?? '' }
+  }
+  return converted
+}
+
 // --- Responses input ↔ Chat messages format conversion ---
 
 /**
@@ -1188,8 +1222,8 @@ function buildOpenAIResponsesFromFullParams(params: FullParams): Record<string, 
   if (params.stream !== undefined) body.stream = params.stream
   if (params.top_p !== undefined) body.top_p = params.top_p
   if (params.stop) body.stop = params.stop
-  if (params.tools) body.tools = convertToolsToOpenAI(params.tools)
-  if (params.tool_choice !== undefined) body.tool_choice = convertToolChoiceToOpenAI(params.tool_choice)
+  if (params.tools) body.tools = convertToolsToOpenAIResponses(params.tools)
+  if (params.tool_choice !== undefined) body.tool_choice = convertToolChoiceToOpenAIResponses(params.tool_choice)
   return body
 }
 
@@ -1676,6 +1710,9 @@ export function convertOpenAIResponsesToAnthropic(responsesBody: Record<string, 
     usage: {
       input_tokens: (usage?.input_tokens as number) ?? 0,
       output_tokens: (usage?.output_tokens as number) ?? 0,
+      ...(typeof (usage?.input_tokens_details as Record<string, unknown> | undefined)?.cached_tokens === 'number'
+        ? { cache_read_input_tokens: (usage?.input_tokens_details as Record<string, unknown>).cached_tokens }
+        : {}),
     },
   }
 }
@@ -1749,18 +1786,42 @@ export function convertAnthropicResponseToOpenAIResponses(anthropicBody: Record<
     usage: (() => {
       const ai = (usage?.input_tokens as number) ?? 0
       const cr = (usage?.cache_read_input_tokens as number) ?? 0
+      const cc = (usage?.cache_creation_input_tokens as number) ?? 0
       const co = (usage?.output_tokens as number) ?? 0
-      const inputTokens = ai + cr  // Anthropic input_tokens = 计费部分，不含缓存命中
+      const inputTokens = ai
       return {
         input_tokens: inputTokens,
         output_tokens: co,
-        total_tokens: inputTokens + co,
+        total_tokens: inputTokens + cr + cc + co,
+        ...(cr > 0 ? { input_tokens_details: { cached_tokens: cr } } : {}),
+        ...(cc > 0 ? { cache_creation_input_tokens: cc } : {}),
       }
     })(),
   }
 }
 
 // --- Chat Completions ↔ Anthropic response conversion ---
+
+/** Normalize Chat usage to the proxy's separate billable and cache fields. */
+function normalizeOpenAIChatUsage(usage: Record<string, unknown> | undefined): {
+  inputTokens: number
+  outputTokens: number
+  cacheRead: number
+  cacheCreate: number
+} {
+  const details = usage?.prompt_tokens_details as Record<string, unknown> | undefined
+  const cacheRead = ((details?.cached_tokens ?? usage?.cache_read_input_tokens) as number | undefined) ?? 0
+  const cacheCreate = ((details?.cache_creation_input_tokens ?? usage?.cache_creation_input_tokens ?? usage?.prompt_cache_miss_tokens) as number | undefined) ?? 0
+  const inputTokens = typeof usage?.prompt_tokens === 'number'
+    ? Math.max(0, (usage.prompt_tokens as number) - cacheRead - cacheCreate)
+    : ((usage?.input_tokens as number | undefined) ?? 0)
+  return {
+    inputTokens,
+    outputTokens: ((usage?.completion_tokens ?? usage?.output_tokens) as number | undefined) ?? 0,
+    cacheRead,
+    cacheCreate,
+  }
+}
 
 export function convertOpenAIResponseToAnthropic(openaiBody: Record<string, unknown>): Record<string, unknown> {
   const choices = openaiBody.choices as Array<Record<string, unknown>> | undefined
@@ -1796,6 +1857,7 @@ export function convertOpenAIResponseToAnthropic(openaiBody: Record<string, unkn
 
   const stopMap: Record<string, string> = { stop: 'end_turn', length: 'max_tokens', tool_calls: 'tool_use' }
   const stopReason = choice?.finish_reason as string ?? 'end_turn'
+  const normalizedUsage = normalizeOpenAIChatUsage(usage)
 
   return {
     id: `msg_${Date.now()}`,
@@ -1806,8 +1868,10 @@ export function convertOpenAIResponseToAnthropic(openaiBody: Record<string, unkn
     stop_reason: stopMap[stopReason] ?? stopReason,
     stop_sequence: null,
     usage: {
-      input_tokens: (usage?.prompt_tokens as number) ?? 0,
-      output_tokens: (usage?.completion_tokens as number) ?? 0,
+      input_tokens: normalizedUsage.inputTokens,
+      output_tokens: normalizedUsage.outputTokens,
+      ...(normalizedUsage.cacheRead > 0 ? { cache_read_input_tokens: normalizedUsage.cacheRead } : {}),
+      ...(normalizedUsage.cacheCreate > 0 ? { cache_creation_input_tokens: normalizedUsage.cacheCreate } : {}),
     },
   }
 }
@@ -1861,8 +1925,9 @@ export function convertAnthropicResponseToOpenAI(anthropicBody: Record<string, u
     usage: (() => {
       const ai = (usage?.input_tokens as number) ?? 0
       const cr = (usage?.cache_read_input_tokens as number) ?? 0
+      const cc = (usage?.cache_creation_input_tokens as number) ?? 0
       const co = (usage?.output_tokens as number) ?? 0
-      const promptTokens = ai + cr  // Anthropic input_tokens = 计费部分，不含缓存命中
+      const promptTokens = ai + cr + cc
       const u: Record<string, unknown> = {
         prompt_tokens: promptTokens,
         completion_tokens: co,
@@ -1888,6 +1953,7 @@ export function convertOpenAIResponseToOpenAIResponses(chatBody: Record<string, 
   const message = choice?.message as Record<string, unknown> | undefined
   const usage = chatBody.usage as Record<string, unknown> | undefined
   const finishReason = choice?.finish_reason as string ?? 'stop'
+  const normalizedUsage = normalizeOpenAIChatUsage(usage)
 
   const output: unknown[] = []
   const outputMessageContent: unknown[] = []
@@ -1935,9 +2001,11 @@ export function convertOpenAIResponseToOpenAIResponses(chatBody: Record<string, 
     // Chat reasoning_content → 顶层 reasoning.summary
     ...(reasoningText ? { reasoning: { summary: [{ type: 'summary_text', text: reasoningText, index: 0 }] } } : {}),
     usage: {
-      input_tokens: (usage?.prompt_tokens as number) ?? 0,
-      output_tokens: (usage?.completion_tokens as number) ?? 0,
-      total_tokens: ((usage?.prompt_tokens as number) ?? 0) + ((usage?.completion_tokens as number) ?? 0),
+      input_tokens: normalizedUsage.inputTokens,
+      output_tokens: normalizedUsage.outputTokens,
+      total_tokens: normalizedUsage.inputTokens + normalizedUsage.cacheRead + normalizedUsage.cacheCreate + normalizedUsage.outputTokens,
+      ...(normalizedUsage.cacheRead > 0 ? { input_tokens_details: { cached_tokens: normalizedUsage.cacheRead } } : {}),
+      ...(normalizedUsage.cacheCreate > 0 ? { cache_creation_input_tokens: normalizedUsage.cacheCreate } : {}),
     },
   }
 }
@@ -2007,10 +2075,18 @@ export function convertOpenAIResponsesResponseToOpenAI(responsesBody: Record<str
   }
 
   const finishMap: Record<string, string> = { completed: 'stop', incomplete: 'length' }
-  const finishReason = finishMap[status] ?? 'stop'
+  const finishReason = toolCalls.length > 0 ? 'tool_calls' : (finishMap[status] ?? 'stop')
 
-  const message: Record<string, unknown> = { role: 'assistant', content: textContent, reasoning_content: reasoningContent || '' }
+  const message: Record<string, unknown> = {
+    role: 'assistant',
+    content: textContent || (toolCalls.length > 0 ? null : ''),
+    reasoning_content: reasoningContent || '',
+  }
   if (toolCalls.length > 0) message.tool_calls = toolCalls
+
+  const inputTokens = (usage?.input_tokens as number) ?? 0
+  const cachedTokens = ((usage?.input_tokens_details as Record<string, unknown> | undefined)?.cached_tokens as number | undefined) ?? 0
+  const outputTokens = (usage?.output_tokens as number) ?? 0
 
   return {
     id: `chatcmpl-${Date.now().toString(36)}`,
@@ -2023,9 +2099,11 @@ export function convertOpenAIResponsesResponseToOpenAI(responsesBody: Record<str
       finish_reason: finishReason,
     }],
     usage: {
-      prompt_tokens: (usage?.input_tokens as number) ?? 0,
-      completion_tokens: (usage?.output_tokens as number) ?? 0,
-      total_tokens: ((usage?.input_tokens as number) ?? 0) + ((usage?.output_tokens as number) ?? 0),
+      // Responses input_tokens excludes cache hits; Chat prompt_tokens includes them.
+      prompt_tokens: inputTokens + cachedTokens,
+      completion_tokens: outputTokens,
+      total_tokens: inputTokens + cachedTokens + outputTokens,
+      ...(cachedTokens > 0 ? { prompt_tokens_details: { cached_tokens: cachedTokens } } : {}),
     },
   }
 }

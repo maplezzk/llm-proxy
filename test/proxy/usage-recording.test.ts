@@ -134,6 +134,39 @@ describe('proxy/forwardRequest → UsageStore 集成', () => {
     assert.strictEqual(stats.today.request_count, 1)
   })
 
+  it('非流式响应：OpenAI Responses 标准缓存字段写入 UsageStore', async () => {
+    global.fetch = (async () => {
+      return new Response(JSON.stringify({
+        id: 'resp_123',
+        object: 'response',
+        usage: {
+          input_tokens: 20,
+          input_tokens_details: { cached_tokens: 80 },
+          output_tokens: 5,
+        },
+      }), { status: 200, headers: { 'content-type': 'application/json' } })
+    }) as typeof global.fetch
+
+    await forwardRequest({
+      url: 'https://api.openai.com/v1/responses',
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: { model: 'gpt-5', input: 'hi', stream: false },
+      crossProtocol: false,
+      inboundType: 'openai-responses',
+      upstreamType: 'openai-responses',
+      usageStore: store,
+      providerName: 'openai-responses',
+      upstreamModel: 'gpt-5',
+      clientModel: 'gpt-5',
+    }, makeMockRes())
+
+    const stats = store.getStats()
+    assert.strictEqual(stats.today.input_tokens, 20)
+    assert.strictEqual(stats.today.cache_read_input_tokens, 80)
+    assert.strictEqual(stats.today.output_tokens, 5)
+  })
+
   it('adapter 请求：adapterName 被正确持久化', async () => {
     global.fetch = (async () => {
       return new Response(JSON.stringify({
