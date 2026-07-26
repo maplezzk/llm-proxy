@@ -257,14 +257,21 @@ export function handleGetTokenDbInfo(ctx: ServerContext, _req: IncomingMessage, 
 }
 
 /**
- * 清理 N 天前的历史数据。body: { days: 90 }。
+ * 清理历史数据。body: { days: 90 } 清理 N 天前；{ all: true } 清空全部。
  * POST /admin/token-stats/cleanup
  */
 export async function handlePostTokenCleanup(ctx: ServerContext, req: IncomingMessage, res: ServerResponse): Promise<void> {
-  let body: { days?: number } = {}
+  let body: { days?: number; all?: boolean } = {}
   try {
     body = JSON.parse(await (await import('../../lib/http-utils.js')).readBody(req))
   } catch { /* 允许空 body，默认 90 天 */ }
+  // all=true：清空全部用量数据（事件 + 预聚合），不可恢复
+  if (body.all === true) {
+    const result = ctx.usageStore.clearAll()
+    ctx.logger.log('system', 'Usage store cleared: all', result)
+    json(res, 200, { success: true, data: { all: true, ...result } })
+    return
+  }
   const days = typeof body.days === 'number' && body.days > 0 ? body.days : 90
   const result = ctx.usageStore.cleanup(days)
   ctx.logger.log('system', `Usage store cleaned: ${days}d`, { days, ...result })

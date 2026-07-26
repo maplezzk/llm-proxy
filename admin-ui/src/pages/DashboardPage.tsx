@@ -203,6 +203,7 @@ export default function DashboardPage() {
   const [dbInfo, setDbInfo] = useState<DbInfo>({ events: 0, aggregates: 0, sizeBytes: 0 })
   const [loadingCharts, setLoadingCharts] = useState(true)
   const [cleaning, setCleaning] = useState(false)
+  const [cleanupDays, setCleanupDays] = useState(String(CLEANUP_RETAIN_DAYS))
 
   // 请求序号：快速切换时丢弃过期响应（旧版无此保护，属无害增强）
   const reqId = useRef(0)
@@ -278,14 +279,19 @@ export default function DashboardPage() {
     void loadCharts(dateStart, dateEnd, dim)
   }
 
-  /** 清理 N 天前历史用量：confirm 确认后 POST cleanup，成功 toast 并刷新图表与 db-info（对齐旧版 cleanupUsage） */
-  const handleCleanup = async () => {
-    const days = CLEANUP_RETAIN_DAYS
-    if (!(await confirm(t('admin.dashboard.usage.cleanupConfirm', { days })))) return
+  /** 清理历史用量：days>0 清理 N 天前；days=0 清空全部。confirm 确认后 POST cleanup（对齐旧版 cleanupUsage 扩展） */
+  const handleCleanup = async (all = false) => {
+    const days = all ? 0 : Math.max(1, Math.min(365, parseInt(cleanupDays, 10) || CLEANUP_RETAIN_DAYS))
+    const confirmed = await confirm(
+      all
+        ? t('admin.dashboard.usage.cleanupAllConfirm')
+        : t('admin.dashboard.usage.cleanupConfirm', { days }),
+    )
+    if (!confirmed) return
     setCleaning(true)
     const res = await fetchJson<ApiRes<{ events: number; aggregates: number }>>('/admin/token-stats/cleanup', {
       method: 'POST',
-      body: JSON.stringify({ days }),
+      body: JSON.stringify(all ? { all: true } : { days }),
     }).catch((err) => {
       console.warn('[dashboard] 存储清理失败', err)
       return null
@@ -492,16 +498,38 @@ export default function DashboardPage() {
               })}
             </p>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            className="shrink-0"
-            disabled={cleaning}
-            onClick={() => void handleCleanup()}
-          >
-            <Trash className="size-3.5" />
-            {cleaning ? t('admin.common.saving') : t('admin.dashboard.usage.cleanupBtn')}
-          </Button>
+          <div className="flex shrink-0 items-center gap-2">
+            <Input
+              type="number"
+              min={1}
+              max={365}
+              value={cleanupDays}
+              onChange={(e) => setCleanupDays(e.target.value)}
+              inputSize="sm"
+              className="w-20 text-end"
+              aria-label={t('admin.dashboard.usage.daysUnit')}
+            />
+            <span className="text-[11px] text-muted-foreground">{t('admin.dashboard.usage.daysUnit')}</span>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={cleaning}
+              onClick={() => void handleCleanup(false)}
+            >
+              <Trash className="size-3.5" />
+              {cleaning ? t('admin.common.saving') : t('admin.dashboard.usage.cleanupBtn')}
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-error-emphasis hover:bg-error-soft"
+              disabled={cleaning}
+              onClick={() => void handleCleanup(true)}
+            >
+              <Trash className="size-3.5" />
+              {t('admin.dashboard.usage.cleanupAllBtn')}
+            </Button>
+          </div>
         </div>
       </section>
     </div>

@@ -437,7 +437,11 @@ export class UsageStore {
     const t0 = process.hrtime.bigint()
     const { startDate, endDate } = opts
     const range = opts.range ?? 'today'
-    const col = dimension === 'provider' ? 'provider' : dimension === 'adapter' ? 'adapter' : 'model'
+    // model 维度按上游真实模型分组（usage_events.upstream_model）：
+    // daily_aggregates.model 存的是客户端请求模型名，适配器请求会混入虚拟名（如 GPT/MAX），
+    // 与直连请求的真实模型 id 语义不一致，故模型维度改为查事件表。
+    const fromEvents = dimension === 'model'
+    const col = dimension === 'provider' ? 'provider' : dimension === 'adapter' ? 'adapter' : 'upstream_model'
     let where = ''
     const params: unknown[] = []
     if (startDate && endDate) {
@@ -457,8 +461,8 @@ export class UsageStore {
         COALESCE(SUM(output_tokens), 0) AS output_tokens,
         COALESCE(SUM(cache_read_input_tokens), 0) AS cache_read_input_tokens,
         COALESCE(SUM(cache_creation_input_tokens), 0) AS cache_creation_input_tokens,
-        COALESCE(SUM(request_count), 0) AS request_count
-      FROM daily_aggregates
+        ${fromEvents ? 'COUNT(*)' : 'COALESCE(SUM(request_count), 0)'} AS request_count
+      FROM ${fromEvents ? 'usage_events' : 'daily_aggregates'}
       ${where}
       GROUP BY ${col}
       ORDER BY input_tokens DESC
@@ -482,6 +486,16 @@ export class UsageStore {
     const cutoff = this.offsetDate(this.today, -beforeDays)
     const evtRes = this.db.prepare('DELETE FROM usage_events WHERE date < ?').run(cutoff)
     const aggRes = this.db.prepare('DELETE FROM daily_aggregates WHERE date < ?').run(cutoff)
+    return { events: Number(evtRes.changes ?? 0), aggregates: Number(aggRes.changes ?? 0) }
+  }
+
+  /**
+   * 清空全部用量数据（事件 + 预聚合 + 今日内存缓存）。不可恢复。
+   */
+  clearAll(): { events: number; aggregates: number } {
+    const evtRes = this.db.prepare('DELETE FROM usage_events').run()
+    const aggRes = this.db.prepare('DELETE FROM daily_aggregates').run()
+    this.todayAgg.clear()
     return { events: Number(evtRes.changes ?? 0), aggregates: Number(aggRes.changes ?? 0) }
   }
 

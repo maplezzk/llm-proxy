@@ -11,12 +11,15 @@ import { Button } from '@appica/ui-react/button'
 import { Input } from '@appica/ui-react/input'
 import { Textarea } from '@appica/ui-react/textarea'
 import { Switch } from '@appica/ui-react/switch'
-import { Eye, EyeOff } from '@appica/icons-react'
+import { Eye, EyeOff, Refresh } from '@appica/icons-react'
+import { useTheme } from '@appica/ui-react/hooks/use-theme'
 import { fetchJson } from '../lib/api'
 import type { ApiRes } from '../lib/api-types'
 import { LABEL_CLS, extractError } from '../lib/form-helpers'
 import { useToast } from '../lib/toast'
 import { useConfirm } from '../lib/confirm'
+import { useApp } from '../lib/app-state'
+import PortSetting from '../components/PortSetting'
 
 /* ────────────────────────── 类型 / 常量 ────────────────────────── */
 
@@ -65,6 +68,73 @@ function Card({
       {desc && <p className="mb-3 text-[12px] text-muted-foreground">{desc}</p>}
       {children}
     </div>
+  )
+}
+
+/* ────────────────────────── 通用卡片（语言/主题/端口/重载配置） ────────────────────────── */
+
+function GeneralCard() {
+  const { t, i18n } = useTranslation()
+  const { toast } = useToast()
+  const { reloadConfig, switchLang } = useApp()
+  const { theme, setTheme, mounted } = useTheme()
+  const lang = i18n.language?.startsWith('zh') ? 'zh' : 'en'
+
+  // reload 后由此处弹 toast（AppProvider 位于 ToastProvider 之上，无法内部弹）。
+  const handleReload = async () => {
+    const res = await reloadConfig()
+    if (res) toast(res.message, res.type)
+  }
+
+  const rowCls = 'flex items-center justify-between gap-3'
+  const labelCls = 'text-[13px] text-foreground'
+
+  return (
+    <Card icon="⚙️" title={t('admin.general.title')} desc={t('admin.general.desc')}>
+      <div className="flex flex-col gap-3">
+        {/* 语言 */}
+        <div className={rowCls}>
+          <span className={labelCls}>{t('admin.general.language')}</span>
+          <div className="flex items-center gap-1">
+            <Button variant={lang === 'zh' ? 'soft' : 'ghost'} size="sm" onClick={() => switchLang('zh')}>
+              中文
+            </Button>
+            <Button variant={lang === 'en' ? 'soft' : 'ghost'} size="sm" onClick={() => switchLang('en')}>
+              English
+            </Button>
+          </div>
+        </div>
+
+        {/* 主题 */}
+        <div className={rowCls}>
+          <span className={labelCls}>{t('admin.general.theme')}</span>
+          <div className="flex items-center gap-1">
+            {(['system', 'light', 'dark'] as const).map((mode) => (
+              <Button
+                key={mode}
+                variant={mounted && theme === mode ? 'soft' : 'ghost'}
+                size="sm"
+                onClick={() => setTheme(mode)}
+              >
+                {t(`admin.general.theme${mode === 'system' ? 'System' : mode === 'light' ? 'Light' : 'Dark'}`)}
+              </Button>
+            ))}
+          </div>
+        </div>
+
+        {/* 端口 */}
+        <PortSetting />
+
+        {/* 重载配置 */}
+        <div className={rowCls}>
+          <span className={labelCls}>{t('admin.common.reloadConfig')}</span>
+          <Button variant="ghost" size="sm" onClick={() => void handleReload()}>
+            <Refresh data-icon="start" className="size-3.5" />
+            {t('admin.common.reloadConfig')}
+          </Button>
+        </div>
+      </div>
+    </Card>
   )
 }
 
@@ -397,13 +467,15 @@ function VisionCard() {
 /* ────────────────────────── 页面 ────────────────────────── */
 
 /**
- * Settings 页 — 移植自旧版 proxy-key.ts + vision-setting.ts：
+ * Settings 页 — 移植自旧版 proxy-key.ts + vision-setting.ts，并收纳原侧栏页脚的通用设置：
+ * - 通用卡片（语言/主题/端口/重载配置）
  * - Proxy Key 卡片（设置/移除 /admin/proxy-key）
  * - Vision 卡片（启用/供应商/模型/提示词 + 缓存统计与清除）
  */
 export default function SettingsPage() {
   return (
     <div className="flex max-w-220 flex-col gap-4 p-6">
+      <GeneralCard />
       <ProxyKeyCard />
       <VisionCard />
     </div>

@@ -19,6 +19,15 @@
       "portSetSuccessWithRestart": "端口已保存，请重启服务生效",
       "portRestartHint": "重启后生效"
     },
+    "general": {
+      "title": "通用",
+      "desc": "语言、主题、端口与配置重载",
+      "language": "语言",
+      "theme": "主题",
+      "themeSystem": "跟随系统",
+      "themeLight": "浅色",
+      "themeDark": "深色"
+    },
     "common": {
       "save": "保存",
       "cancel": "取消",
@@ -44,9 +53,9 @@
       "remove": "移除",
       "hide": "隐藏",
       "view": "查看",
-    "reloadConfig": "重载配置",
-    "configReloaded": "配置已重载",
-    "reloadFailed": "重载失败",
+      "reloadConfig": "重载配置",
+      "configReloaded": "配置已重载",
+      "reloadFailed": "重载失败",
       "requestFailed": "请求失败",
       "copyFailed": "复制失败",
       "parseFailed": "数据解析失败"
@@ -88,10 +97,20 @@
         "emptyDesc": "在 {{range}} 范围内没有代理请求记录。发起一次请求即可看到趋势。",
         "storageTitle": "用量数据存储",
         "storageDesc": "{{events}} 条事件 · {{aggregates}} 条预聚合 · {{size}}",
-        "cleanupBtn": "清理 90 天前的数据",
+        "cleanupBtn": "清理",
+        "cleanupAllBtn": "清空全部",
+        "cleanupAllConfirm": "确定要清空全部用量数据吗？此操作不可恢复。",
         "cleanupConfirm": "确定要清理 {{days}} 天前的所有历史用量数据吗？此操作不可恢复。",
         "cleanupDone": "已清理 {{events}} 条事件 / {{aggregates}} 条预聚合",
         "cleanupFailed": "清理失败"
+      },
+      "chart": {
+        "input": "输入",
+        "output": "输出",
+        "cacheRead": "缓存读取",
+        "cacheCreate": "缓存创建",
+        "total": "总计",
+        "requests": "请求数"
       }
     },
     "logs": {

@@ -538,11 +538,11 @@ export default function ProvidersPage() {
                 </TableCell>
                 <TableCell>
                   <div className="flex items-center justify-end gap-1.5">
-                    <Button variant="soft" size="sm" onClick={() => openTestPanel(p.name)}>
+                    <Button variant="ghost" size="sm" onClick={() => openTestPanel(p.name)}>
                       <Activity data-icon="start" className="size-3.5" />
                       {t('admin.common.test')}
                     </Button>
-                    <Button variant="outline" size="sm" onClick={() => openForm(p.name)}>
+                    <Button variant="ghost" size="sm" onClick={() => openForm(p.name)}>
                       <Pencil data-icon="start" className="size-3.5" />
                       {t('admin.common.edit')}
                     </Button>

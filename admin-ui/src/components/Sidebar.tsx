@@ -1,7 +1,5 @@
 import { useTranslation } from 'react-i18next'
-import { useTheme } from '@appica/ui-react/hooks/use-theme'
 import { Navigation, NavigationList, NavigationItem, NavigationLink } from '@appica/ui-react/navigation'
-import { Button } from '@appica/ui-react/button'
 import {
   LayoutDashboard,
   Server,
@@ -9,15 +7,9 @@ import {
   FileText,
   Radar,
   Settings,
-  Refresh,
-  Globe,
-  Sun,
-  Moon,
 } from '@appica/icons-react'
 import { useApp } from '../lib/app-state'
 import type { Tab } from '../lib/app-state'
-import { useToast } from '../lib/toast'
-import PortSetting from './PortSetting'
 
 const TABS: Tab[] = ['dashboard', 'providers', 'adapters', 'logs', 'capture', 'settings']
 
@@ -31,30 +23,12 @@ const TAB_ICONS: Record<Tab, typeof LayoutDashboard> = {
 }
 
 /**
- * 侧栏：Appica Navigation（vertical）6 个 tab + 页脚
- * （运行状态点 / reload / 语言切换 / 主题切换 / 端口设置）。
+ * 侧栏：Appica Navigation（vertical）6 个 tab + 页脚运行状态点。
+ * 语言/主题/端口/重载配置已收纳到 Settings 页「通用」卡片。
  */
 export default function Sidebar() {
-  const { t, i18n } = useTranslation()
-  const { currentTab, switchTab, status, reloadConfig, switchLang } = useApp()
-  const { toast } = useToast()
-  const { resolvedTheme, setTheme, mounted } = useTheme()
-  const isDark = mounted && resolvedTheme === 'dark'
-  const lang = i18n.language?.startsWith('zh') ? 'zh' : 'en'
-
-  // reload 后由调用方弹 toast（AppProvider 位于 ToastProvider 之上，无法内部弹）。
-  const handleReload = async () => {
-    const res = await reloadConfig()
-    if (res) toast(res.message, res.type)
-  }
-
-  const handleSwitchLang = () => {
-    switchLang(lang === 'zh' ? 'en' : 'zh')
-  }
-
-  const handleToggleTheme = () => {
-    setTheme(isDark ? 'light' : 'dark')
-  }
+  const { t } = useTranslation()
+  const { currentTab, switchTab, status } = useApp()
 
   return (
     <aside className="flex h-screen w-56 shrink-0 flex-col border-e border-border bg-background-subtle">
@@ -91,9 +65,8 @@ export default function Sidebar() {
         </NavigationList>
       </Navigation>
 
-      {/* 页脚 */}
+      {/* 页脚：仅运行状态（操作项已移至 Settings 页） */}
       <div className="flex flex-col gap-2 border-t border-border px-3 py-3 text-xs text-muted-foreground">
-        {/* 运行状态 */}
         <div className="flex items-center gap-2">
           <span
             className={
@@ -113,40 +86,6 @@ export default function Sidebar() {
                 : t('admin.sidebar.loading')}
           </span>
         </div>
-
-        {/* 操作按钮：reload / 语言 / 主题 */}
-        <div className="flex items-center gap-1">
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            title={t('admin.common.reloadConfig')}
-            aria-label={t('admin.common.reloadConfig')}
-            onClick={() => void handleReload()}
-          >
-            <Refresh />
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            title={t('admin.sidebar.switchLang')}
-            aria-label={t('admin.sidebar.switchLang')}
-            onClick={handleSwitchLang}
-          >
-            <Globe />
-            <span className="ms-1 text-[10px]">{lang === 'zh' ? 'EN' : '中文'}</span>
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label="Toggle theme"
-            onClick={handleToggleTheme}
-          >
-            {isDark ? <Sun /> : <Moon />}
-          </Button>
-        </div>
-
-        {/* 端口设置 */}
-        <PortSetting />
       </div>
     </aside>
   )

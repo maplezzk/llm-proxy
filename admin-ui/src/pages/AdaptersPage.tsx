@@ -469,11 +469,11 @@ export default function AdaptersPage() {
                 </TableCell>
                 <TableCell>
                   <div className="flex items-center justify-end gap-1.5">
-                    <Button variant="soft" size="sm" onClick={() => openTestPanel(a.name)}>
+                    <Button variant="ghost" size="sm" onClick={() => openTestPanel(a.name)}>
                       <Activity data-icon="start" className="size-3.5" />
                       {t('admin.common.test')}
                     </Button>
-                    <Button variant="outline" size="sm" onClick={() => openForm(a.name)}>
+                    <Button variant="ghost" size="sm" onClick={() => openForm(a.name)}>
                       <Pencil data-icon="start" className="size-3.5" />
                       {t('admin.common.edit')}
                     </Button>

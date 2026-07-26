@@ -1,4 +1,5 @@
 import { useMemo } from 'react'
+import { useTranslation } from 'react-i18next'
 import {
   CartesianGrid,
   Line,
@@ -30,12 +31,13 @@ interface SeriesDef {
  * 四色对齐旧版 Chart.js 配色语义（蓝/紫/绿/橙），改用 Appica 主题 token，
  * emphasis 档在明暗两套主题下均保持足够对比度。
  * Cache Read/Create 沿用旧版虚线区分（4-3 / 2-2）。
+ * label 为 i18n key（admin.dashboard.chart.*），组件内用 t() 解析。
  */
 const SERIES: SeriesDef[] = [
-  { key: 'input_tokens', label: 'Input', color: 'var(--info-emphasis)', width: 2 },
-  { key: 'output_tokens', label: 'Output', color: 'var(--secondary-emphasis)', width: 2 },
-  { key: 'cache_read_input_tokens', label: 'Cache Read', color: 'var(--success-emphasis)', width: 1.5, dash: '4 3' },
-  { key: 'cache_creation_input_tokens', label: 'Cache Create', color: 'var(--warning-emphasis)', width: 1.5, dash: '2 2' },
+  { key: 'input_tokens', label: 'input', color: 'var(--info-emphasis)', width: 2 },
+  { key: 'output_tokens', label: 'output', color: 'var(--secondary-emphasis)', width: 2 },
+  { key: 'cache_read_input_tokens', label: 'cacheRead', color: 'var(--success-emphasis)', width: 1.5, dash: '4 3' },
+  { key: 'cache_creation_input_tokens', label: 'cacheCreate', color: 'var(--warning-emphasis)', width: 1.5, dash: '2 2' },
 ]
 
 /** 数值缩写（对齐旧版 fmtK）：>=1M → xM，>=1K → xK */
@@ -58,6 +60,7 @@ function TimelineTooltip({
   active?: boolean
   payload?: ReadonlyArray<{ name?: string | number; value?: number | string; color?: string; payload?: TimelinePoint }>
 }) {
+  const { t } = useTranslation()
   if (!active || !payload || payload.length === 0) return null
   const point = payload[0].payload
   if (!point) return null
@@ -70,13 +73,13 @@ function TimelineTooltip({
         <p key={i} className="flex items-center gap-1.5 text-foreground-inverse/85">
           <span className="size-2 shrink-0 rounded-full" style={{ background: entry.color }} />
           <span>
-            {entry.name}: {Number(entry.value ?? 0).toLocaleString()}
+            {entry.name}: {fmtK(Number(entry.value ?? 0))}
           </span>
         </p>
       ))}
       <div className="mt-1 border-t border-foreground-inverse/20 pt-1 text-foreground-inverse/85">
-        <p>Total: {total.toLocaleString()}</p>
-        <p>Requests: {point.request_count.toLocaleString()}</p>
+        <p>{t('admin.dashboard.chart.total')}: {fmtK(total)}</p>
+        <p>{t('admin.dashboard.chart.requests')}: {point.request_count.toLocaleString()}</p>
       </div>
     </div>
   )
@@ -90,6 +93,7 @@ function TimelineTooltip({
  * - legend 过滤全 0 series（对齐旧版 generateLabels 行为，cache 全 0 时不误导）
  */
 export default function TimelineChart({ data }: { data: TimelinePoint[] }) {
+  const { t } = useTranslation()
   // 全 0 series 不进 legend
   const visibleSeries = useMemo(() => {
     return SERIES.filter((s) => data.some((p) => (p[s.key] || 0) > 0))
@@ -113,7 +117,7 @@ export default function TimelineChart({ data }: { data: TimelinePoint[] }) {
         {visibleSeries.map((s) => (
           <span key={s.key} className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
             <span className="h-0.5 w-4 rounded-full" style={{ background: s.color }} />
-            {s.label}
+            {t(`admin.dashboard.chart.${s.label}`)}
           </span>
         ))}
       </div>
@@ -146,7 +150,7 @@ export default function TimelineChart({ data }: { data: TimelinePoint[] }) {
                 key={s.key}
                 type="monotone"
                 dataKey={s.key}
-                name={s.label}
+                name={t(`admin.dashboard.chart.${s.label}`)}
                 stroke={s.color}
                 strokeWidth={s.width}
                 strokeDasharray={s.dash}

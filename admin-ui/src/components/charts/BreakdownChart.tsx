@@ -1,4 +1,5 @@
 import { useMemo } from 'react'
+import { useTranslation } from 'react-i18next'
 import {
   Bar,
   BarChart,
@@ -49,6 +50,7 @@ function BreakdownTooltip({
   active?: boolean
   payload?: ReadonlyArray<{ name?: string | number; value?: number | string; color?: string; payload?: BreakdownRow }>
 }) {
+  const { t } = useTranslation()
   if (!active || !payload || payload.length === 0) return null
   const row = payload[0].payload
   if (!row) return null
@@ -60,13 +62,13 @@ function BreakdownTooltip({
         <p key={i} className="flex items-center gap-1.5 text-foreground-inverse/85">
           <span className="size-2 shrink-0 rounded-full" style={{ background: entry.color }} />
           <span>
-            {entry.name}: {Number(entry.value ?? 0).toLocaleString()}
+            {entry.name}: {fmtK(Number(entry.value ?? 0))}
           </span>
         </p>
       ))}
       <div className="mt-1 border-t border-foreground-inverse/20 pt-1 text-foreground-inverse/85">
-        <p>Total: {total.toLocaleString()}</p>
-        <p>Requests: {row.request_count.toLocaleString()}</p>
+        <p>{t('admin.dashboard.chart.total')}: {fmtK(total)}</p>
+        <p>{t('admin.dashboard.chart.requests')}: {row.request_count.toLocaleString()}</p>
       </div>
     </div>
   )
@@ -80,6 +82,7 @@ function BreakdownTooltip({
  * - X 轴动态上限 dataMax*1.1（向上取整到千）
  */
 export default function BreakdownChart({ data }: { data: UsageBucket[] }) {
+  const { t } = useTranslation()
   const rows = useMemo<BreakdownRow[]>(
     () =>
       [...data]
@@ -104,11 +107,11 @@ export default function BreakdownChart({ data }: { data: UsageBucket[] }) {
       <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1 pb-1.5">
         <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
           <span className="size-2.5 rounded-[3px]" style={{ background: COLORS.input }} />
-          Input
+          {t('admin.dashboard.chart.input')}
         </span>
         <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
           <span className="size-2.5 rounded-[3px]" style={{ background: COLORS.output }} />
-          Output
+          {t('admin.dashboard.chart.output')}
         </span>
       </div>
       <div className="min-h-0 flex-1">
@@ -133,8 +136,8 @@ export default function BreakdownChart({ data }: { data: UsageBucket[] }) {
               tickLine={false}
             />
             <Tooltip content={<BreakdownTooltip />} cursor={{ fill: 'var(--background-muted)', opacity: 0.5 }} />
-            <Bar dataKey="input_tokens" name="Input" stackId="a" fill={COLORS.input} radius={2} animationDuration={400} />
-            <Bar dataKey="output_tokens" name="Output" stackId="a" fill={COLORS.output} radius={2} animationDuration={400} />
+            <Bar dataKey="input_tokens" name={t('admin.dashboard.chart.input')} stackId="a" fill={COLORS.input} radius={2} animationDuration={400} />
+            <Bar dataKey="output_tokens" name={t('admin.dashboard.chart.output')} stackId="a" fill={COLORS.output} radius={2} animationDuration={400} />
           </BarChart>
         </ResponsiveContainer>
       </div>

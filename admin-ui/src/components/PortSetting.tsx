@@ -1,13 +1,12 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Plug } from '@appica/icons-react'
 import { Button } from '@appica/ui-react/button'
 import { Input } from '@appica/ui-react/input'
 import { fetchJson } from '../lib/api'
 import { useToast } from '../lib/toast'
 
 /**
- * 端口内联编辑组件（侧栏页脚）。
+ * 端口设置行（设置页-通用卡片）。
  * GET/PUT /admin/port；端口范围 1-65535，非法不发请求并 toast 错误。
  * 对齐旧 src/api/admin/components/port-setting.ts。
  */
@@ -68,37 +67,36 @@ export default function PortSetting() {
     }
   }
 
-  if (!editing) {
-    return (
-      <button
-        type="button"
-        onClick={toggleEdit}
-        title={t('admin.sidebar.port')}
-        className="inline-flex items-center gap-1 rounded px-1 py-0.5 text-muted-foreground transition-colors hover:text-foreground"
-      >
-        <Plug className="size-3.5" />
-        <span>{configPort || 9000}</span>
-      </button>
-    )
-  }
-
   return (
-    <div className="flex items-center gap-1">
-      <Input
-        type="number"
-        min={1}
-        max={65535}
-        value={port}
-        placeholder={t('admin.sidebar.portPlaceholder')}
-        onChange={(e) => setPort(e.target.value)}
-        className="h-7 w-24 text-xs"
-      />
-      <Button variant="ghost" size="icon-sm" disabled={saving} onClick={() => void save()} aria-label={t('admin.common.save')}>
-        ✓
-      </Button>
-      <Button variant="ghost" size="icon-sm" onClick={toggleEdit} aria-label={t('admin.common.cancel')}>
-        ✕
-      </Button>
+    <div className="flex items-center justify-between gap-3">
+      <span className="text-[13px] text-foreground">{t('admin.sidebar.port')}</span>
+      {editing ? (
+        <div className="flex items-center gap-1.5">
+          <Input
+            type="number"
+            min={1}
+            max={65535}
+            value={port}
+            placeholder={t('admin.sidebar.portPlaceholder')}
+            onChange={(e) => setPort(e.target.value)}
+            inputSize="sm"
+            className="w-28"
+          />
+          <Button variant="primary" size="sm" disabled={saving} onClick={() => void save()}>
+            {t('admin.common.save')}
+          </Button>
+          <Button variant="ghost" size="sm" onClick={toggleEdit}>
+            {t('admin.common.cancel')}
+          </Button>
+        </div>
+      ) : (
+        <div className="flex items-center gap-2">
+          <span className="font-mono text-[13px] text-muted-foreground">{configPort || 9000}</span>
+          <Button variant="ghost" size="sm" onClick={toggleEdit}>
+            {t('admin.common.edit')}
+          </Button>
+        </div>
+      )}
     </div>
   )
 }
