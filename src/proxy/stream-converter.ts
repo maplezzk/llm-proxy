@@ -795,12 +795,14 @@ export async function convertOpenAIResponsesStreamToAnthropic(
           output_tokens: (respUsage?.output_tokens ?? 0) as number,
         }
         const cachedTokens = ((respUsage?.input_tokens_details as Record<string, unknown> | undefined)?.cached_tokens ?? respUsage?.cache_read_input_tokens) as number | undefined
+        const cacheCreationTokens = (respUsage?.cache_creation_input_tokens ?? (respUsage?.output_tokens_details as Record<string, unknown> | undefined)?.cache_creation_input_tokens) as number | undefined
         if (cachedTokens !== undefined) usage.cache_read_input_tokens = cachedTokens
+        if (cacheCreationTokens !== undefined) usage.cache_creation_input_tokens = cacheCreationTokens
         lastUsage = {
           input_tokens: usage.input_tokens as number,
           output_tokens: usage.output_tokens as number,
           cache_read_input_tokens: cachedTokens,
-          cache_creation_input_tokens: respUsage?.cache_creation_input_tokens as number | undefined,
+          cache_creation_input_tokens: cacheCreationTokens,
         }
 
         // response.completed：补充上游 realSig（如多轮 encrypted_content），即使 block 已 stop
@@ -1612,20 +1614,26 @@ export async function convertOpenAIResponsesStreamToOpenAI(
         }
         if (respUsage) {
           const cachedTokens = ((respUsage.input_tokens_details as Record<string, unknown> | undefined)?.cached_tokens ?? respUsage.cache_read_input_tokens ?? 0) as number
+          const cacheCreationTokens = (respUsage.cache_creation_input_tokens ?? (respUsage.output_tokens_details as Record<string, unknown> | undefined)?.cache_creation_input_tokens ?? 0) as number
           const inputTokens = (respUsage.input_tokens ?? 0) as number
           const outputTokens = (respUsage.output_tokens ?? 0) as number
           lastUsage = {
             input_tokens: inputTokens,
             output_tokens: outputTokens,
             cache_read_input_tokens: cachedTokens || undefined,
-            cache_creation_input_tokens: respUsage.cache_creation_input_tokens as number | undefined,
+            cache_creation_input_tokens: cacheCreationTokens || undefined,
           }
           finalChunk.usage = {
             // Responses input_tokens excludes cache hits; Chat prompt_tokens includes them.
             prompt_tokens: inputTokens + cachedTokens,
             completion_tokens: outputTokens,
             total_tokens: inputTokens + cachedTokens + outputTokens,
-            ...(cachedTokens > 0 ? { prompt_tokens_details: { cached_tokens: cachedTokens } } : {}),
+            ...((cachedTokens > 0 || cacheCreationTokens > 0)
+              ? { prompt_tokens_details: {
+                  cached_tokens: cachedTokens,
+                  ...(cacheCreationTokens > 0 ? { cache_creation_input_tokens: cacheCreationTokens } : {}),
+                } }
+              : {}),
           }
         }
         write(finalChunk)

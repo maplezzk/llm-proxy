@@ -403,11 +403,19 @@ function convertResponsesInputToMessages(input: unknown[]): unknown[] {
           }
           // reasoning → thinking (Anthropic-style thinking block)
           if (block.type === 'reasoning') {
-            // reasoning can have summary (array of summary_text) or reasoning_text (plain string)
+            // OpenAI Responses 规范的 reasoning item 用 summary 字段（summary_text 数组）。
+            // 某些实现用 reasoning_text（字符串 或 字符串数组）作为 fallback。
             const summary = block.summary as Array<Record<string, unknown>> | undefined
-            const reasoningText = summary
-              ? summary.map((s) => s.text ?? '').join('')
-              : (block.reasoning_text as string) ?? ''
+            let reasoningText = ''
+            if (summary && summary.length > 0) {
+              reasoningText = summary.map((s) => s.text ?? '').join('')
+            } else if (typeof block.reasoning_text === 'string') {
+              reasoningText = block.reasoning_text
+            } else if (Array.isArray(block.reasoning_text)) {
+              reasoningText = (block.reasoning_text as Array<Record<string, unknown>>)
+                .map((s) => (typeof s === 'string' ? s : (s.text as string) ?? ''))
+                .join('')
+            }
             return { type: 'thinking', thinking: reasoningText, signature: '' }
           }
           // input_image → image (Anthropic-style)
@@ -2273,10 +2281,17 @@ export function convertOpenAIResponsesResponseToOpenAI(responsesBody: Record<str
               textContent += (block.text as string) ?? ''
             } else if (block.type === 'reasoning') {
               // 消息内嵌 reasoning（兼容格式），优先级低于顶层 summary
+              // summary 是首选；reasoning_text 接受 string 或 string 数组两种形态
               if (!reasoningContent) {
-                reasoningContent += (block.summary
-                  ? (block.summary as Array<Record<string, unknown>>).map((s) => s.text ?? '').join('')
-                  : (block.reasoning_text as string) ?? '')
+                if (block.summary) {
+                  reasoningContent += (block.summary as Array<Record<string, unknown>>).map((s) => s.text ?? '').join('')
+                } else if (typeof block.reasoning_text === 'string') {
+                  reasoningContent += block.reasoning_text
+                } else if (Array.isArray(block.reasoning_text)) {
+                  reasoningContent += (block.reasoning_text as Array<Record<string, unknown>>)
+                    .map((s) => (typeof s === 'string' ? s : (s.text as string) ?? ''))
+                    .join('')
+                }
               }
             }
           }

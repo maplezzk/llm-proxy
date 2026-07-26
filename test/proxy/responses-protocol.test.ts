@@ -1935,6 +1935,21 @@ describe('proxy/responses-protocol — Responses SSE → Chat SSE', () => {
       cache_creation_input_tokens: undefined,
     })
   })
+
+  it('cache_creation_input_tokens 透传到 Responses → Chat 流式 usage', async () => {
+    const { chunks, res } = makeResponse()
+    const reader = makeReader([
+      'event: response.output_item.added\ndata: {"type":"response.output_item.added","output_index":0,"item":{"type":"message","role":"assistant"}}\n\n',
+      'event: response.completed\ndata: {"type":"response.completed","response":{"status":"completed","usage":{"input_tokens":20,"input_tokens_details":{"cached_tokens":80},"cache_creation_input_tokens":50,"output_tokens":5}}}\n\n',
+    ])
+    const usage = await convertOpenAIResponsesStreamToOpenAI(reader, res)
+    const events = sseEvents(chunks)
+    const finalUsage = events.find((e) => e.usage)?.usage as Record<string, unknown>
+    assert.strictEqual(usage.cache_creation_input_tokens, 50, 'lastUsage 应记录 cache_creation')
+    const details = finalUsage.prompt_tokens_details as Record<string, unknown>
+    assert.strictEqual(details.cached_tokens, 80)
+    assert.strictEqual(details.cache_creation_input_tokens, 50, 'prompt_tokens_details 应含 cache_creation_input_tokens')
+  })
 })
 
 // ============================================================
