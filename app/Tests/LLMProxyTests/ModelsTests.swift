@@ -327,6 +327,24 @@ final class ModelsTests: XCTestCase {
         XCTAssertNil(provider.models[0].reasoning_effort)
     }
 
+    func testProviderApiBaseForProtocol() {
+        let provider = Provider(
+            name: "shared",
+            type: "openai",
+            api_key: "sk-test",
+            api_base: "https://legacy.example",
+            protocols: [
+                ProviderProtocolDetail(type: "openai", api_base: "https://openai.example"),
+                ProviderProtocolDetail(type: "anthropic", api_base: "https://anthropic.example")
+            ],
+            models: []
+        )
+
+        XCTAssertEqual(provider.apiBase(for: "openai"), "https://openai.example")
+        XCTAssertEqual(provider.apiBase(for: "anthropic"), "https://anthropic.example")
+        XCTAssertEqual(provider.apiBase(for: "openai-responses"), "")
+    }
+
     // MARK: - TestModelResult
 
     func testTestModelResultDecoding() throws {

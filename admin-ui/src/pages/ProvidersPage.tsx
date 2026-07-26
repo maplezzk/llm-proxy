@@ -119,6 +119,7 @@ interface TestTarget {
   open: boolean
   name: string
   providerType: string
+  protocols: Array<{ type: string; apiBase?: string }>
   modelIds: string[]
 }
 
@@ -180,6 +181,7 @@ export default function ProvidersPage() {
     open: false,
     name: '',
     providerType: '',
+    protocols: [],
     modelIds: [],
   })
 
@@ -552,6 +554,7 @@ export default function ProvidersPage() {
       open: true,
       name: p.name,
       providerType: p.protocols?.[0]?.type || p.type || '',
+      protocols: p.protocols?.map((protocol) => ({ type: protocol.type, apiBase: protocol.api_base })) ?? [{ type: p.type || 'openai', apiBase: p.api_base }],
       modelIds: (p.models ?? []).map((m) => m.id),
     })
   }
@@ -1038,11 +1041,12 @@ export default function ProvidersPage() {
         onClose={() => setTest((prev) => ({ ...prev, open: false }))}
         name={test.name}
         typeLabel={test.providerType}
+        protocols={test.protocols}
         modelIds={test.modelIds}
-        buildBody={(modelId) => ({
+        buildBody={(modelId, protocolType) => ({
           providerName: test.name,
           model: modelId,
-          type: test.providerType,
+          type: protocolType || test.providerType,
         })}
       />
     </div>

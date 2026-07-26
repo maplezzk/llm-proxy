@@ -515,6 +515,14 @@ struct Provider: Codable {
         if let protocols, !protocols.isEmpty { return protocols }
         return [ProviderProtocolDetail(type: type, api_base: api_base)]
     }
+
+    /// 返回指定协议的 Base URL；兼容旧配置中的单协议字段。
+    func apiBase(for protocolType: String) -> String {
+        if let protocolDetail = supportedProtocols.first(where: { $0.type == protocolType }) {
+            return protocolDetail.api_base ?? (protocolType == type ? api_base ?? "" : "")
+        }
+        return protocolType == type ? (api_base ?? "") : ""
+    }
 }
 
 struct ConfigData: Codable {

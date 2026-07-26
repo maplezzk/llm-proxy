@@ -54,12 +54,14 @@ export interface TestPanelDialogProps {
   name: string
   /** 可选的类型标签，展示为 “(type)”，如 provider 协议类型；可省略 */
   typeLabel?: string
+  /** provider 支持的协议；超过一个时允许在测试面板中切换协议 */
+  protocols?: Array<{ type: string; apiBase?: string }>
   /** 可选模型 ID 列表 */
   modelIds: string[]
   /** 测试端点；providers 用默认 `/admin/test-model`，adapters 传 `/admin/test-adapter` */
   endpoint?: string
   /** 依据选中模型 ID 构造请求体 */
-  buildBody: (modelId: string) => Record<string, unknown>
+  buildBody: (modelId: string, protocolType?: string) => Record<string, unknown>
 }
 
 /** 请求/响应详情块：label + 等宽 JSON 预格式化。 */
@@ -158,12 +160,14 @@ export default function TestPanelDialog({
   onClose,
   name,
   typeLabel,
+  protocols = [],
   modelIds,
   endpoint = '/admin/test-model',
   buildBody,
 }: TestPanelDialogProps) {
   const { t } = useTranslation()
   const [selectedModel, setSelectedModel] = useState('')
+  const [selectedType, setSelectedType] = useState(typeLabel ?? protocols[0]?.type ?? '')
   const [running, setRunning] = useState(false)
   const [results, setResults] = useState<TestResult[]>([])
   const idRef = useRef(0)
@@ -172,6 +176,7 @@ export default function TestPanelDialog({
   useEffect(() => {
     if (open) {
       setSelectedModel(modelIds[0] ?? '')
+      setSelectedType(protocols[0]?.type ?? typeLabel ?? '')
       setResults([])
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -183,7 +188,7 @@ export default function TestPanelDialog({
     type TestApiRes = { data?: Partial<TestResult> & { reachable?: boolean } }
     const res: TestApiRes = await fetchJson<TestApiRes>(endpoint, {
       method: 'POST',
-      body: JSON.stringify(buildBody(selectedModel)),
+      body: JSON.stringify(buildBody(selectedModel, selectedType)),
     }).catch((): TestApiRes => ({
       data: { reachable: false, latency: 0, error: t('admin.test.requestFailed') },
     }))
@@ -240,11 +245,24 @@ export default function TestPanelDialog({
                 </SelectContent>
               </Select>
             </div>
-            {typeLabel && (
+            {protocols.length > 1 ? (
+              <Select size="sm" value={selectedType} onValueChange={(v) => setSelectedType(String(v ?? ''))}>
+                <SelectTrigger className="w-38" aria-label="Protocol">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {protocols.map((protocol) => (
+                    <SelectItem key={protocol.type} value={protocol.type}>
+                      {protocol.type}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : typeLabel ? (
               <span className="shrink-0 text-[11px] whitespace-nowrap text-muted-foreground">
-                ({typeLabel})
+                ({selectedType || typeLabel})
               </span>
-            )}
+            ) : null}
             <Button
               variant="primary"
               size="sm"
