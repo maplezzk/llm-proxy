@@ -529,8 +529,30 @@ export async function convertOpenAIResponsesStreamToAnthropic(
   let outLines: string[] = []
   let lastUsage: StreamUsage | null = null
   let responsesHasToolCalls = false
+  let upstreamMessageId = ''
+  let upstreamModel = ''
+  let messageStarted = false
+  let terminated = false
   const openBlocks = new Set<number>()
   const closedBlocks = new Set<number>()
+
+  const ensureMessageStart = (): void => {
+    if (messageStarted) return
+    messageStarted = true
+    writeEvent('message_start', {
+      type: 'message_start',
+      message: {
+        id: upstreamMessageId || `msg_${Date.now()}`,
+        type: 'message',
+        role: 'assistant',
+        content: [],
+        model: upstreamModel,
+        stop_reason: null,
+        stop_sequence: null,
+        usage: { input_tokens: 0, output_tokens: 0 },
+      },
+    })
+  }
 
   const writeEvent = (eventType: string, data: Record<string, unknown>): void => {
     const json = JSON.stringify(data)
@@ -574,7 +596,27 @@ export async function convertOpenAIResponsesStreamToAnthropic(
 
       const innerType = (parsed?.type as string) ?? ''
 
-      if (innerType === 'response.created' || innerType === 'response.in_progress') continue
+      if (innerType === 'response.created' || innerType === 'response.in_progress') {
+        // response.created 包含 id/model，为后续 message_start 准备
+        const resp = (parsed?.response as Record<string, unknown> | undefined) ?? parsed
+        if (resp && typeof resp === 'object') {
+          if (typeof resp.id === 'string') upstreamMessageId = resp.id
+          if (typeof resp.model === 'string') upstreamModel = resp.model
+        }
+        continue
+      }
+
+      // response.failed / response.error → Anthropic error 事件，不发 message_stop
+      if (innerType === 'response.failed' || innerType === 'response.error' || innerType === 'error') {
+        const resp = (parsed?.response as Record<string, unknown> | undefined) ?? parsed
+        const err = (resp?.error as Record<string, unknown> | undefined) ?? (parsed?.error as Record<string, unknown> | undefined) ?? {}
+        const errType = (err.type as string) ?? 'api_error'
+        const errMsg = (err.message as string) ?? (err.code as string) ?? 'upstream error'
+        writeEvent('error', { type: 'error', error: { type: errType, message: errMsg } })
+        terminated = true
+        res.end()
+        return lastUsage
+      }
 
       // output_item.added — message
       if (innerType === 'response.output_item.added') {
@@ -582,10 +624,7 @@ export async function convertOpenAIResponsesStreamToAnthropic(
         if (item?.type === 'message') {
           currentBlockIndex = 1
           currentBlockType = 'text'
-          writeEvent('message_start', {
-            type: 'message_start',
-            message: { id: `msg_${Date.now()}`, type: 'message', role: 'assistant', content: [], model: '', stop_reason: null, stop_sequence: null, usage: { input_tokens: 0, output_tokens: 0 } },
-          })
+          ensureMessageStart()
           thinkingBlockStarted = true
           startBlock(0, { type: 'thinking', thinking: '', signature: '' })
           startBlock(1, { type: 'text', text: '' })
@@ -610,7 +649,26 @@ export async function convertOpenAIResponsesStreamToAnthropic(
 
       if (innerType === 'response.content_part.added') {
         const part = parsed?.part as Record<string, unknown> | undefined
-        if (part?.type === 'output_text') currentBlockType = 'text'
+        if (part?.type === 'output_text' || part?.type === 'refusal') {
+          currentBlockType = 'text'
+        }
+        continue
+      }
+
+      // refusal.delta → text_delta（Anthropic 没有显式 refusal）
+      if (innerType === 'response.refusal.delta') {
+        const delta = parsed?.delta as string | undefined
+        if (delta) {
+          ensureMessageStart()
+          if (thinkingBlockStarted) {
+            const sig = thinkingSignature || makeSignature(thinkingText)
+            if (sig) writeEvent('content_block_delta', { type: 'content_block_delta', index: 0, delta: { type: 'signature_delta', signature: sig } })
+            stopBlock(0)
+            thinkingBlockStarted = false
+          }
+          acc.content += delta
+          writeEvent('content_block_delta', { type: 'content_block_delta', index: 1, delta: { type: 'text_delta', text: delta } })
+        }
         continue
       }
 
@@ -630,8 +688,8 @@ export async function convertOpenAIResponsesStreamToAnthropic(
         continue
       }
 
-      // output_text.done
-      if (innerType === 'response.output_text.done') {
+      // output_text.done / refusal.done
+      if (innerType === 'response.output_text.done' || innerType === 'response.refusal.done') {
         if (thinkingBlockStarted) {
           const sig = thinkingSignature || makeSignature(thinkingText)
           if (sig) writeEvent('content_block_delta', { type: 'content_block_delta', index: 0, delta: { type: 'signature_delta', signature: sig } })
