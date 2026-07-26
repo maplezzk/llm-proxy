@@ -8,6 +8,7 @@ dist/
 .code-review-graph/
 
 .claude/
+.pi/
 
 # Bun compiled binary
 llm-proxy
