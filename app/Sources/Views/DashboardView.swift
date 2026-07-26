@@ -178,36 +178,32 @@ struct DashboardView: View {
     private var timelineChart: some View {
         Chart {
             ForEach(viewModel.timeline) { point in
-                LineMark(
-                    x: .value("Date", point.dateAsDate),
-                    y: .value("Input", point.input_tokens)
+                BarMark(
+                    x: .value("Date", point.dateAsDate, unit: .day),
+                    y: .value("Tokens", point.input_tokens)
                 )
                 .foregroundStyle(by: .value("Series", loc("dashboard.usage.seriesInput")))
-                .interpolationMethod(.monotone)
             }
             ForEach(viewModel.timeline) { point in
-                LineMark(
-                    x: .value("Date", point.dateAsDate),
-                    y: .value("Output", point.output_tokens)
+                BarMark(
+                    x: .value("Date", point.dateAsDate, unit: .day),
+                    y: .value("Tokens", point.output_tokens)
                 )
                 .foregroundStyle(by: .value("Series", loc("dashboard.usage.seriesOutput")))
-                .interpolationMethod(.monotone)
             }
             ForEach(viewModel.timeline) { point in
-                LineMark(
-                    x: .value("Date", point.dateAsDate),
-                    y: .value("Cache Read", point.cache_read_input_tokens)
+                BarMark(
+                    x: .value("Date", point.dateAsDate, unit: .day),
+                    y: .value("Tokens", point.cache_read_input_tokens)
                 )
                 .foregroundStyle(by: .value("Series", loc("dashboard.usage.seriesCacheRead")))
-                .interpolationMethod(.monotone)
             }
             ForEach(viewModel.timeline) { point in
-                LineMark(
-                    x: .value("Date", point.dateAsDate),
-                    y: .value("Cache Create", point.cache_creation_input_tokens)
+                BarMark(
+                    x: .value("Date", point.dateAsDate, unit: .day),
+                    y: .value("Tokens", point.cache_creation_input_tokens)
                 )
                 .foregroundStyle(by: .value("Series", loc("dashboard.usage.seriesCacheCreate")))
-                .interpolationMethod(.monotone)
             }
         }
         .chartForegroundStyleScale([
@@ -260,8 +256,7 @@ struct DashboardView: View {
                             }
                         }
 
-                    // 2) 选中态 — 全部用 SwiftUI 原生 Path/Circle 画，**不**进 Chart，
-                    //    避免 RuleMark/PointMark 触发 Y scale 重算（axis ticks 跳跃）
+                    // 2) 选中态只绘制指示线与 tooltip，避免额外 mark 参与 Y scale 重算。
                     if let sel = selectedTimelineDate,
                        let p = nearestTimelinePoint(to: sel),
                        let xPos = proxy.position(forX: p.dateAsDate) {
@@ -276,21 +271,6 @@ struct DashboardView: View {
                             path.addLine(to: CGPoint(x: x, y: originY + height))
                         }
                         .stroke(Color.secondary.opacity(0.5), style: StrokeStyle(lineWidth: 1, dash: [3, 3]))
-
-                        // 4 个 series 高亮点（不参与 Chart scale）
-                        ForEach([
-                            (p.input_tokens, Color.blue, 8.0),
-                            (p.output_tokens, Color.purple, 8.0),
-                            (p.cache_read_input_tokens, Color.green, 6.0),
-                            (p.cache_creation_input_tokens, Color.orange, 6.0),
-                        ], id: \.0) { value, color, size in
-                            if let yPos = proxy.position(forY: value) {
-                                Circle()
-                                    .fill(color)
-                                    .frame(width: size, height: size)
-                                    .position(x: x, y: originY + yPos)
-                            }
-                        }
 
                         // tooltip 浮层（贴顶 8px，边缘时左右贴齐）
                         let tooltipWidth: CGFloat = 200
@@ -451,6 +431,7 @@ struct DashboardView: View {
             Text(loc("dashboard.usage.dimProvider")).tag("provider")
             Text(loc("dashboard.usage.dimAdapter")).tag("adapter")
             Text(loc("dashboard.usage.dimModel")).tag("model")
+            Text(loc("dashboard.usage.dimAdapterModel")).tag("adapterModel")
         }
         .pickerStyle(.menu).controlSize(.small).frame(width: 100)
         .onChange(of: viewModel.breakdownDimension) { _, _ in

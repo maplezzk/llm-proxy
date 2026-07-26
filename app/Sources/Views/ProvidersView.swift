@@ -141,7 +141,9 @@ struct ProvidersView: View {
                     Text(provider.name)
                         .font(.body)
                         .fontWeight(.medium)
-                    typeBadge(provider.type)
+                    ForEach(provider.supportedProtocols) { protocolInfo in
+                        typeBadge(protocolInfo.type)
+                    }
                 }
 
                 if !provider.models.isEmpty {

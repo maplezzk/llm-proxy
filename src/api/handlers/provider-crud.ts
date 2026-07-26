@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { ServerContext } from '../server.js'
-import type { Config, Provider } from '../../config/types.js'
+import type { Config, Provider, ProviderType } from '../../config/types.js'
 import { validateConfig } from '../../config/validator.js'
 import { readBody } from '../../lib/http-utils.js'
 import { json } from './index.js'
@@ -45,14 +45,24 @@ const PROVIDER_PATH_RE = /^\/admin\/providers\/([a-zA-Z0-9_-]+)$/
 
 export async function handleCreateProvider(ctx: ServerContext, req: IncomingMessage, res: ServerResponse): Promise<void> {
   const body = JSON.parse(await readBody(req))
-  const { name, type, api_key, api_base, models } = body
+  const { name, type, api_key, api_base, protocols, models } = body
 
-  if (!name || !type || !api_key || !models) {
-    json(res, 400, { success: false, error: '缺少必填字段: name, type, api_key, models' })
+  if (!name || !api_key || !models || (!type && !protocols)) {
+    json(res, 400, { success: false, error: '缺少必填字段: name, protocols（或 type）, api_key, models' })
     return
   }
 
-  const newProvider: Provider = { name, type, apiKey: api_key, apiBase: api_base, models }
+  const newProvider: Provider = {
+    name,
+    apiKey: api_key,
+    models,
+    ...(type ? { type } : {}),
+    ...(api_base ? { apiBase: api_base } : {}),
+    ...(Array.isArray(protocols) ? { protocols: protocols.map((p: Record<string, unknown>) => ({
+      type: p.type as ProviderType,
+      apiBase: typeof p.api_base === 'string' ? p.api_base : typeof p.apiBase === 'string' ? p.apiBase : undefined,
+    })) } : {}),
+  }
 
   const errs = validateConfig(configFromProvider(newProvider))
   if (errs.length > 0) {
@@ -70,8 +80,8 @@ export async function handleCreateProvider(ctx: ServerContext, req: IncomingMess
   newConfig.providers.push(newProvider)
   const ok = await writeConfigOrRespondError(ctx, newConfig, res)
   if (!ok) return
-  ctx.logger.log('system', 'Create provider request received', { name, type, apiBase: api_base })
-  ctx.logger.log('system', 'Provider created', { name, type })
+  ctx.logger.log('system', 'Create provider request received', { name, type, apiBase: api_base, protocols })
+  ctx.logger.log('system', 'Provider created', { name, type, protocols })
   json(res, 200, { success: true, data: { name } })
 }
 
@@ -81,7 +91,7 @@ export async function handleUpdateProvider(ctx: ServerContext, req: IncomingMess
   const providerName = match[1]
 
   const body = JSON.parse(await readBody(req))
-  const { name: newName, type, api_key, api_base, models } = body
+  const { name: newName, type, api_key, api_base, protocols, models } = body
 
   const { config } = ctx.store.getConfig()
   const idx = config.providers.findIndex((p) => p.name === providerName)
@@ -101,6 +111,12 @@ export async function handleUpdateProvider(ctx: ServerContext, req: IncomingMess
     type: type ?? config.providers[idx].type,
     apiKey: api_key || config.providers[idx].apiKey,
     apiBase: api_base || config.providers[idx].apiBase,
+    protocols: Array.isArray(protocols)
+      ? protocols.map((p: Record<string, unknown>) => ({
+        type: p.type as ProviderType,
+        apiBase: typeof p.api_base === 'string' ? p.api_base : typeof p.apiBase === 'string' ? p.apiBase : undefined,
+      }))
+      : config.providers[idx].protocols,
     models: models ?? config.providers[idx].models,
   }
 
@@ -124,7 +140,7 @@ export async function handleUpdateProvider(ctx: ServerContext, req: IncomingMess
 
   const ok = await writeConfigOrRespondError(ctx, newConfig, res)
   if (!ok) return
-  ctx.logger.log('system', 'Update provider request received', { name: providerName, newName: finalName, type: type ?? '', apiBase: api_base })
+  ctx.logger.log('system', 'Update provider request received', { name: providerName, newName: finalName, type: type ?? '', apiBase: api_base, protocols })
   ctx.logger.log('system', 'Provider updated', { name: finalName, previously: providerName !== finalName ? providerName : undefined })
   json(res, 200, { success: true, data: { name: finalName } })
 }

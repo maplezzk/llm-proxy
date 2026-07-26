@@ -108,6 +108,31 @@ final class ProvidersViewModelTests: XCTestCase {
     }
 
     @MainActor
+    func testOpenEditForm_populatesMultipleProtocolsAndModelProtocols() {
+        let vm = ProvidersViewModel()
+        let provider = ProviderDetail(
+            name: "shared-provider",
+            type: "openai",
+            api_key: "sk-test",
+            api_base: "",
+            protocols: [
+                ProviderProtocolDetail(type: "openai", api_base: "https://openai.example/v1"),
+                ProviderProtocolDetail(type: "anthropic", api_base: "https://anthropic.example")
+            ],
+            models: [
+                ProviderModelDetail(id: "shared-model", protocols: ["openai", "anthropic"], thinking: nil, reasoning_effort: nil, input: nil)
+            ]
+        )
+
+        vm.openEditForm(provider)
+
+        XCTAssertEqual(vm.formData.protocolTypes, ["openai", "anthropic"])
+        XCTAssertEqual(vm.formData.protocols[0].apiBase, "https://openai.example/v1")
+        XCTAssertEqual(vm.formData.protocols[1].apiBase, "https://anthropic.example")
+        XCTAssertEqual(vm.formData.models[0].protocols, ["openai", "anthropic"])
+    }
+
+    @MainActor
     func testOpenEditForm_emptyModels_addsDefaultRow() {
         let vm = ProvidersViewModel()
         let provider = ProviderDetail(
@@ -425,6 +450,25 @@ final class ProvidersViewModelTests: XCTestCase {
         XCTAssertTrue(provider.models.isEmpty)
     }
 
+    func testProviderDetailDecoding_multipleProtocolsWithoutLegacyBase() throws {
+        let json = """
+        {
+            "name": "shared",
+            "type": "openai",
+            "api_key": "sk-test",
+            "protocols": [
+                {"type": "openai", "api_base": "https://openai.example/v1"},
+                {"type": "anthropic", "api_base": "https://anthropic.example"}
+            ],
+            "models": [{"id": "shared-model", "protocols": ["openai", "anthropic"]}]
+        }
+        """.data(using: .utf8)!
+        let provider = try JSONDecoder().decode(ProviderDetail.self, from: json)
+        XCTAssertEqual(provider.api_base, "")
+        XCTAssertEqual(provider.supportedProtocols.map(\.type), ["openai", "anthropic"])
+        XCTAssertEqual(provider.models[0].protocols, ["openai", "anthropic"])
+    }
+
     func testPullModelsDataDecoding() throws {
         let json = """
         {
@@ -472,7 +516,8 @@ final class ProvidersViewModelTests: XCTestCase {
             type: "anthropic",
             api_key: "sk-key",
             api_base: "https://api.test.com",
-            models: [ProviderModelInput(id: "claude-3", thinking: ThinkingInput(budget_tokens: 1024, reasoning_effort: nil, type: nil), input: nil)]
+            protocols: [ProviderProtocolDetail(type: "anthropic", api_base: "https://api.test.com")],
+            models: [ProviderModelInput(id: "claude-3", protocols: ["anthropic"], thinking: ThinkingInput(budget_tokens: 1024, reasoning_effort: nil, type: nil), input: nil)]
         )
         let data = try JSONEncoder().encode(body)
         let json = try JSONSerialization.jsonObject(with: data) as! [String: Any]
@@ -480,9 +525,11 @@ final class ProvidersViewModelTests: XCTestCase {
         XCTAssertEqual(json["type"] as? String, "anthropic")
         XCTAssertEqual(json["api_key"] as? String, "sk-key")
         XCTAssertEqual(json["api_base"] as? String, "https://api.test.com")
+        XCTAssertEqual((json["protocols"] as? [[String: Any]])?.first?["type"] as? String, "anthropic")
         let models = json["models"] as! [[String: Any]]
         XCTAssertEqual(models.count, 1)
         XCTAssertEqual(models[0]["id"] as? String, "claude-3")
+        XCTAssertEqual(models[0]["protocols"] as? [String], ["anthropic"])
         let thinking = models[0]["thinking"] as! [String: Any]
         XCTAssertEqual(thinking["budget_tokens"] as? Int, 1024)
         XCTAssertNil(thinking["reasoning_effort"])

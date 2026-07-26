@@ -19,9 +19,9 @@ final class TestCoordinator {
     func requestProviderTest(provider: ProviderDetail) {
         clear()
         pendingProviderName = provider.name
-        pendingProviderType = provider.type
+        pendingProviderType = provider.supportedProtocols.first?.type ?? provider.type
         pendingApiKey = provider.api_key
-        pendingApiBase = provider.api_base
+        pendingApiBase = provider.supportedProtocols.first?.api_base ?? provider.api_base
         pendingModels = provider.models.map { $0.id }
         shouldSwitchToTestTab = true
     }

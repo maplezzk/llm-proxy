@@ -4,7 +4,7 @@ import { ConfigStore } from '../../src/config/store.js'
 import { StatusTracker } from '../../src/status/tracker.js'
 import { Logger } from '../../src/log/logger.js'
 import type { Config } from '../../src/config/types.js'
-import { handleGetConfig, handleReload, handleHealth, handleStatus, handleGetLocale, handleSetLocale } from '../../src/api/handlers/index.js'
+import { handleGetConfig, handleReload, handleHealth, handleStatus, handleGetLocale, handleSetLocale, handleCreateProvider } from '../../src/api/handlers/index.js'
 import type { OutgoingHttpHeaders } from 'node:http'
 
 function createConfig(): Config {
@@ -45,6 +45,32 @@ describe('api/handlers', () => {
     const data = JSON.parse(res.getBody())
     assert.strictEqual(data.success, true)
     assert.strictEqual(data.data.providers[0].api_key, 'sk-123')
+  })
+
+  it('POST /admin/providers 支持创建多协议供应商', async () => {
+    const tmpDir = (await import('node:fs')).mkdtempSync((await import('node:os')).tmpdir() + '/llm-proxy-test-')
+    const store = new ConfigStore(`${tmpDir}/config.yaml`, { providers: [] })
+    const ctx = { store, tracker: new StatusTracker(), logger: new Logger() }
+    const req = new (await import('stream')).Readable()
+    req.push(JSON.stringify({
+      name: 'multi',
+      api_key: 'k1',
+      protocols: [
+        { type: 'openai', api_base: 'https://example.test/openai' },
+        { type: 'anthropic', api_base: 'https://example.test/anthropic' },
+      ],
+      models: [
+        { id: 'chat', protocols: ['openai', 'anthropic'] },
+        { id: 'messages', protocols: ['anthropic'] },
+      ],
+    }))
+    req.push(null)
+    const res = mockRes()
+    await handleCreateProvider(ctx, req as never, res as never)
+    assert.strictEqual(res.getStatus(), 200)
+    const provider = store.getConfig().config.providers[0]
+    assert.deepStrictEqual(provider.protocols?.map((p) => p.type), ['openai', 'anthropic'])
+    assert.deepStrictEqual(provider.models[0].protocols, ['openai', 'anthropic'])
   })
 
   it('GET /admin/health 返回 ok', () => {

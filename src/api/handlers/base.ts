@@ -2,6 +2,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { ServerContext } from '../server.js'
 import { t } from '../../lib/i18n.js'
 import { json } from './index.js'
+import { getProviderPrimaryType } from '../../config/types.js'
 
 export function handleGetConfig(ctx: ServerContext, _req: IncomingMessage, res: ServerResponse): void {
   const { config } = ctx.store.getConfig()
@@ -10,11 +11,14 @@ export function handleGetConfig(ctx: ServerContext, _req: IncomingMessage, res: 
     data: {
       providers: config.providers.map((p) => ({
         name: p.name,
-        type: p.type,
+        type: getProviderPrimaryType(p),
         api_key: p.apiKey,
         api_base: p.apiBase,
+        protocols: p.protocols?.map((protocol) => ({ type: protocol.type, api_base: protocol.apiBase })),
         models: p.models.map((m) => ({
           id: m.id,
+          ...(m.protocols?.length ? { protocols: m.protocols } : {}),
+          ...(m.protocol ? { protocol: m.protocol } : {}),
           ...(m.thinking ? { thinking: {
             ...(m.thinking.budget_tokens ? { budget_tokens: m.thinking.budget_tokens } : {}),
             ...(m.thinking.type ? { type: m.thinking.type } : {}),
@@ -50,7 +54,7 @@ export function handleHealth(_ctx: ServerContext, _req: IncomingMessage, res: Se
 
 export function handleStatus(ctx: ServerContext, _req: IncomingMessage, res: ServerResponse): void {
   const { config } = ctx.store.getConfig()
-  const providers = config.providers.map((p) => ({ name: p.name, type: p.type }))
+  const providers = config.providers.map((p) => ({ name: p.name, type: getProviderPrimaryType(p) }))
   json(res, 200, { success: true, data: { providers: ctx.tracker.getAllStatuses(providers) } })
 }
 

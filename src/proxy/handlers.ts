@@ -39,7 +39,7 @@ async function handleRequest(
 
   let route
   try {
-    route = routeModel(ctx.store, pre.modelName)
+    route = routeModel(ctx.store, pre.modelName, inboundType)
   } catch (err) {
     ctx.logger.log('request', `Model not found: ${pre.modelName}`, { model: pre.modelName, type: inboundType }, 'warn')
     res.writeHead(404, { 'Content-Type': 'application/json' })

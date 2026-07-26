@@ -61,6 +61,8 @@ import TestPanelDialog from '../components/TestPanelDialog'
 /** config.providers[].models[] 的持久化结构（保存时写入）。 */
 interface ModelConfig {
   id: string
+  protocols?: ProviderType[]
+  protocol?: ProviderType
   thinking?: { budget_tokens?: number; reasoning_effort?: string; type?: string }
   reasoning_effort?: string
   input?: string[]
@@ -73,12 +75,14 @@ interface ProviderRow {
   available?: boolean
   api_key?: string
   api_base?: string
+  protocols?: Array<{ type: ProviderType; api_base?: string }>
   models?: ModelConfig[]
 }
 
 /** 表单中的模型行（budget_tokens 以字符串承载 number input）。 */
 interface ModelRow {
   id: string
+  protocols: ProviderType[]
   thinking: { budget_tokens?: string; type?: string }
   reasoning_effort: string
   input: string[]
@@ -86,10 +90,14 @@ interface ModelRow {
 
 interface FormState {
   name: string
-  type: ProviderType
   apiKey: string
-  apiBase: string
+  protocols: ProtocolRow[]
   models: ModelRow[]
+}
+
+interface ProtocolRow {
+  type: ProviderType
+  apiBase: string
 }
 
 interface PullModel {
@@ -102,6 +110,7 @@ interface PullState {
   open: boolean
   models: PullModel[]
   existing: string[]
+  protocol: ProviderType
   loading: boolean
   error: string
 }
@@ -115,14 +124,19 @@ interface TestTarget {
 
 /* ────────────────────────── 常量 / 工具 ────────────────────────── */
 
-const emptyModelRow = (): ModelRow => ({ id: '', thinking: {}, reasoning_effort: '', input: [] })
+const emptyModelRow = (protocol: ProviderType = 'openai'): ModelRow => ({ id: '', protocols: [protocol], thinking: {}, reasoning_effort: '', input: [] })
+
+const SUPPORTED_PROTOCOLS: Array<{ type: ProviderType; label: string }> = [
+  { type: 'openai', label: 'OpenAI (Chat)' },
+  { type: 'openai-responses', label: 'OpenAI (Responses)' },
+  { type: 'anthropic', label: 'Anthropic' },
+]
 
 const emptyForm = (): FormState => ({
   name: '',
-  type: 'openai',
   apiKey: '',
-  apiBase: '',
-  models: [emptyModelRow()],
+  protocols: [{ type: 'openai', apiBase: '' }],
+  models: [emptyModelRow('openai')],
 })
 
 /* ────────────────────────── 页面 ────────────────────────── */
@@ -155,6 +169,7 @@ export default function ProvidersPage() {
     open: false,
     models: [],
     existing: [],
+    protocol: 'openai',
     loading: false,
     error: '',
   })
@@ -198,6 +213,7 @@ export default function ProvidersPage() {
         available: p.available,
         api_key: configs[i]?.api_key,
         api_base: configs[i]?.api_base,
+        protocols: configs[i]?.protocols,
         models: configs[i]?.models ?? [],
       })),
     )
@@ -229,13 +245,19 @@ export default function ProvidersPage() {
       const p = providers.find((x) => x.name === name)
       if (p) {
         next = {
-          name: p.name,
-          type: (p.type as ProviderType) || 'openai',
+        name: p.name,
           apiKey: p.api_key || '',
-          apiBase: p.api_base || '',
+          protocols: (p.protocols?.length
+            ? p.protocols.map((protocol) => ({ type: protocol.type, apiBase: protocol.api_base || '' }))
+            : [{ type: (p.type as ProviderType) || 'openai', apiBase: p.api_base || '' }]),
           models:
             (p.models || []).map((m) => ({
               id: m.id,
+              protocols: m.protocols?.length
+                ? [...m.protocols]
+                : m.protocol
+                  ? [m.protocol]
+                  : p.protocols?.map((protocol) => protocol.type) ?? [(p.type as ProviderType) ?? 'openai'],
               thinking: {
                 budget_tokens: m.thinking?.budget_tokens != null ? String(m.thinking.budget_tokens) : '',
                 type: m.thinking?.type ?? '',
@@ -247,7 +269,7 @@ export default function ProvidersPage() {
         }
       }
     }
-    if (next.models.length === 0) next.models = [emptyModelRow()]
+    if (next.models.length === 0) next.models = [emptyModelRow(next.protocols[0]?.type ?? 'openai')]
     setForm(next)
     setFormOpen(true)
   }
@@ -271,7 +293,39 @@ export default function ProvidersPage() {
   }
 
   const addModelRow = () => {
-    setForm((f) => ({ ...f, models: [...f.models, emptyModelRow()] }))
+    setForm((f) => ({ ...f, models: [...f.models, emptyModelRow(f.protocols[0]?.type ?? 'openai')] }))
+  }
+
+  const toggleProviderProtocol = (type: ProviderType, enabled: boolean) => {
+    setForm((f) => {
+      const exists = f.protocols.some((protocol) => protocol.type === type)
+      if (enabled && !exists) {
+        return { ...f, protocols: [...f.protocols, { type, apiBase: '' }] }
+      }
+      if (!enabled && exists && f.protocols.length <= 1) return f
+      if (enabled === exists) return f
+      const nextProtocols = f.protocols.filter((protocol) => protocol.type !== type)
+      const fallback = nextProtocols[0]?.type ?? 'openai'
+      return {
+        ...f,
+        protocols: nextProtocols,
+        models: f.models.map((model) => ({
+          ...model,
+          protocols: model.protocols.filter((protocol) => protocol !== type).length > 0
+            ? model.protocols.filter((protocol) => protocol !== type)
+            : [fallback],
+        })),
+      }
+    })
+  }
+
+  const updateProtocolBase = (type: ProviderType, apiBase: string) => {
+    setForm((f) => {
+      return {
+        ...f,
+        protocols: f.protocols.map((protocol) => protocol.type === type ? { ...protocol, apiBase } : protocol),
+      }
+    })
   }
 
   const removeModelRow = (index: number) => {
@@ -296,12 +350,16 @@ export default function ProvidersPage() {
 
   /** 保存：校验 → 组装 validModels → PUT/POST → toast + 刷新（对齐旧版 save）。 */
   const save = async () => {
-    const { name, type, apiKey, apiBase, models } = form
+    const { name, apiKey, protocols, models } = form
+    const validProtocols = protocols.filter((protocol) => protocol.type)
+    const protocolTypes = new Set(validProtocols.map((protocol) => protocol.type))
     const validModels = models
       .filter((m) => m.id.trim())
       .map((m) => {
         const base: Record<string, unknown> = { id: m.id.trim() }
-        if (type === 'anthropic') {
+        const modelProtocols = m.protocols.filter((protocol) => protocolTypes.has(protocol))
+        if (modelProtocols.length > 0) base.protocols = modelProtocols
+        if (modelProtocols.includes('anthropic')) {
           const bt = parseInt(m.thinking.budget_tokens ?? '', 10)
           if (bt > 0) base.thinking = { budget_tokens: bt }
           if (m.reasoning_effort && (REASONING_EFFORTS as readonly string[]).includes(m.reasoning_effort)) {
@@ -328,6 +386,10 @@ export default function ProvidersPage() {
       toast(t('admin.providers.validationModels'), 'error')
       return
     }
+    if (validProtocols.length === 0) {
+      toast(t('admin.providers.validationProtocols'), 'error')
+      return
+    }
     if (!editingName && !apiKey) {
       toast(t('admin.providers.validationApiKey'), 'error')
       return
@@ -335,9 +397,11 @@ export default function ProvidersPage() {
 
     const body = {
       name,
-      type,
       api_key: apiKey,
-      api_base: apiBase || undefined,
+      protocols: validProtocols.map((protocol) => ({
+        type: protocol.type,
+        api_base: protocol.apiBase || undefined,
+      })),
       models: validModels,
     }
     const res = editingName
@@ -387,7 +451,7 @@ export default function ProvidersPage() {
   /* ──── pull-models ──── */
 
   const openPullModels = async () => {
-    const { name, type, apiKey, apiBase } = form
+    const { name, protocols, apiKey } = form
     const effectiveName = name || editingName
     if (!effectiveName) {
       toast(t('admin.providers.validationProviderName'), 'error')
@@ -397,12 +461,14 @@ export default function ProvidersPage() {
       toast(t('admin.providers.validationApiKey'), 'error')
       return
     }
-    setPull({ open: true, models: [], existing: [], loading: true, error: '' })
+    const selectedProtocolType = protocols[0]?.type ?? 'openai'
+    setPull({ open: true, models: [], existing: [], protocol: selectedProtocolType, loading: true, error: '' })
     setPullSearch('')
 
-    const body: Record<string, unknown> = { type }
+    const protocol = protocols[0] ?? { type: selectedProtocolType, apiBase: '' }
+    const body: Record<string, unknown> = { type: protocol.type }
     if (apiKey) body.api_key = apiKey
-    if (apiBase) body.api_base = apiBase
+    if (protocol.apiBase) body.api_base = protocol.apiBase
 
     const res = await fetchJson<ApiRes<{ models: Array<{ id: string; description?: string | null }>; existing?: string[] }>>(
       `/admin/providers/${effectiveName}/pull-models`,
@@ -414,7 +480,7 @@ export default function ProvidersPage() {
 
     if (!res?.success) {
       const detail = extractError(res, t('admin.providers.pullModelsError')) || t('admin.providers.pullModelsError')
-      setPull({ open: true, models: [], existing: [], loading: false, error: detail })
+      setPull({ open: true, models: [], existing: [], protocol: selectedProtocolType, loading: false, error: detail })
       return
     }
     const existing = res.data?.existing ?? []
@@ -423,7 +489,7 @@ export default function ProvidersPage() {
       description: m.description,
       checked: !existing.includes(m.id),
     }))
-    setPull({ open: true, models, existing, loading: false, error: '' })
+    setPull({ open: true, models, existing, protocol: selectedProtocolType, loading: false, error: '' })
   }
 
   const importPullModels = () => {
@@ -432,7 +498,7 @@ export default function ProvidersPage() {
     const addedRows: ModelRow[] = []
     for (const m of selected) {
       if (!existingIds.has(m.id)) {
-        addedRows.push({ id: m.id, thinking: {}, reasoning_effort: '', input: [] })
+        addedRows.push({ id: m.id, protocols: [pull.protocol as ProviderType], thinking: {}, reasoning_effort: '', input: [] })
         existingIds.add(m.id)
       }
     }
@@ -485,14 +551,12 @@ export default function ProvidersPage() {
     setTest({
       open: true,
       name: p.name,
-      providerType: p.type || '',
+      providerType: p.protocols?.[0]?.type || p.type || '',
       modelIds: (p.models ?? []).map((m) => m.id),
     })
   }
 
   /* ──── 渲染 ──── */
-
-  const isAnthropic = form.type === 'anthropic'
 
   return (
     <div className="flex flex-col gap-4 p-6">
@@ -643,25 +707,41 @@ export default function ProvidersPage() {
                 />
               </div>
 
-              {/* 类型 */}
-              <div className="flex flex-col gap-1.5">
-                <label className={LABEL_CLS}>{t('admin.providers.formType')}</label>
-                <Select
-                  size="sm"
-                  value={form.type}
-                  onValueChange={(v) => setForm((f) => ({ ...f, type: (String(v ?? 'openai') as ProviderType) }))}
-                >
-                  <SelectTrigger aria-label={t('admin.providers.formType')}>
-                    <SelectValue>
-                      {(v) => TYPE_LABELS[String(v ?? 'openai') as ProviderType] ?? String(v)}
-                    </SelectValue>
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="openai">OpenAI (Chat)</SelectItem>
-                    <SelectItem value="openai-responses">OpenAI (Responses)</SelectItem>
-                    <SelectItem value="anthropic">Anthropic</SelectItem>
-                  </SelectContent>
-                </Select>
+              {/* 协议列表 */}
+              <div className="flex flex-col gap-2">
+                <div>
+                  <span className={LABEL_CLS}>{t('admin.providers.formProtocols')}</span>
+                  <p className="mt-0.5 text-[11px] text-muted-foreground">{t('admin.providers.formProtocolsHint')}</p>
+                </div>
+                <div className="grid gap-2 sm:grid-cols-3">
+                  {SUPPORTED_PROTOCOLS.map(({ type, label }) => {
+                    const protocol = form.protocols.find((item) => item.type === type)
+                    return (
+                      <div
+                        key={type}
+                        className={`rounded-md border p-2.5 transition-colors ${protocol ? 'border-primary/50 bg-primary/5' : 'border-border bg-background-subtle'}`}
+                      >
+                        <label className="flex cursor-pointer items-center gap-2 text-xs font-medium select-none">
+                          <Checkbox
+                            checked={Boolean(protocol)}
+                            onCheckedChange={(checked) => toggleProviderProtocol(type, checked === true)}
+                          />
+                          {label}
+                        </label>
+                        {protocol && (
+                          <Input
+                            value={protocol.apiBase}
+                            onChange={(e) => updateProtocolBase(type, e.target.value)}
+                            placeholder={t('admin.providers.formApiBasePlaceholder')}
+                            inputSize="sm"
+                            aria-label={`${label} ${t('admin.providers.formApiBase')}`}
+                            className="mt-2 font-mono text-[11px]"
+                          />
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
               </div>
 
               {/* API Key */}
@@ -693,21 +773,6 @@ export default function ProvidersPage() {
                 {editingName && (
                   <p className="text-[11px] text-muted-foreground">{t('admin.providers.keepOriginal')}</p>
                 )}
-              </div>
-
-              {/* API Base */}
-              <div className="flex flex-col gap-1.5">
-                <label className={LABEL_CLS} htmlFor="provider-api-base">
-                  {t('admin.providers.formApiBase')}
-                </label>
-                <Input
-                  id="provider-api-base"
-                  value={form.apiBase}
-                  onChange={(e) => setForm((f) => ({ ...f, apiBase: e.target.value }))}
-                  placeholder={t('admin.providers.formApiBasePlaceholder')}
-                  inputSize="sm"
-                  className="font-mono"
-                />
               </div>
 
               {/* 模型列表 */}
@@ -750,9 +815,30 @@ export default function ProvidersPage() {
                         </Button>
                       </div>
 
+                      {/* 模型支持的协议 */}
+                      <div className="mt-2 flex items-center gap-2">
+                        <span className="w-14 shrink-0 text-[10.5px] font-medium text-primary-strong">
+                          {t('admin.providers.formProtocol')}
+                        </span>
+                        {form.protocols.map((protocol) => (
+                          <label key={protocol.type} className="flex cursor-pointer items-center gap-1 text-[11px] select-none">
+                            <Checkbox
+                              checked={m.protocols.includes(protocol.type)}
+                              onCheckedChange={(checked) => {
+                                const next = checked
+                                  ? [...new Set([...m.protocols, protocol.type])]
+                                  : m.protocols.filter((value) => value !== protocol.type)
+                                if (next.length > 0) updateModel(i, { protocols: next })
+                              }}
+                            />
+                            {TYPE_LABELS[protocol.type]}
+                          </label>
+                        ))}
+                      </div>
+
                       {/* thinking / 模态配置 */}
                       <div className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-2">
-                        {isAnthropic && (
+                        {m.protocols.includes('anthropic') && (
                           <label className="flex items-center gap-1.5">
                             <span className="text-[10.5px] font-medium whitespace-nowrap text-primary-strong">
                               {t('admin.providers.thinkingBudget')}

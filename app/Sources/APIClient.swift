@@ -201,7 +201,7 @@ class APIClient {
         return stats
     }
 
-    /// 获取趋势折线图数据（支持天数或自定义日期范围）
+    /// 获取趋势图数据（支持天数或自定义日期范围）
     func fetchTokenTimeline(days: Int = 30, startDate: String? = nil, endDate: String? = nil) async throws -> [TimelinePoint] {
         var query = "days=\(days)"
         if let s = startDate, let e = endDate {
@@ -215,7 +215,7 @@ class APIClient {
     }
 
     /// 按维度分桶查询，与 token-stats/timeline 共用同一对 startDate/endDate
-    /// - Parameter dimension: provider / adapter / model
+    /// - Parameter dimension: provider / adapter / model / adapterModel
     func fetchTokenBreakdown(dimension: String, startDate: String? = nil, endDate: String? = nil) async throws -> [UsageBucket] {
         var query = "dimension=\(dimension)"
         if let s = startDate, let e = endDate {
@@ -341,23 +341,23 @@ class APIClient {
         throw URLError(.cannotParseResponse)
     }
 
-    func createProvider(name: String, type: String, apiKey: String, apiBase: String, models: [ProviderModelInput]) async throws {
+    func createProvider(name: String, type: String, apiKey: String, apiBase: String, protocols: [ProviderProtocolDetail]? = nil, models: [ProviderModelInput]) async throws {
         let url = URL(string: "\(baseURL)/admin/providers")!
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        let body = CreateProviderBody(name: name, type: type, api_key: apiKey, api_base: apiBase, models: models)
+        let body = CreateProviderBody(name: name, type: type, api_key: apiKey, api_base: apiBase, protocols: protocols, models: models)
         req.httpBody = try JSONEncoder().encode(body)
         let (data, resp) = try await URLSession.shared.data(for: req)
         try Self.validate(data: data, response: resp, context: "createProvider")
     }
 
-    func updateProvider(name: String, type: String, apiKey: String, apiBase: String, models: [ProviderModelInput]) async throws {
+    func updateProvider(name: String, type: String, apiKey: String, apiBase: String, protocols: [ProviderProtocolDetail]? = nil, models: [ProviderModelInput]) async throws {
         let url = URL(string: "\(baseURL)/admin/providers/\(name)")!
         var req = URLRequest(url: url)
         req.httpMethod = "PUT"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        let body = UpdateProviderBody(name: name, type: type, api_key: apiKey, api_base: apiBase, models: models)
+        let body = UpdateProviderBody(name: name, type: type, api_key: apiKey, api_base: apiBase, protocols: protocols, models: models)
         req.httpBody = try JSONEncoder().encode(body)
         let (data, resp) = try await URLSession.shared.data(for: req)
         try Self.validate(data: data, response: resp, context: "updateProvider")

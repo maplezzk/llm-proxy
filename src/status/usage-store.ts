@@ -426,7 +426,8 @@ export class UsageStore {
   }
 
   /**
-   * 按维度分桶查询：'provider' | 'adapter' | 'model'
+   * 按维度分桶查询：provider / adapter / provider model / adapter model。
+   * 两种模型维度都带所属对象前缀，避免同名模型被错误合并。
    * - startDate + endDate 都给：自定义日期范围
    * - 否则按 range（默认 'today'）：today / 7d / 30d / all
    */
@@ -437,8 +438,8 @@ export class UsageStore {
     const t0 = process.hrtime.bigint()
     const { startDate, endDate } = opts
     const range = opts.range ?? 'today'
-    // model（供应商模型）按上游真实模型分组（usage_events.upstream_model）；
-    // adapterModel（适配器模型）按客户端请求模型名分组、仅含适配器请求（虚拟名如 GPT/MAX）。
+    // model（供应商模型）按 provider/upstream_model 分组；
+    // adapterModel（适配器模型）按 adapter/model 分组、仅含适配器请求（虚拟名如 GPT/MAX）。
     // daily_aggregates.model 存的是客户端请求模型名且无法区分来源，两者都改查事件表。
     const fromEvents = dimension === 'model' || dimension === 'adapterModel'
     const col =
@@ -447,8 +448,8 @@ export class UsageStore {
         : dimension === 'adapter'
           ? 'adapter'
           : dimension === 'model'
-            ? 'upstream_model'
-            : 'model'
+            ? "provider || '/' || upstream_model"
+            : "adapter || '/' || model"
     let where = ''
     const params: unknown[] = []
     if (startDate && endDate) {

@@ -119,6 +119,20 @@ providers:
         thinking:
           type: enabled
 
+  # 一个供应商可以同时配置多个协议；每个模型指定它使用的协议。
+  - name: multi-protocol-provider
+    api_key: ${MULTI_PROTOCOL_API_KEY}
+    protocols:
+      - type: openai
+        api_base: https://gateway.example.com/openai
+      - type: anthropic
+        api_base: https://gateway.example.com/anthropic
+    models:
+      - id: chat-model
+        protocols: [openai, anthropic]
+      - id: messages-model
+        protocols: [anthropic]
+
 adapters:
   - name: my-tool
     type: anthropic
