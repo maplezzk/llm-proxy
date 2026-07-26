@@ -93,7 +93,8 @@ struct CleanupResponse: Codable {
 }
 
 struct CleanupResult: Codable {
-    let days: Int
+    let days: Int?
+    let all: Bool?
     let events: Int
     let aggregates: Int
 }

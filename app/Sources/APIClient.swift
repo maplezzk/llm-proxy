@@ -201,7 +201,7 @@ class APIClient {
         return stats
     }
 
-    /// 获取趋势折线图数据（支持天数或自定义日期范围）
+    /// 获取趋势图数据（支持天数或自定义日期范围）
     func fetchTokenTimeline(days: Int = 30, startDate: String? = nil, endDate: String? = nil) async throws -> [TimelinePoint] {
         var query = "days=\(days)"
         if let s = startDate, let e = endDate {
@@ -215,7 +215,7 @@ class APIClient {
     }
 
     /// 按维度分桶查询，与 token-stats/timeline 共用同一对 startDate/endDate
-    /// - Parameter dimension: provider / adapter / model
+    /// - Parameter dimension: provider / adapter / model / adapterModel
     func fetchTokenBreakdown(dimension: String, startDate: String? = nil, endDate: String? = nil) async throws -> [UsageBucket] {
         var query = "dimension=\(dimension)"
         if let s = startDate, let e = endDate {
@@ -239,13 +239,15 @@ class APIClient {
         return info
     }
 
-    /// 清理 N 天前的历史数据
-    func cleanupTokenUsage(days: Int = 90) async throws -> CleanupResult {
+    /// 清理 N 天前的历史数据，或一次性清空全部用量数据。
+    func cleanupTokenUsage(days: Int = 90, all: Bool = false) async throws -> CleanupResult {
         let url = URL(string: "\(baseURL)/admin/token-stats/cleanup")!
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.httpBody = try JSONSerialization.data(withJSONObject: ["days": days])
+        req.httpBody = try JSONSerialization.data(
+            withJSONObject: all ? ["all": true] : ["days": max(1, min(365, days))]
+        )
         let (data, _) = try await URLSession.shared.data(for: req)
         let resp = try JSONDecoder().decode(CleanupResponse.self, from: data)
         guard resp.success, let result = resp.data else {

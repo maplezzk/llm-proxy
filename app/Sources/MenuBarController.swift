@@ -8,7 +8,7 @@ enum ServiceState {
     case stopped    // 未运行
 }
 
-class MenuBarController: NSObject {
+class MenuBarController: NSObject, NSMenuDelegate {
     let statusItem: NSStatusItem
     let client = APIClient()
     let updateChecker = UpdateChecker()
@@ -38,11 +38,31 @@ class MenuBarController: NSObject {
     /// 菜单栏状态卡片上的今日用量摘要
     private var todayTokensText: String?
     private var todayHitRateText: String?
+    /// 菜单栏状态卡片上的最近 30 天用量
+    private var recentUsage: [MenuUsagePoint] = []
+    private let usageInteraction = MenuUsageInteraction()
+    private var usageDetailCache: [String: [MenuUsageDimension: [UsageBucket]]] = [:]
+    private var usageDetailTask: Task<Void, Never>?
+    private var usageDetailMenu: NSMenu?
+    private var activeMenu: NSMenu?
     private var isCheckingUpdate = false
     private var isDownloadingUpdate = false
     private var downloadProgress: Double = 0
     private var downloadCompletedURL: URL?
     private var consoleWindowController: ConsoleWindowController?
+
+    private static let usageDayFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar.current
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone.current
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter
+    }()
+
+    private var todayUsageDate: String {
+        Self.usageDayFormatter.string(from: Date())
+    }
 
     init(statusItem: NSStatusItem) {
         self.statusItem = statusItem
@@ -101,6 +121,13 @@ class MenuBarController: NSObject {
 
     @MainActor
     func refresh() async {
+        usageDetailTask?.cancel()
+        usageDetailMenu = nil
+        activeMenu = nil
+        usageDetailCache.removeAll()
+        usageInteraction.hoveredDate = nil
+        usageInteraction.buckets = []
+        usageInteraction.isLoading = false
         do {
             async let adaptersResp = client.fetchAdapters()
             async let configResp = client.fetchConfig()
@@ -115,18 +142,40 @@ class MenuBarController: NSObject {
         serviceState = ((try? await client.fetchHealth()) ?? false) ? .running : .stopped
         currentLogLevel = (try? await client.fetchLogLevel()) ?? "info"
         // 今日 token 用量摘要（菜单栏状态卡片）
-        if serviceState == .running,
-           let stats = try? await client.fetchTokenStats() {
-            let today = stats.today
-            todayTokensText = DashboardViewModel.fmtNum(DashboardViewModel.totalTokens(
-                input: today.input_tokens, output: today.output_tokens,
-                cacheRead: today.cache_read_input_tokens, cacheCreate: today.cache_creation_input_tokens))
-            todayHitRateText = DashboardViewModel.hitRate(
-                input: today.input_tokens, output: today.output_tokens,
-                cacheRead: today.cache_read_input_tokens, cacheCreate: today.cache_creation_input_tokens)
+        if serviceState == .running {
+            async let statsTask = client.fetchTokenStats()
+            async let timelineTask = client.fetchTokenTimeline(days: 30)
+            if let stats = try? await statsTask {
+                let today = stats.today
+                todayTokensText = DashboardViewModel.fmtNum(DashboardViewModel.totalTokens(
+                    input: today.input_tokens, output: today.output_tokens,
+                    cacheRead: today.cache_read_input_tokens, cacheCreate: today.cache_creation_input_tokens))
+                todayHitRateText = DashboardViewModel.hitRate(
+                    input: today.input_tokens, output: today.output_tokens,
+                    cacheRead: today.cache_read_input_tokens, cacheCreate: today.cache_creation_input_tokens)
+            } else {
+                todayTokensText = nil
+                todayHitRateText = nil
+            }
+            if let timeline = try? await timelineTask {
+                recentUsage = timeline.map { point in
+                    MenuUsagePoint(
+                        date: point.date,
+                        tokens: DashboardViewModel.totalTokens(
+                            input: point.input_tokens,
+                            output: point.output_tokens,
+                            cacheRead: point.cache_read_input_tokens,
+                            cacheCreate: point.cache_creation_input_tokens
+                        )
+                    )
+                }
+            } else {
+                recentUsage = []
+            }
         } else {
             todayTokensText = nil
             todayHitRateText = nil
+            recentUsage = []
         }
         // 从服务端同步端口（仅当服务端可达时才更新，不覆盖用户意图）
         if let sp = try? await client.fetchPort() {
@@ -144,23 +193,40 @@ class MenuBarController: NSObject {
         // 临时状态文案只在 serviceOperation 期间保留，操作结束后重建时清除
         if !isServiceOperationInProgress { transientStatus = nil }
         let menu = NSMenu()
+        menu.appearance = NSAppearance(named: .aqua)
+        menu.delegate = self
 
-        // ── 状态卡片（CodexBar 风格：状态 + 端口 + 今日用量 + 服务控制按钮）──
-        let statusCard = StatusCardView(
-            model: StatusCardModel(
-                state: serviceState,
-                port: currentPort,
-                todayTokensText: todayTokensText,
-                hitRateText: todayHitRateText,
-                isOperationInProgress: isServiceOperationInProgress,
-                transientText: transientStatus
-            ),
+        // 状态、用量图、服务控制拆成独立菜单项。只有用量图项挂详情子菜单，
+        // 因此 AppKit 的 hover 命中不会扩散到整张顶部卡片。
+        let statusModel = StatusCardModel(
+            state: serviceState,
+            port: currentPort,
+            todayTokensText: todayTokensText,
+            hitRateText: todayHitRateText,
+            isOperationInProgress: isServiceOperationInProgress,
+            transientText: transientStatus
+        )
+        menu.addItem(makeCardItem(ServiceStatusCardView(model: statusModel), interactive: false))
+
+        if !recentUsage.isEmpty {
+            let usageItem = makeCardItem(
+                MenuUsageChartCardView(points: recentUsage),
+                interactive: true
+            )
+            usageItem.submenu = makeUsageDetailMenu()
+            usageItem.target = self
+            usageItem.action = #selector(menuCardNoOp(_:))
+            menu.addItem(usageItem)
+        }
+
+        let controlsCard = ServiceControlCardView(
+            model: statusModel,
             onStart: { [weak self] in self?.startService() },
             onStop: { [weak self] in self?.stopService() },
             onRestart: { [weak self] in self?.restartService() },
             onReload: { [weak self] in self?.reloadConfig() }
         )
-        menu.addItem(makeCardItem(statusCard, interactive: true))
+        menu.addItem(makeCardItem(controlsCard, interactive: true))
         menu.addItem(.separator())
 
         // 界面组：控制台 + Web UI
@@ -352,7 +418,117 @@ class MenuBarController: NSObject {
             }
         }
 
+        activeMenu = menu
+        // 交给 NSStatusItem 原生定位：系统会把菜单放在状态栏下方，并处理多屏、
+        // 刘海和菜单栏高度，避免手算屏幕坐标导致菜单贴得过高。
         statusItem.menu = menu
+    }
+
+    func menuWillOpen(_ menu: NSMenu) {
+        guard menu === activeMenu, !recentUsage.isEmpty else { return }
+        prepareUsageDetailSelection()
+    }
+
+    func menuDidClose(_ menu: NSMenu) {
+        // 详情子菜单关闭时不要清空选中的日期；用户从图表移动到右侧详情面板时，
+        // AppKit 可能会先回调子菜单的 close。只有整个主菜单关闭才清理本次会话状态。
+        guard menu === activeMenu else { return }
+        usageInteraction.hoveredDate = nil
+        usageInteraction.buckets = []
+        usageInteraction.isLoading = false
+    }
+
+    @MainActor
+    private func handleUsageDayHover(date: String, isActive: Bool) {
+        guard isActive else { return }
+        usageInteraction.hoveredDate = date
+        loadUsageDetail(date: date, dimension: usageInteraction.dimension)
+    }
+
+    @MainActor
+    private func makeUsageDetailMenu() -> NSMenu {
+        let menu = NSMenu()
+        menu.appearance = NSAppearance(named: .aqua)
+        menu.autoenablesItems = false
+        menu.delegate = self
+
+        let hosting = NSHostingView(rootView: makeUsageDetailView())
+        hosting.appearance = NSAppearance(named: .aqua)
+        hosting.frame = NSRect(x: 0, y: 0, width: 330, height: 420)
+        let item = NSMenuItem()
+        item.view = hosting
+        item.isEnabled = true
+        menu.addItem(item)
+        usageDetailMenu = menu
+        return menu
+    }
+
+    @MainActor
+    private func makeUsageDetailView() -> MenuUsagePopoverView {
+        return MenuUsagePopoverView(
+            points: recentUsage,
+            interaction: usageInteraction,
+            onDimensionChange: { [weak self] dimension in
+                self?.handleUsageDimensionChange(dimension)
+            },
+            onDayHover: { [weak self] date, isActive in
+                self?.handleUsageDayHover(date: date, isActive: isActive)
+            },
+            onPanelHover: { _ in }
+        )
+    }
+
+    @MainActor
+    private func prepareUsageDetailSelection() {
+        // 菜单每次打开都从“今天”开始；即使今天暂无请求，也要显示今天而不是空日期/0。
+        usageInteraction.hoveredDate = todayUsageDate
+        loadUsageDetail(date: todayUsageDate, dimension: usageInteraction.dimension)
+    }
+
+    @MainActor
+    private func makeUsageDetailController() -> NSViewController {
+        NSHostingController(
+            rootView: makeUsageDetailView()
+        )
+    }
+
+    @MainActor
+    private func handleUsageDimensionChange(_ dimension: MenuUsageDimension) {
+        usageInteraction.dimension = dimension
+        guard let date = usageInteraction.hoveredDate else { return }
+        loadUsageDetail(date: date, dimension: dimension)
+    }
+
+    @MainActor
+    private func loadUsageDetail(date: String, dimension: MenuUsageDimension) {
+        usageDetailTask?.cancel()
+        if let cached = usageDetailCache[date]?[dimension] {
+            usageInteraction.buckets = cached
+            usageInteraction.isLoading = false
+            return
+        }
+
+        usageInteraction.buckets = []
+        usageInteraction.isLoading = true
+        usageDetailTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            do {
+                let buckets = try await self.client.fetchTokenBreakdown(
+                    dimension: dimension.rawValue,
+                    startDate: date,
+                    endDate: date
+                )
+                guard !Task.isCancelled,
+                      self.usageInteraction.hoveredDate == date,
+                      self.usageInteraction.dimension == dimension else { return }
+                self.usageDetailCache[date, default: [:]][dimension] = buckets
+                self.usageInteraction.buckets = buckets
+            } catch {
+                guard !Task.isCancelled else { return }
+                self.usageInteraction.buckets = []
+            }
+            self.usageInteraction.isLoading = false
+        }
     }
 
     /// 生成带主题色的 SF Symbol 菜单图标（非 template，高亮时保持彩色，ClashMac 风格）
@@ -369,7 +545,8 @@ class MenuBarController: NSObject {
     /// 将 SwiftUI 卡片包装成菜单项（CodexBar 风格富菜单）
     @MainActor
     private func makeCardItem<Content: View>(_ view: Content, interactive: Bool) -> NSMenuItem {
-        let hosting = NSHostingView(rootView: view)
+        let hosting = MenuCardHostingView(rootView: view)
+        hosting.appearance = NSAppearance(named: .aqua)
         hosting.frame = NSRect(origin: .zero, size: NSSize(width: MenuCardMetrics.width, height: 1))
         let height = max(1, ceil(hosting.fittingSize.height))
         hosting.frame = NSRect(origin: .zero, size: NSSize(width: MenuCardMetrics.width, height: height))
@@ -894,6 +1071,14 @@ class MenuBarController: NSObject {
     @MainActor @objc func quitApp() {
         guard !isQuitting else { return }
         isQuitting = true
+
+        // 服务已经停止时不再调用 stop CLI。旧路径会等待一个没有目标进程的
+        // stop 流程，导致菜单项高亮但应用迟迟不退出。
+        if serviceState == .stopped {
+            finishQuit()
+            return
+        }
+
         setTransientStatus(loc("status.stopping"))
 
         // 如果已有 start/stop/restart 正在进行，先等它完成，再发起唯一的
@@ -933,8 +1118,25 @@ class MenuBarController: NSObject {
                 return
             }
 
-            (NSApp.delegate as? AppDelegate)?.shouldReallyQuit = true
-            NSApplication.shared.terminate(nil)
+            self.finishQuit()
+        }
+    }
+
+    /// 菜单栏应用的 terminate 在异步任务中偶尔不会真正结束进程，保留一个
+    /// 延迟兜底；服务已确认停止后使用 exit 不会留下后台代理进程。
+    @MainActor
+    private func finishQuit() {
+        usageDetailTask?.cancel()
+        usageDetailMenu = nil
+        activeMenu = nil
+        pollTimer?.invalidate()
+        updateCheckTimer?.invalidate()
+        (NSApp.delegate as? AppDelegate)?.shouldReallyQuit = true
+        NSApp.terminate(nil)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            if NSApp.isRunning {
+                exit(0)
+            }
         }
     }
 
@@ -1299,6 +1501,27 @@ class MenuBarController: NSObject {
         alert.messageText = loc("app.title")
         alert.informativeText = msg
         alert.runModal()
+    }
+}
+
+/// 裸 NSHostingView 会把菜单项的鼠标命中交给 SwiftUI 子视图，带 submenu 的菜单项因此
+/// 可能既不高亮也不响应点击。CodexBar 使用同样的路由思路：普通区域交给 NSMenu，内部
+/// 的 NSControl 保留给 SwiftUI 控件。
+private final class MenuCardHostingView<Content: View>: NSHostingView<Content> {
+    override var allowsVibrancy: Bool { true }
+
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        guard let descendant = super.hitTest(point) else { return nil }
+        var current: NSView? = descendant
+        while let view = current, view !== self {
+            if view is NSControl || view is NSButton {
+                return descendant
+            }
+            current = view.superview
+        }
+        return self
     }
 }
 
