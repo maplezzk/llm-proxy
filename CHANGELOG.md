@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.23.1](https://github.com/maplezzk/llm-proxy/compare/v0.23.0...v0.23.1) (2026-07-26)
+
+
+### Bug Fixes
+
+* 修复 npm CI 依赖源地址 ([abd41f3](https://github.com/maplezzk/llm-proxy/commit/abd41f37ba07e8c279c355cda5cd7206ba2a56fd))
+* 修复 npm CI 依赖源地址 ([3757c02](https://github.com/maplezzk/llm-proxy/commit/3757c02550139a59f5eee7d2a82958c4e5d10562))
+
 ## [0.23.0](https://github.com/maplezzk/llm-proxy/compare/v0.22.3...v0.23.0) (2026-07-26)
 
 
