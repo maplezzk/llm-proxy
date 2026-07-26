@@ -29,8 +29,21 @@ export default defineConfig({
     outDir: 'dist',
   },
   server: {
+    host: '127.0.0.1',
+    port: Number(process.env.VITE_PORT ?? 9004),
+    // strictPort：端口被占用时立即报错退出，避免 Vite 静默 fallback 到下一个可用端口，
+    // 进而导致 dev wrapper 的 waitForHealth 命中错误端口报出"启动超时"。
+    strictPort: true,
     proxy: {
-      '/admin': 'http://localhost:9000',
+      '/api': {
+        target: `http://127.0.0.1:${process.env.LLM_PROXY_DEV_BACKEND_PORT ?? 9014}`,
+      },
+      '/v1': {
+        target: `http://127.0.0.1:${process.env.LLM_PROXY_DEV_BACKEND_PORT ?? 9014}`,
+      },
+      '^/[a-zA-Z0-9_-]+/v1/': {
+        target: `http://127.0.0.1:${process.env.LLM_PROXY_DEV_BACKEND_PORT ?? 9014}`,
+      },
     },
   },
 })
