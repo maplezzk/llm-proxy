@@ -1,5 +1,6 @@
 import { describe, it, afterEach } from 'node:test'
 import assert from 'node:assert'
+import { existsSync, unlinkSync, writeFileSync } from 'node:fs'
 import { installShutdownHandlers } from '../../src/cli/commands.js'
 
 describe('cli/commands', () => {
@@ -130,6 +131,29 @@ describe('cli/commands', () => {
       assert.strictEqual(serverClosed, true, 'server.close 应被调用')
       assert.strictEqual(exitCalled, true, 'process.exit 必须被调用')
       assert.strictEqual(exitCode, 0, '退出码应为 0')
+    })
+
+    it('旧进程退出时不应删除新实例的 PID 文件', () => {
+      const pidPath = `/tmp/llm-proxy-shutdown-race-${process.pid}.pid`
+      // 模拟旧实例收到 SIGTERM 后，新实例已经把自己的状态写入 PID 文件。
+      writeFileSync(pidPath, JSON.stringify({ pid: 999999999, port: 9000, startedAt: Date.now() }))
+
+      try {
+        withMockedProcessExit(() => {
+          installShutdownHandlers({
+            server: { close: () => {} } as never,
+            visionCache: { flushSync: () => {} },
+            t: (k: string) => k,
+            pidPath,
+            signalTarget: 'SIGTERM',
+          })
+          process.emit('SIGTERM')
+        })
+
+        assert.strictEqual(existsSync(pidPath), true, '新实例的 PID 文件必须保留')
+      } finally {
+        try { unlinkSync(pidPath) } catch { /* ignore */ }
+      }
     })
   })
 })

@@ -304,7 +304,8 @@
       "notRunning": "No running proxy found",
       "stalePid": "Found stale PID file, cleaning up...",
       "stopping": "Stopping proxy (PID: {{pid}})...",
-      "forceKill": "Process did not exit in time, force killed (PID: {{pid}})"
+      "forceKill": "Process did not exit in time, force killed (PID: {{pid}})",
+      "recovered": "Recovered proxy from port {{port}} (PID: {{pid}})..."
     },
     "status": {
       "notRunning": "Proxy is not running",

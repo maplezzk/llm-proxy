@@ -321,6 +321,7 @@ export type TranslationKey =
   | 'cli.status.running'
   | 'cli.stop.forceKill'
   | 'cli.stop.notRunning'
+  | 'cli.stop.recovered'
   | 'cli.stop.stalePid'
   | 'cli.stop.stopping'
 

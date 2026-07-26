@@ -21,8 +21,16 @@ class MenuBarController: NSObject {
     private var currentLogLevel: String = "info"
     /// 菜单栏显示的端口（从 UserDefaults 读取，用户意图端口）
     private var currentPort: Int = APIClient.storedPort()
+    /// 用于 stop 兜底查找的实际连接端口；PID 文件冲突时可能与显示端口不同。
+    private var serviceControlPort: Int {
+        URL(string: client.baseURL)?.port ?? currentPort
+    }
     private var pollTimer: Timer?
     private var updateCheckTimer: Timer?
+    /// 任何服务生命周期操作都必须串行执行，避免 stop/start/restart 交错读写 PID 文件。
+    private var serviceOperationTask: Task<Void, Never>?
+    private var isServiceOperationInProgress = false
+    private var isQuitting = false
     private var pendingUpdate: UpdateInfo?
     private var isCheckingUpdate = false
     private var isDownloadingUpdate = false
@@ -142,12 +150,14 @@ class MenuBarController: NSObject {
         if isRunning {
             let stopItem = NSMenuItem(title: loc("action.stop"), action: #selector(stopService), keyEquivalent: "")
             stopItem.target = self
+            stopItem.isEnabled = !isServiceOperationInProgress
             if #available(macOS 11.0, *) {
                 stopItem.image = NSImage(systemSymbolName: "stop.fill", accessibilityDescription: loc("action.stop"))
             }
             menu.addItem(stopItem)
             let restartItem = NSMenuItem(title: loc("action.restart"), action: #selector(restartService), keyEquivalent: "")
             restartItem.target = self
+            restartItem.isEnabled = !isServiceOperationInProgress
             if #available(macOS 11.0, *) {
                 restartItem.image = NSImage(systemSymbolName: "arrow.clockwise", accessibilityDescription: loc("action.restart"))
             }
@@ -155,6 +165,7 @@ class MenuBarController: NSObject {
         } else {
             let startItem = NSMenuItem(title: loc("action.start"), action: #selector(startService), keyEquivalent: "")
             startItem.target = self
+            startItem.isEnabled = !isServiceOperationInProgress
             if #available(macOS 11.0, *) {
                 startItem.image = NSImage(systemSymbolName: "play.fill", accessibilityDescription: loc("action.start"))
             }
@@ -451,39 +462,68 @@ class MenuBarController: NSObject {
     }
 
     @MainActor @objc func stopService() {
-        runCLI("stop")
+        guard !isServiceOperationInProgress else { return }
+        isServiceOperationInProgress = true
         setTransientStatus(loc("status.stopping"))
-        Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 1_500_000_000)
-            await refresh()
+        serviceOperationTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            let result = await self.runCLIAndWait("stop", port: self.serviceControlPort)
+            if result.exitCode != 0 {
+                NSLog("[LLMProxy] ❌ 菜单栏停止服务失败 (exit=\(result.exitCode)): \(result.output)")
+                self.isServiceOperationInProgress = false
+                self.serviceOperationTask = nil
+                await self.refresh()
+                self.showError(result.output.isEmpty ? "停止服务失败" : result.output)
+                return
+            }
+            await self.waitForStoppedAndRefresh()
+            self.isServiceOperationInProgress = false
+            self.serviceOperationTask = nil
+            self.rebuildMenu()
         }
     }
 
     @MainActor @objc func restartService() {
+        guard !isServiceOperationInProgress else { return }
+        isServiceOperationInProgress = true
         setTransientStatus(loc("status.restarting"))
-        Task { @MainActor in
-            let error = await startCLIWithPort("restart", port: currentPort)
+        serviceOperationTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            let error = await self.startCLIWithPort("restart", port: self.currentPort)
             if let err = error {
-                showError(err)
-                await refresh()
+                self.showError(err)
+                await self.refresh()
+                self.isServiceOperationInProgress = false
+                self.serviceOperationTask = nil
                 return
             }
             // 轮询等待服务就绪后刷新配置
-            await waitForReadyAndRefresh()
+            await self.waitForReadyAndRefresh()
+            self.isServiceOperationInProgress = false
+            self.serviceOperationTask = nil
+            self.rebuildMenu()
         }
     }
 
     @MainActor @objc func startService() {
+        guard !isServiceOperationInProgress else { return }
+        isServiceOperationInProgress = true
         setTransientStatus(loc("status.starting"))
-        Task { @MainActor in
-            let error = await startCLIWithPort("start", port: currentPort)
+        serviceOperationTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            let error = await self.startCLIWithPort("start", port: self.currentPort)
             if let err = error {
-                showError(err)
-                await refresh()
+                self.showError(err)
+                await self.refresh()
+                self.isServiceOperationInProgress = false
+                self.serviceOperationTask = nil
                 return
             }
             // 轮询等待服务就绪后刷新配置
-            await waitForReadyAndRefresh()
+            await self.waitForReadyAndRefresh()
+            self.isServiceOperationInProgress = false
+            self.serviceOperationTask = nil
+            self.rebuildMenu()
         }
     }
 
@@ -500,9 +540,28 @@ class MenuBarController: NSObject {
         }
         // 服务未运行：保持“启动中”，调 CLI 启动，由轮询检测到后切换为“运行中”
         NSLog("[LLMProxy] 🔄 服务未运行，自动启动...")
+        guard !isServiceOperationInProgress else { return }
+        isServiceOperationInProgress = true
         serviceState = .starting
         rebuildMenu()
-        runCLI("restart")
+        serviceOperationTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            // Preserve the CLI's config.yaml port during automatic startup;
+            // currentPort is the menu's user-intent cache and can be stale on
+            // first launch of an existing installation.
+            let error = await self.startCLIWithPort("restart", port: nil)
+            if let error {
+                NSLog("[LLMProxy] ❌ 自动启动服务失败: \(error)")
+                self.isServiceOperationInProgress = false
+                self.serviceOperationTask = nil
+                await self.refresh()
+                return
+            }
+            await self.waitForReadyAndRefresh()
+            self.isServiceOperationInProgress = false
+            self.serviceOperationTask = nil
+            self.rebuildMenu()
+        }
     }
 
     @MainActor
@@ -545,28 +604,28 @@ class MenuBarController: NSObject {
     }
 
     /// 异步启动带端口的命令，返回错误信息（nil 表示成功）
-    func startCLIWithPort(_ command: String, port: Int) async -> String? {
+    func startCLIWithPort(_ command: String, port: Int?) async -> String? {
         let task = Process()
         let shell = "/bin/zsh"
         task.executableURL = URL(fileURLWithPath: shell)
 
-        let cmdLine: String
         if let bundled = bundledBinaryPath() {
-            cmdLine = "\"\(bundled)\" \(command) --port \(port)"
+            let portArgument = port.map { " --port \($0)" } ?? ""
+            let cmdLine = "\"\(bundled)\" \(command)\(portArgument)"
             task.arguments = ["-l", "-c", cmdLine]
             task.currentDirectoryURL = URL(fileURLWithPath: Bundle.main.resourcePath!)
         } else if let jsEntry = debugNodeEntryPath() {
             let projectRoot = ((jsEntry as NSString).deletingLastPathComponent as NSString).deletingLastPathComponent
-            cmdLine = "node \"\(jsEntry)\" \(command) --port \(port)"
             task.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-            task.arguments = ["node", jsEntry, command, "--port", String(port)]
+            task.arguments = ["node", jsEntry, command] + (port.map { ["--port", String($0)] } ?? [])
             task.currentDirectoryURL = URL(fileURLWithPath: projectRoot)
         } else {
             let fallback = "/opt/homebrew/bin/llm-proxy"
             guard FileManager.default.isExecutableFile(atPath: fallback) else {
                 return "找不到 llm-proxy 二进制"
             }
-            cmdLine = "\"\(fallback)\" \(command) --port \(port)"
+            let portArgument = port.map { " --port \($0)" } ?? ""
+            let cmdLine = "\"\(fallback)\" \(command)\(portArgument)"
             task.arguments = ["-l", "-c", cmdLine]
         }
 
@@ -648,6 +707,26 @@ class MenuBarController: NSObject {
         }
         // 超时，尝试刷新一次看看能拿到什么
         await refresh()
+    }
+
+    /// 停止后不要依赖固定延迟；以 health 的实际结果作为完成条件。
+    @MainActor
+    func waitForStoppedAndRefresh() async {
+        for _ in 0..<20 {
+            if (try? await client.fetchHealth()) != true {
+                serviceState = .stopped
+                adapters = []
+                providers = []
+                rebuildMenu()
+                updateStatusIcon()
+                return
+            }
+            try? await Task.sleep(nanoseconds: 250_000_000)
+        }
+
+        // CLI stop 已经等待并在必要时 SIGKILL；这里再核对一次，避免 UI
+        // 误报“已停止”而实际服务仍可访问。
+        await refreshStatus()
     }
 
     func runCLI(_ command: String) {
@@ -761,70 +840,122 @@ class MenuBarController: NSObject {
         }
     }
 
-    @objc func quitApp() {
-        // 先同步停止后台服务，必须成功才退出菜单栏 app
-        // 避免服务未停就退出导致旧进程残留 / PID 文件丢失
-        guard stopSync() else {
-            // 服务停止失败：拒绝退出菜单栏，弹窗提醒用户
-            let alert = NSAlert()
-            alert.messageText = loc("quit.serviceStopFailed.title")
-            alert.informativeText = loc("quit.serviceStopFailed.body")
-            alert.alertStyle = .warning
-            alert.addButton(withTitle: loc("common.close"))
-            alert.runModal()
-            NSLog("[LLMProxy] ❌ 后台服务停止失败，拒绝退出菜单栏")
-            return
-        }
-        (NSApp.delegate as? AppDelegate)?.shouldReallyQuit = true
-        NSApplication.shared.terminate(nil)
+    private struct CLIResult {
+        let exitCode: Int32
+        let output: String
     }
 
-    /// 同步停止后台服务，等待进程退出后返回是否成功
-    /// - Returns: true 表示服务已成功停止，false 表示 stop 失败（进程退出码非 0 / 进程未退出）
-    private func stopSync() -> Bool {
+    /// 执行 CLI 并等待其真正退出。stop/restart 必须使用这个版本，不能
+    /// 只启动一个异步 Process 后用固定延时猜测服务是否已经结束。
+    private func runCLIAndWait(_ command: String, port: Int? = nil) async -> CLIResult {
         let task = Process()
         let shell = "/bin/zsh"
-        task.executableURL = URL(fileURLWithPath: shell)
 
         if let bundled = bundledBinaryPath() {
-            task.arguments = ["-l", "-c", "\"\(bundled)\" stop"]
+            task.executableURL = URL(fileURLWithPath: shell)
+            let portArgument = port.map { " --port \($0)" } ?? ""
+            task.arguments = ["-l", "-c", "\"\(bundled)\" \(command)\(portArgument)"]
             task.currentDirectoryURL = URL(fileURLWithPath: Bundle.main.resourcePath!)
         } else if let jsEntry = debugNodeEntryPath() {
             let projectRoot = ((jsEntry as NSString).deletingLastPathComponent as NSString).deletingLastPathComponent
             task.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-            task.arguments = ["node", jsEntry, "stop"]
+            task.arguments = ["node", jsEntry, command] + (port.map { ["--port", String($0)] } ?? [])
             task.currentDirectoryURL = URL(fileURLWithPath: projectRoot)
         } else {
             let fallback = "/opt/homebrew/bin/llm-proxy"
             guard FileManager.default.isExecutableFile(atPath: fallback) else {
-                NSLog("[LLMProxy] ❌ 找不到 llm-proxy 二进制")
-                return false
+                return CLIResult(exitCode: 127, output: "找不到 llm-proxy 二进制")
             }
-            task.arguments = ["-l", "-c", "\"\(fallback)\" stop"]
+            task.executableURL = URL(fileURLWithPath: shell)
+            let portArgument = port.map { " --port \($0)" } ?? ""
+            task.arguments = ["-l", "-c", "\"\(fallback)\" \(command)\(portArgument)"]
         }
 
+        let stdoutPipe = Pipe()
+        let stderrPipe = Pipe()
+        task.standardOutput = stdoutPipe
+        task.standardError = stderrPipe
+
         do {
-            try task.run()
-            // 阻塞直到 stop 完成（llm-proxy stop 内部会 SIGTERM + 清理 PID 文件）
-            task.waitUntilExit()
-            let exitCode = task.terminationStatus
-            if exitCode == 0 {
-                NSLog("[LLMProxy] ✅ 后台服务已停止 (exit=0)")
-                return true
-            } else {
-                NSLog("[LLMProxy] ❌ 后台服务停止失败 (exit=\(exitCode))")
-                return false
+            return try await withCheckedThrowingContinuation { continuation in
+                task.terminationHandler = { process in
+                    let stdout = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
+                    let stderr = stderrPipe.fileHandleForReading.readDataToEndOfFile()
+                    let output = String(data: stdout + stderr, encoding: .utf8) ?? ""
+                    continuation.resume(returning: CLIResult(exitCode: process.terminationStatus, output: output.trimmingCharacters(in: .whitespacesAndNewlines)))
+                }
+                do {
+                    try task.run()
+                } catch {
+                    continuation.resume(throwing: error)
+                }
             }
         } catch {
-            NSLog("[LLMProxy] ❌ 同步停止服务失败: \(error.localizedDescription)")
-            return false
+            return CLIResult(exitCode: 1, output: "执行 llm-proxy \(command) 失败: \(error.localizedDescription)")
+        }
+    }
+
+    @MainActor @objc func quitApp() {
+        guard !isQuitting else { return }
+        isQuitting = true
+        setTransientStatus(loc("status.stopping"))
+
+        // 如果已有 start/stop/restart 正在进行，先等它完成，再发起唯一的
+        // stop。这样退出不会和后台生命周期操作同时争抢 PID 文件。
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            if let operation = self.serviceOperationTask {
+                await operation.value
+            }
+
+            let result = await self.runCLIAndWait("stop", port: self.serviceControlPort)
+            if result.exitCode != 0 {
+                self.isQuitting = false
+                let alert = NSAlert()
+                alert.messageText = loc("quit.serviceStopFailed.title")
+                alert.informativeText = result.output.isEmpty
+                    ? loc("quit.serviceStopFailed.body")
+                    : result.output
+                alert.alertStyle = .warning
+                alert.addButton(withTitle: loc("common.close"))
+                alert.runModal()
+                NSLog("[LLMProxy] ❌ 后台服务停止失败 (exit=\(result.exitCode)): \(result.output)")
+                return
+            }
+
+            await self.waitForStoppedAndRefresh()
+            let stillRunning = (try? await self.client.fetchHealth()) == true
+            if stillRunning {
+                self.isQuitting = false
+                let alert = NSAlert()
+                alert.messageText = loc("quit.serviceStopFailed.title")
+                alert.informativeText = loc("quit.serviceStopFailed.body")
+                alert.alertStyle = .warning
+                alert.addButton(withTitle: loc("common.close"))
+                alert.runModal()
+                NSLog("[LLMProxy] ❌ 停止命令完成后服务仍可访问，拒绝退出菜单栏")
+                return
+            }
+
+            (NSApp.delegate as? AppDelegate)?.shouldReallyQuit = true
+            NSApplication.shared.terminate(nil)
         }
     }
 
     @MainActor @objc func changePort(_ sender: NSMenuItem) {
         guard let newPort = sender.representedObject as? Int else { return }
-        Task { @MainActor in
-            await performChangePort(newPort)
+        enqueuePortChange(newPort)
+    }
+
+    @MainActor
+    private func enqueuePortChange(_ newPort: Int) {
+        guard !isServiceOperationInProgress else { return }
+        isServiceOperationInProgress = true
+        serviceOperationTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            await self.performChangePort(newPort)
+            self.isServiceOperationInProgress = false
+            self.serviceOperationTask = nil
         }
     }
 
@@ -880,9 +1011,7 @@ class MenuBarController: NSObject {
                 showError("Port must be between 1 and 65535")
                 return
             }
-            Task { @MainActor in
-                await performChangePort(port)
-            }
+            enqueuePortChange(port)
         }
     }
 
@@ -1124,8 +1253,31 @@ class MenuBarController: NSObject {
 
     @MainActor
     private func performInstall(_ localURL: URL, version: String) async {
-        // 同步停止后台 llm-proxy 服务（等 SIGTERM 完成再继续）
-        stopSync()
+        if let operation = serviceOperationTask {
+            await operation.value
+        }
+        // 安装前沿用与菜单栏退出相同的可等待停止流程，不能只发信号后
+        // 立即让 helper 替换 app，否则旧服务可能继续占用端口。
+        let stopResult = await runCLIAndWait("stop", port: serviceControlPort)
+        guard stopResult.exitCode == 0 else {
+            let alert = NSAlert()
+            alert.messageText = loc("app.title")
+            alert.informativeText = stopResult.output.isEmpty
+                ? loc("quit.serviceStopFailed.body")
+                : stopResult.output
+            alert.addButton(withTitle: loc("common.close"))
+            alert.runModal()
+            return
+        }
+        await waitForStoppedAndRefresh()
+        if (try? await client.fetchHealth()) == true {
+            let alert = NSAlert()
+            alert.messageText = loc("app.title")
+            alert.informativeText = loc("quit.serviceStopFailed.body")
+            alert.addButton(withTitle: loc("common.close"))
+            alert.runModal()
+            return
+        }
 
         do {
             try await updateChecker.installUpdate(at: localURL)
@@ -1139,7 +1291,7 @@ class MenuBarController: NSObject {
         }
 
         // helper 脚本已经启动（sleep 1; open /Applications/LLMProxy.app），
-        // 且后台服务已经 stopSync 停掉了，这里直接强退进程。
+        // 且后台服务已经确认停止，这里直接强退进程。
         // NSApplication.shared.terminate 在 LSUIElement 菜单栏应用 + async 上下文不可靠。
         exit(0)
     }

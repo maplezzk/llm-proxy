@@ -1,4 +1,5 @@
 import { readFileSync, writeFileSync, appendFileSync, unlinkSync, existsSync, mkdirSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
 import { createProxyServer } from '../api/server.js'
 import { ConfigStore } from '../config/store.js'
 import { StatusTracker } from '../status/tracker.js'
@@ -22,12 +23,23 @@ interface StartOptions {
   logLevel?: string
 }
 
-function getState(): { pid: number; port: number } | null {
+interface ProxyState {
+  pid: number
+  port: number
+  /** Present for state files written by current versions; absent in legacy files. */
+  startedAt?: number
+}
+
+function getState(pidPath = DEFAULT_PID_PATH): ProxyState | null {
   try {
-    const raw = readFileSync(DEFAULT_PID_PATH, 'utf-8').trim()
+    const raw = readFileSync(pidPath, 'utf-8').trim()
     const parsed = JSON.parse(raw)
     if (typeof parsed.pid === 'number' && typeof parsed.port === 'number') {
-      return { pid: parsed.pid, port: parsed.port }
+      return {
+        pid: parsed.pid,
+        port: parsed.port,
+        ...(typeof parsed.startedAt === 'number' ? { startedAt: parsed.startedAt } : {}),
+      }
     }
     // 兼容旧格式（纯 PID）
     const pid = parseInt(raw, 10)
@@ -37,12 +49,65 @@ function getState(): { pid: number; port: number } | null {
   }
 }
 
+function stateMatches(a: ProxyState | null, b: ProxyState): boolean {
+  if (a === null || a.pid !== b.pid || a.port !== b.port) return false
+  // Legacy PID files have no startedAt. PID + port is the strongest identity
+  // available for those files; current files also guard against PID reuse.
+  return b.startedAt === undefined || a.startedAt === b.startedAt
+}
+
+/** Remove a PID file only if it still belongs to the process that created it. */
+function removeStateIfOwned(pidPath: string, pid: number): void {
+  const state = getState(pidPath)
+  if (state?.pid !== pid) return
+  try { unlinkSync(pidPath) } catch { /* ignore */ }
+}
+
+/** Remove a state file without deleting a newer instance's state. */
+function removeStateIfMatches(expected: ProxyState, pidPath = DEFAULT_PID_PATH): void {
+  if (!stateMatches(getState(pidPath), expected)) return
+  try { unlinkSync(pidPath) } catch { /* ignore */ }
+}
+
 function isProcessRunning(pid: number): boolean {
   try {
     return process.kill(pid, 0)
   } catch {
     return false
   }
+}
+
+function isProxyProcess(pid: number): boolean {
+  if (!isProcessRunning(pid)) return false
+  try {
+    const command = execFileSync('/bin/ps', ['-p', String(pid), '-o', 'command='], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    })
+    return /llm-proxy/i.test(command)
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Recover from a legacy/missing PID file using the requested listening port.
+ * The command line is checked as well, so `stop --port 9000` cannot terminate
+ * an unrelated application that happens to listen on the same port.
+ */
+function findProxyPidByPort(port: number): number | null {
+  try {
+    const output = execFileSync('/usr/sbin/lsof', [
+      '-nP', `-iTCP:${port}`, '-sTCP:LISTEN', '-t',
+    ], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] })
+    const pids = output.split(/\s+/).map(Number).filter((pid) => Number.isInteger(pid) && pid > 0)
+    for (const pid of pids) {
+      if (isProxyProcess(pid)) return pid
+    }
+  } catch {
+    // lsof is macOS-specific and may be unavailable in non-macOS installs.
+  }
+  return null
 }
 
 /**
@@ -63,9 +128,14 @@ export function installShutdownHandlers(opts: {
   onShutdown?: () => void
 }): void {
   const pidPath = opts.pidPath ?? DEFAULT_PID_PATH
+  let shuttingDown = false
   const shutdown = () => {
+    if (shuttingDown) return
+    shuttingDown = true
     try { console.error(opts.t('cli.start.sigterm')) } catch { /* ignore */ }
-    try { unlinkSync(pidPath) } catch { /* ignore */ }
+    // A previous instance can still be finishing shutdown after a restart.
+    // Never let that old process remove the new instance's PID file.
+    removeStateIfOwned(pidPath, process.pid)
     try { opts.visionCache.flushSync() } catch { /* ignore */ }
     try { opts.onShutdown?.() } catch { /* ignore */ }
     try { opts.server.close() } catch { /* ignore */ }
@@ -171,7 +241,7 @@ export async function cmdStart(opts: StartOptions): Promise<void> {
     }
   })
   server.listen(port, host, () => {
-    writeFileSync(DEFAULT_PID_PATH, JSON.stringify({ pid: process.pid, port }))
+    writeFileSync(DEFAULT_PID_PATH, JSON.stringify({ pid: process.pid, port, startedAt: Date.now() }))
     console.error(t('cli.start.started', { host, port }))
     console.error(t('cli.start.adminApi', { host, port }))
     console.error(t('cli.start.aiApi', { host, port }))
@@ -180,53 +250,82 @@ export async function cmdStart(opts: StartOptions): Promise<void> {
   })
 }
 
-export async function cmdStop(): Promise<void> {
+export async function cmdStop(opts: { port?: number } = {}): Promise<void> {
   const { t } = createI18n('en')
 
-  const state = getState()
+  const pidFileState = getState()
+  let state = pidFileState
+  if (state === null || !isProxyProcess(state.pid)) {
+    const recoveredPid = opts.port ? findProxyPidByPort(opts.port) : null
+    if (recoveredPid !== null) {
+      state = { pid: recoveredPid, port: opts.port! }
+      console.error(t('cli.stop.recovered', { pid: String(recoveredPid), port: String(opts.port) }))
+    }
+  }
+
   if (state === null) {
     console.error(t('cli.stop.notRunning'))
     return
   }
 
-  if (!isProcessRunning(state.pid)) {
+  if (!isProxyProcess(state.pid)) {
     console.error(t('cli.stop.stalePid'))
-    try { unlinkSync(DEFAULT_PID_PATH) } catch { /* ignore */ }
+    if (pidFileState !== null) removeStateIfMatches(pidFileState)
     return
   }
 
   console.error(t('cli.stop.stopping', { pid: String(state.pid) }))
-  process.kill(state.pid, 'SIGTERM')
+  await stopProcess(state, t)
+  if (pidFileState !== null) removeStateIfMatches(pidFileState)
+  else removeStateIfMatches(state)
+}
 
-  // 等待目标进程真正退出，避免命令返回但服务未死导致孤儿进程
-  await new Promise<void>((resolve) => {
-    const check = setInterval(() => {
-      if (!isProcessRunning(state.pid)) {
-        clearInterval(check)
-        resolve()
+async function stopProcess(state: ProxyState, t: (key: string, vars?: Record<string, string>) => string): Promise<void> {
+  try {
+    process.kill(state.pid, 'SIGTERM')
+  } catch {
+    // The process may have exited between the liveness check and SIGTERM.
+    return
+  }
+
+  // Wait for the target to disappear before returning. This is important for
+  // both the menu-bar quit path and restart: starting a replacement while the
+  // old listener is still alive is a common source of intermittent failures.
+  const exited = await waitForProcessExit(state.pid, 5000)
+  if (exited || !isProxyProcess(state.pid)) return
+
+  try { process.kill(state.pid, 'SIGKILL') } catch { /* ignore */ }
+  console.error(t('cli.stop.forceKill', { pid: String(state.pid) }))
+  // Give the OS a short window to reap the process before the caller starts
+  // a replacement. The state file is still removed conditionally by caller.
+  await waitForProcessExit(state.pid, 1000)
+}
+
+function waitForProcessExit(pid: number, timeoutMs: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const startedAt = Date.now()
+    const check = () => {
+      if (!isProcessRunning(pid)) {
+        resolve(true)
+        return
       }
-    }, 100)
-    // 最多等 5 秒，超时强制 SIGKILL
-    setTimeout(() => {
-      clearInterval(check)
-      if (isProcessRunning(state.pid)) {
-        try { process.kill(state.pid, 'SIGKILL') } catch { /* ignore */ }
-        console.error(t('cli.stop.forceKill', { pid: String(state.pid) }))
+      if (Date.now() - startedAt >= timeoutMs) {
+        resolve(false)
+        return
       }
-      resolve()
-    }, 5000)
+      setTimeout(check, 100)
+    }
+    check()
   })
-
-  try { unlinkSync(DEFAULT_PID_PATH) } catch { /* ignore */ }
 }
 
 export async function cmdStatus(): Promise<void> {
   const { t } = createI18n('en')
 
   const state = getState()
-  if (state === null || !isProcessRunning(state.pid)) {
+  if (state === null || !isProxyProcess(state.pid)) {
     if (state !== null) {
-      try { unlinkSync(DEFAULT_PID_PATH) } catch { /* ignore */ }
+      removeStateIfMatches(state)
     }
     console.error(t('cli.status.notRunning'))
     return
@@ -238,24 +337,25 @@ export async function cmdStatus(): Promise<void> {
 export async function cmdRestart(opts: StartOptions): Promise<void> {
   const { t } = createI18n('en')
 
-  const state = getState()
-  if (state !== null && isProcessRunning(state.pid)) {
+  const pidFileState = getState()
+  let state = pidFileState
+  if (state === null || !isProxyProcess(state.pid)) {
+    const recoveredPid = opts.port ? findProxyPidByPort(opts.port) : null
+    if (recoveredPid !== null) {
+      state = { pid: recoveredPid, port: opts.port! }
+      console.error(t('cli.stop.recovered', { pid: String(recoveredPid), port: String(opts.port) }))
+    }
+  }
+
+  if (state !== null && isProxyProcess(state.pid)) {
     console.error(t('cli.restart.stopping', { pid: String(state.pid) }))
-    process.kill(state.pid, 'SIGTERM')
-    // Wait for process to exit
-    await new Promise<void>((resolve) => {
-      const check = setInterval(() => {
-        if (!isProcessRunning(state.pid)) {
-          clearInterval(check)
-          resolve()
-        }
-      }, 200)
-      setTimeout(() => { clearInterval(check); resolve() }, 5000)
-    })
+    await stopProcess(state, t)
+    if (pidFileState !== null) removeStateIfMatches(pidFileState)
+    else removeStateIfMatches(state)
     console.error(t('cli.restart.restarting'))
-  } else if (state !== null) {
+  } else if (pidFileState !== null) {
     console.error(t('cli.restart.stalePid'))
-    try { unlinkSync(DEFAULT_PID_PATH) } catch { /* ignore */ }
+    removeStateIfMatches(pidFileState)
   }
   await cmdStart(opts)
 }
