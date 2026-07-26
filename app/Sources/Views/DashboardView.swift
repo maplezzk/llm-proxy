@@ -387,7 +387,11 @@ struct DashboardView: View {
                     .foregroundColor(.secondary)
                     .frame(maxWidth: .infinity, minHeight: 200).padding(.top, 20)
             } else {
-                Chart(viewModel.breakdown.prefix(10), id: \.key) { bucket in
+                HStack(spacing: 0) {
+                    Color.clear
+                        .frame(width: 150)
+
+                    Chart(viewModel.breakdown.prefix(10), id: \.key) { bucket in
                     BarMark(
                         x: .value("Input", bucket.input_tokens),
                         y: .value("Key", bucket.key),
@@ -433,15 +437,24 @@ struct DashboardView: View {
                         }
                     }
                 }
-                .chartYAxis {
-                    AxisMarks(position: .leading) { _ in
-                        AxisValueLabel()
-                            .foregroundStyle(Color.secondary.opacity(0.92))
-                    }
-                }
+                .chartYAxis(.hidden)
                 .chartOverlay { proxy in
                     GeometryReader { geo in
                         if let plotFrame = proxy.plotFrame {
+                            let top10 = Array(viewModel.breakdown.prefix(10))
+
+                            ForEach(top10, id: \.key) { bucket in
+                                if let yPos = proxy.position(forY: bucket.key) {
+                                    Text(bucket.key)
+                                        .lineLimit(1)
+                                        .truncationMode(.middle)
+                                        .frame(width: 140, alignment: .trailing)
+                                        .foregroundStyle(Color.secondary.opacity(0.92))
+                                        .position(x: -75, y: geo[plotFrame].origin.y + yPos)
+                                        .allowsHitTesting(false)
+                                }
+                            }
+
                             // chartXSelection 对横向柱状图（Y 是分类）不触发，改用 onContinuousHover
                             // 不依赖 axis 顺序，直接用 proxy.position(forY:) 找离鼠标 y 最近的 bar
                             Rectangle().fill(Color.clear).contentShape(Rectangle())
@@ -450,7 +463,6 @@ struct DashboardView: View {
                                     case .active(let loc):
                                         let yInPlot = loc.y - geo[plotFrame].origin.y
                                         guard yInPlot >= 0, yInPlot <= geo[plotFrame].height else { return }
-                                        let top10 = Array(viewModel.breakdown.prefix(10))
                                         guard !top10.isEmpty else { return }
                                         let closest = top10.min(by: { a, b in
                                             let ya = proxy.position(forY: a.key) ?? 0
@@ -483,6 +495,7 @@ struct DashboardView: View {
                             }
                         }
                     }
+                }
                 }
                 .frame(height: 240)
                 .padding(14)
