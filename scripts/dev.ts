@@ -19,13 +19,16 @@ const DEFAULT_PID_PATH = '/tmp/llm-proxy-dev.pid'
 const DEFAULT_LOG_PATH = join(DEFAULT_DATA_DIR, 'server.log')
 const DEFAULT_HOST = '127.0.0.1'
 const DEFAULT_PORT = 9004
+const DEFAULT_BACKEND_PORT = 9014
 const START_TIMEOUT_MS = 10_000
+
 
 /**
  * dev PID/state 元数据：
  * - pid/port/startedAt：cmdStart 写入的最小集（与正式 service 兼容）
  * - host/configPath/dataDir/logPath：dev wrapper 在 health check 通过后补充，
  *   用于 status 展示实际启动参数，并作为 PID 身份校验的可验证元数据。
+ * - vitePid/backendPort：dev wrapper 启动 Vite 后补充，用于停止双进程和 status 展示。
  */
 interface DevState {
   pid: number
@@ -35,6 +38,8 @@ interface DevState {
   configPath?: string
   dataDir?: string
   logPath?: string
+  vitePid?: number
+  backendPort?: number
 }
 
 interface DevOptions {
@@ -157,6 +162,8 @@ function parseState(raw: string): ParseOutcome {
   if (typeof parsed.configPath === 'string') state.configPath = parsed.configPath
   if (typeof parsed.dataDir === 'string') state.dataDir = parsed.dataDir
   if (typeof parsed.logPath === 'string') state.logPath = parsed.logPath
+  if (typeof parsed.vitePid === 'number') state.vitePid = parsed.vitePid
+  if (typeof parsed.backendPort === 'number') state.backendPort = parsed.backendPort
   return { kind: 'ok', state }
 }
 
@@ -193,7 +200,7 @@ function removeState(): void {
 }
 
 /** 用 cmdStart 已写入的最小集覆盖 host/configPath/dataDir/logPath，保留 startedAt。 */
-function addDevMetadata(extra: Required<Pick<DevState, 'host' | 'configPath' | 'dataDir' | 'logPath'>>): void {
+function addDevMetadata(extra: Partial<DevState> & Required<Pick<DevState, 'host' | 'configPath' | 'dataDir' | 'logPath'>>): void {
   const current = readState()
   if (!current) return
   writeState({ ...current, ...extra })
@@ -247,7 +254,7 @@ async function isHealthy(host: string, port: number): Promise<boolean> {
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), 800)
   try {
-    const response = await fetch(`http://${host}:${port}/admin/health`, {
+    const response = await fetch(`http://${host}:${port}/api/admin/health`, {
       signal: controller.signal,
     })
     return response.ok
@@ -267,14 +274,45 @@ async function waitForHealth(host: string, port: number, timeoutMs: number): Pro
   return false
 }
 
-async function waitUntil(predicate: () => boolean, timeoutMs: number): Promise<boolean> {
+function waitUntil(predicate: () => boolean, timeoutMs: number): Promise<boolean> {
   const deadline = Date.now() + timeoutMs
-  while (Date.now() < deadline) {
-    if (predicate()) return true
-    await new Promise((resolve) => setTimeout(resolve, 100))
-  }
-  return predicate()
+  return new Promise((resolve) => {
+    const check = () => {
+      if (predicate() || Date.now() >= deadline) return resolve(predicate())
+      setTimeout(check, 100)
+    }
+    check()
+  })
 }
+
+function isViteProcess(pid: number): boolean {
+  try {
+    const cmd = execFileSync('/bin/ps', ['-p', String(pid), '-o', 'command='], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    })
+    return /vite/.test(cmd) && cmd.includes('admin-ui')
+  } catch {
+    return false
+  }
+}
+
+function terminateProcess(pid: number, label: string): void {
+  if (!isProcessRunning(pid)) return
+  console.log(`正在停止 ${label}: pid=${pid}`)
+  process.kill(pid, 'SIGTERM')
+}
+
+async function stopProcess(pid: number, label: string): Promise<void> {
+  terminateProcess(pid, label)
+  const stopped = await waitUntil(() => !isProcessRunning(pid), 5000)
+  if (!stopped && isProcessRunning(pid)) {
+    console.error(`${label} 优雅停止超时，发送 SIGKILL: pid=${pid}`)
+    process.kill(pid, 'SIGKILL')
+    await waitUntil(() => !isProcessRunning(pid), 1000)
+  }
+}
+
 
 function printLogTail(logPath: string): void {
   try {
@@ -305,39 +343,42 @@ async function stopDev(): Promise<void> {
 
   const validation = validateState(state)
   if (validation === 'stale') {
+    if (state.vitePid && isViteProcess(state.vitePid)) await stopProcess(state.vitePid, 'Vite')
     removeState()
     console.log(`dev 服务已停止（清理过期 PID ${state.pid}）`)
     return
   }
   if (validation === 'mismatch') reportMismatch(state)
 
-  console.log(`正在停止 dev 服务: pid=${state.pid}, port=${state.port}`)
-  process.kill(state.pid, 'SIGTERM')
-  const stopped = await waitUntil(() => !isProcessRunning(state.pid), 5000)
-  if (!stopped && isProcessRunning(state.pid)) {
-    console.error(`优雅停止超时，发送 SIGKILL: pid=${state.pid}`)
-    process.kill(state.pid, 'SIGKILL')
-    await waitUntil(() => !isProcessRunning(state.pid), 1000)
-  }
+  console.log(`正在停止 dev 服务: backend pid=${state.pid}, vite pid=${state.vitePid ?? 'unknown'}`)
+  await stopProcess(state.pid, '后端')
+  if (state.vitePid && isViteProcess(state.vitePid)) await stopProcess(state.vitePid, 'Vite')
   removeState()
   console.log('dev 服务已停止')
 }
 
-async function runForeground(child: ReturnType<typeof spawn>, options: DevOptions): Promise<never> {
+
+async function runForeground(children: Array<{ child: ReturnType<typeof spawn>; label: string }>, options: DevOptions): Promise<never> {
   const result = await new Promise<{ code: number | null; signal: NodeJS.Signals | null; error?: Error }>((resolve) => {
-    child.once('exit', (code, signal) => resolve({ code, signal }))
-    child.once('error', (error) => resolve({ code: null, signal: null, error }))
+    let settled = false
+    const finish = (result: { code: number | null; signal: NodeJS.Signals | null; error?: Error }) => {
+      if (settled) return
+      settled = true
+      for (const { child } of children) if (child.pid && isProcessRunning(child.pid)) child.kill('SIGTERM')
+      resolve(result)
+    }
+    for (const { child } of children) {
+      child.once('exit', (code, signal) => finish({ code, signal }))
+      child.once('error', (error) => finish({ code: null, signal: null, error }))
+    }
   })
   if (result.error) {
     console.error(`dev 子进程启动失败 (config=${options.configPath}, port=${options.port}, data-dir=${options.dataDir}): ${result.error.message}`)
     process.exit(1)
   }
-  if (result.code !== null) {
-    process.exit(result.code)
-  }
-  // 信号退出（如 SIGTERM/SIGKILL）：信号无法直接作为退出码传播，按 1 退出避免被误认作成功。
-  process.exit(1)
+  process.exit(result.code ?? 1)
 }
+
 
 async function startDev(options: DevOptions): Promise<void> {
   const current = readState()
@@ -352,60 +393,53 @@ async function startDev(options: DevOptions): Promise<void> {
     if (validation === 'stale') removeState()
   }
 
+  const backendPort = parsePort(process.env.LLM_PROXY_DEV_BACKEND_PORT) ?? DEFAULT_BACKEND_PORT
   mkdirSync(options.dataDir, { recursive: true })
-  // 日志跟随 dataDir：与 cmdStart 中 usage.db/vision-cache/log 统一落在 dataDir 内。
   const logPath = join(options.dataDir, 'server.log')
   const logFd = openSync(logPath, 'a')
   const child = spawn(process.execPath, [
-    '--import',
-    'tsx',
-    join(PROJECT_ROOT, 'src/index.ts'),
-    'start',
-    '--config',
-    options.configPath,
-    '--data-dir',
-    options.dataDir,
-    '--host',
-    options.host,
-    '--port',
-    String(options.port),
-    '--pid-path',
-    DEFAULT_PID_PATH,
+    '--import', 'tsx', join(PROJECT_ROOT, 'src/index.ts'), 'start',
+    '--config', options.configPath, '--data-dir', options.dataDir,
+    '--host', '127.0.0.1', '--port', String(backendPort), '--pid-path', DEFAULT_PID_PATH,
   ], {
-    cwd: PROJECT_ROOT,
-    detached: !options.foreground,
-    env: process.env,
+    cwd: PROJECT_ROOT, detached: !options.foreground, env: process.env,
+    stdio: options.foreground ? 'inherit' : ['ignore', logFd, logFd],
+  })
+  const vite = spawn(join(PROJECT_ROOT, 'node_modules/.bin/vite'), [
+    'admin-ui', '--port', String(options.port), '--host', options.host,
+  ], {
+    cwd: PROJECT_ROOT, detached: !options.foreground, env: {
+      ...process.env, LLM_PROXY_DEV_BACKEND_PORT: String(backendPort),
+    },
     stdio: options.foreground ? 'inherit' : ['ignore', logFd, logFd],
   })
 
-  if (options.foreground) {
-    await runForeground(child, options)
-  }
+  if (options.foreground) await runForeground([{ child, label: '后端' }, { child: vite, label: 'Vite' }], options)
 
   const started = await waitForHealth(options.host, options.port, START_TIMEOUT_MS)
   if (!started) {
     console.error(`dev 服务启动失败或超时: http://${options.host}:${options.port}`)
     printLogTail(logPath)
     if (child.pid && isProcessRunning(child.pid)) process.kill(child.pid, 'SIGTERM')
+    if (vite.pid && isProcessRunning(vite.pid)) process.kill(vite.pid, 'SIGTERM')
     removeState()
     process.exit(1)
   }
 
   child.unref()
-  // 在 child 写入的最小 PID JSON 上补充 dev 元数据，供 status 展示与身份校验使用。
+  vite.unref()
   addDevMetadata({
-    host: options.host,
-    configPath: options.configPath,
-    dataDir: options.dataDir,
-    logPath,
+    host: options.host, configPath: options.configPath, dataDir: options.dataDir,
+    logPath, vitePid: vite.pid, backendPort,
   })
 
   const state = readState()
   console.log(`dev 服务已启动: http://${options.host}:${options.port}`)
   console.log(`管理界面: http://${options.host}:${options.port}/admin/`)
+  console.log(`后端内部端口: 127.0.0.1:${backendPort}`)
   console.log(`配置文件: ${options.configPath}`)
   console.log(`数据目录: ${options.dataDir}`)
-  console.log(`PID: ${state?.pid ?? child.pid ?? 'unknown'}`)
+  console.log(`PID: ${state?.pid ?? child.pid ?? 'unknown'} (Vite: ${vite.pid ?? 'unknown'})`)
   console.log(`日志文件: ${logPath}`)
 }
 
@@ -428,11 +462,13 @@ async function showStatus(): Promise<void> {
   const configPath = state.configPath ?? DEFAULT_CONFIG_PATH
   const dataDir = state.dataDir ?? DEFAULT_DATA_DIR
   const logPath = state.logPath ?? DEFAULT_LOG_PATH
+  const backendPort = state.backendPort ?? DEFAULT_BACKEND_PORT
 
   const healthy = await isHealthy(host, state.port)
   console.log(`dev 服务运行中: ${healthy ? 'healthy' : '进程存在但健康检查失败'}`)
   console.log(`地址: http://${host}:${state.port}`)
-  console.log(`PID: ${state.pid}`)
+  console.log(`后端内部地址: http://127.0.0.1:${backendPort}`)
+  console.log(`PID: ${state.pid} (Vite: ${state.vitePid ?? 'unknown'})`)
   console.log(`配置文件: ${configPath}`)
   console.log(`数据目录: ${dataDir}`)
   console.log(`日志文件: ${logPath}`)

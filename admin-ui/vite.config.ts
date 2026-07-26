@@ -29,8 +29,18 @@ export default defineConfig({
     outDir: 'dist',
   },
   server: {
+    host: '127.0.0.1',
+    port: Number(process.env.VITE_PORT ?? 9004),
     proxy: {
-      '/admin': 'http://localhost:9000',
+      '/api': {
+        target: `http://127.0.0.1:${process.env.LLM_PROXY_DEV_BACKEND_PORT ?? 9014}`,
+      },
+      '/v1': {
+        target: `http://127.0.0.1:${process.env.LLM_PROXY_DEV_BACKEND_PORT ?? 9014}`,
+      },
+      '^/[a-zA-Z0-9_-]+/v1/': {
+        target: `http://127.0.0.1:${process.env.LLM_PROXY_DEV_BACKEND_PORT ?? 9014}`,
+      },
     },
   },
 })
