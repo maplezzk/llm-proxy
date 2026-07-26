@@ -21,8 +21,7 @@ const DEFAULT_HOST = '127.0.0.1'
 const DEFAULT_PORT = 9004
 const DEFAULT_BACKEND_PORT = 9014
 const START_TIMEOUT_MS = 10_000
-/** detached 启动后 wrapper 进程保活用 setInterval 间隔；performShutdown() 调用的 process.exit(0) 会忽略 pending 定时器强制退出。 */
-const KEEPALIVE_INTERVAL_MS = 60_000
+
 
 
 /**
@@ -349,62 +348,7 @@ async function stopProcess(pid: number, label: string): Promise<void> {
   }
 }
 
-/**
- * detached 模式下 wrapper 进程存活期间的子进程引用。
- * handler 触发时从这里读取 pid，restart 后 setActiveProcesses 会重新设置，
- * 避免重复注册 handler 导致 handler 列表累积或闭包引用过期 pid。
- */
-let activeBackendPid: number | undefined
-let activeVitePid: number | undefined
-let activeVitePort: number | undefined
-let isShuttingDown = false
 
-/**
- * 信号 handler 的实际清理逻辑。幂等：重复调用只生效一次（防止用户连续多次 Ctrl-C 重复清理）。
- */
-async function performShutdown(): Promise<void> {
-  if (isShuttingDown) return
-  isShuttingDown = true
-  console.log('[dev] 收到信号，正在停止 dev 服务...')
-  try {
-    if (activeBackendPid && isProcessRunning(activeBackendPid)) {
-      await stopProcess(activeBackendPid, '后端')
-    }
-  } catch (err) {
-    console.error(`[dev] 信号关闭后端失败: ${err instanceof Error ? err.message : String(err)}`)
-  }
-  try {
-    if (activeVitePid) await killViteIfOurs(activeVitePid, activeVitePort)
-  } catch (err) {
-    console.error(`[dev] 信号关闭 Vite 失败: ${err instanceof Error ? err.message : String(err)}`)
-  }
-  removeState()
-  process.exit(0)
-}
-
-/**
- * 注册 SIGINT/SIGTERM handler：用户 Ctrl-C / SIGTERM 发送后优雅停止 dev 服务。
- * 幂等：同一进程内只注册一次（避免 restart 场景下 handler 列表累积）。
- * handler 内部通过模块级 active 变量读取最新 pid，因此 restart 后无需重装。
- * 注意：foreground 模式不走这条路径，runForeground 靠 child exit 事件传播退出，
- * 在这里装 handler 会拦截 Node 默认的 SIGINT exit 行为，与现有逻辑冲突。
- */
-function installShutdownHandlers(): void {
-  const handler = () => { void performShutdown() }
-  if (process.listenerCount('SIGINT') === 0) process.on('SIGINT', handler)
-  if (process.listenerCount('SIGTERM') === 0) process.on('SIGTERM', handler)
-}
-
-/**
- * 更新 active 子进程引用，并在 restart 场景重置 isShuttingDown 以允许再次触发信号关闭。
- * 在 startDev 启动 detached 子进程后调用。
- */
-function setActiveProcesses(backend: number | undefined, vite: number | undefined, port: number | undefined): void {
-  activeBackendPid = backend
-  activeVitePid = vite
-  activeVitePort = port
-  isShuttingDown = false
-}
 
 
 function printLogTail(logPath: string): void {
@@ -554,12 +498,6 @@ async function startDev(options: DevOptions): Promise<void> {
     logPath, vitePid: vite.pid, vitePort: options.port, backendPort,
   })
 
-  // 注册 SIGINT/SIGTERM handler 并更新 active pid 引用；
-  // 后续 await 保持 wrapper 存活，handler 触发时会优雅停子进程、清理 PID 再退出。
-  // foreground 路径不走这里（已在前面 runForeground 中被 await 住）。
-  setActiveProcesses(child.pid, vite.pid, options.port)
-  installShutdownHandlers()
-
   const state = readState()
   console.log(`dev 服务已启动: http://${options.host}:${options.port}`)
   console.log(`管理界面: http://${options.host}:${options.port}/admin/`)
@@ -568,13 +506,9 @@ async function startDev(options: DevOptions): Promise<void> {
   console.log(`数据目录: ${options.dataDir}`)
   console.log(`PID: ${state?.pid ?? child.pid ?? 'unknown'} (Vite: ${vite.pid ?? 'unknown'} port=${options.port})`)
   console.log(`日志文件: ${logPath}`)
-
-  // 保持 wrapper 进程存活以接收 SIGINT/SIGTERM。
-  // 仅靠 pending microtask / spawn 的 detached 子进程在某些 Node 路径下不足以阻止退出，
-  // 使用一个未 unref 的 setInterval 周期唤醒事件循环，让 wrapper 不会被提前退出。
-  // performShutdown（installShutdownHandlers 装入）会在信号到达后调用 process.exit(0) 强制退出，
-  // process.exit 忽略 pending 定时器，所以这个 interval 不会阻 shutdown。
-  setInterval(() => { /* keep event loop alive */ }, KEEPALIVE_INTERVAL_MS)
+  // detached 模式下子进程已 unref，wrapper 启动成功、打印信息后自然退出，
+  // 停止服务靠 `npm run dev -- stop`（PID 文件 + 精确杀进程）。
+  // foreground 模式不在此处返回（已在前面 runForeground 中 await 住）。
 }
 
 async function showStatus(): Promise<void> {
