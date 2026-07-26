@@ -253,10 +253,34 @@ describe('proxy/responses-protocol — Anthropic → OpenAI Responses (inbound)'
     // 应该有 reasoning item + message item
     const reasoningItem = input.find((i) => i.type === 'reasoning')
     assert.ok(reasoningItem, '应有 reasoning item')
+    // signature 透传到 encrypted_content（多轮 reasoning 关键）
+    assert.strictEqual(reasoningItem.encrypted_content, 'sig_abc', 'signature 须透传到 encrypted_content')
+    const summary = reasoningItem.summary as Array<Record<string, unknown>>
+    assert.strictEqual(summary[0].text, 'analyze...')
     const msgItem = input.find((i) => i.type === 'message' && i.role === 'assistant')
     assert.ok(msgItem, '应有 message item')
     const blocks = msgItem!.content as Array<Record<string, unknown>>
     assert.strictEqual(blocks[0].type, 'output_text')
+  })
+
+  it('Anthropic → Responses：Responses response 反向 → Anthropic thinking.signature 是上游 encrypted_content', () => {
+    // 场景：Anthropic 客户端发起多轮，上一轮 Responses 上游返回的 reasoning.encrypted_content 应作为 signature
+    const anthropic = convertAnthropicResponseToOpenAIResponses({
+      id: 'msg_1',
+      type: 'message',
+      role: 'assistant',
+      model: 'claude-sonnet',
+      stop_reason: 'end_turn',
+      content: [
+        { type: 'thinking', thinking: 'first round', signature: 'sig_round_1' },
+        { type: 'text', text: 'answer' },
+      ],
+      usage: { input_tokens: 10, output_tokens: 5 },
+    })
+    // 上一轮的 signature 应在下轮请求里透传为 encrypted_content
+    assert.ok(anthropic.reasoning, '应有顶层 reasoning')
+    const reasoning = anthropic.reasoning as Record<string, unknown>
+    assert.strictEqual(reasoning.encrypted_content, 'sig_round_1', 'signature 须透传到 encrypted_content')
   })
 
   it('tool_result 纯字符串 → function_call_output with string output', async () => {
@@ -335,6 +359,43 @@ describe('proxy/responses-protocol — Anthropic → OpenAI Responses (inbound)'
       messages: [{ role: 'user', content: 'hi' }],
     })
     assert.strictEqual(result.body.max_output_tokens, 2048)
+  })
+
+  it('Responses 协议专有字段透传：store / include / metadata / parallel_tool_calls / previous_response_id', async () => {
+    const result = await transformInboundRequest('openai-responses', openaiResponsesRoute, {
+      model: 'o3-mini',
+      input: 'hi',
+      store: false,
+      include: ['reasoning.encrypted_content'],
+      metadata: { user_id: 'u_123', trace: 'abc' },
+      parallel_tool_calls: false,
+      previous_response_id: 'resp_prev_abc',
+      truncation: 'auto',
+    })
+    assert.strictEqual(result.body.store, false)
+    assert.deepStrictEqual(result.body.include, ['reasoning.encrypted_content'])
+    assert.deepStrictEqual(result.body.metadata, { user_id: 'u_123', trace: 'abc' })
+    assert.strictEqual(result.body.parallel_tool_calls, false)
+    assert.strictEqual(result.body.previous_response_id, 'resp_prev_abc')
+    assert.strictEqual(result.body.truncation, 'auto')
+  })
+
+  it('Chat → Responses：parallel_tool_calls 透传', async () => {
+    const result = await transformInboundRequest('openai', openaiResponsesRoute, {
+      model: 'gpt-4o',
+      messages: [{ role: 'user', content: 'q' }],
+      parallel_tool_calls: false,
+    })
+    assert.strictEqual(result.body.parallel_tool_calls, false)
+  })
+
+  it('Chat → Responses：metadata 透传', async () => {
+    const result = await transformInboundRequest('openai', openaiResponsesRoute, {
+      model: 'gpt-4o',
+      messages: [{ role: 'user', content: 'q' }],
+      metadata: { tag: 'test' },
+    })
+    assert.deepStrictEqual(result.body.metadata, { tag: 'test' })
   })
 
   it('tool_choice any → required', async () => {
@@ -1521,6 +1582,48 @@ describe('proxy/responses-protocol — Responses SSE → Anthropic SSE', () => {
       cache_read_input_tokens: 80,
       cache_creation_input_tokens: undefined,
     })
+  })
+
+  it('上游 response.reasoning.encrypted_content 作为 thinking signature（多轮 reasoning）', async () => {
+    const { chunks, res } = makeResponse()
+    const reader = makeReader([
+      'event: response.output_item.added\ndata: {"type":"response.output_item.added","output_index":0,"item":{"type":"message","role":"assistant"}}\n\n',
+      'event: response.reasoning_text.delta\ndata: {"type":"response.reasoning_text.delta","delta":"thinking..."}\n\n',
+      'event: response.reasoning_text.done\ndata: {"type":"response.reasoning_text.done"}\n\n',
+      'event: response.output_text.delta\ndata: {"type":"response.output_text.delta","output_index":0,"delta":"final"}\n\n',
+      'event: response.completed\ndata: {"type":"response.completed","response":{"status":"completed","reasoning":{"summary":[{"type":"summary_text","text":"thinking..."}],"encrypted_content":"real_sig_abc"}}}\n\n',
+    ])
+    await convertOpenAIResponsesStreamToAnthropic(reader, res)
+    const events = sseEvents(chunks)
+    // real_sig_abc 必须以 signature_delta 发出，不是 SHA-256 伪签名
+    const sigDeltas = events.filter((e) => {
+      const d = e.delta as Record<string, unknown> | undefined
+      return e.type === 'content_block_delta' && d?.type === 'signature_delta'
+    })
+    assert.ok(sigDeltas.length > 0, '应有 signature_delta')
+    const realSig = sigDeltas.some((e) => {
+      const d = e.delta as Record<string, unknown>
+      return (d.signature as string) === 'real_sig_abc'
+    })
+    assert.ok(realSig, 'signature 必须是上游 encrypted_content，不是伪签名')
+  })
+
+  it('output_item.added reasoning → 开启 thinking block（不丢 reasoning）', async () => {
+    const { chunks, res } = makeResponse()
+    const reader = makeReader([
+      'event: response.output_item.added\ndata: {"type":"response.output_item.added","output_index":0,"item":{"type":"message","role":"assistant"}}\n\n',
+      'event: response.output_item.added\ndata: {"type":"response.output_item.added","output_index":1,"item":{"type":"reasoning","id":"rs_1","encrypted_content":"sig_x","summary":[{"type":"summary_text","text":"thinking"}]}}\n\n',
+      'event: response.reasoning_summary_text.delta\ndata: {"type":"response.reasoning_summary_text.delta","item_id":"rs_1","delta":"more"}\n\n',
+      'event: response.completed\ndata: {"type":"response.completed","response":{"status":"completed"}}\n\n',
+    ])
+    await convertOpenAIResponsesStreamToAnthropic(reader, res)
+    const events = sseEvents(chunks)
+    // 至少应开过 thinking block
+    const thinkingStarts = events.filter((e) => {
+      const cb = e.content_block as Record<string, unknown> | undefined
+      return e.type === 'content_block_start' && cb?.type === 'thinking'
+    })
+    assert.ok(thinkingStarts.length > 0, 'reasoning item 应开启 thinking block')
   })
 })
 

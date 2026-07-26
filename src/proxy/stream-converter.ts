@@ -513,7 +513,8 @@ export async function convertOpenAIResponsesStreamToAnthropic(
   logger?: Logger,
   capture?: CaptureBuffer,
   pairId?: number,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  originalTools?: unknown[]
 ): Promise<StreamUsage | null> {
   const decoder = new TextDecoder()
   const acc = newAccumulator()
@@ -552,6 +553,15 @@ export async function convertOpenAIResponsesStreamToAnthropic(
         usage: { input_tokens: 0, output_tokens: 0 },
       },
     })
+  }
+
+  // Namespace 工具反解（CCX 兼容）：上游 Responses 返回 mcp__xxx__yyy，
+  // 客户端是 Anthropic 命名空间结构时需要解码回 namespace+name
+  const namespaceCtx = originalTools ? buildNamespaceToolContext(originalTools) : new Map()
+  const decodeNs = (flatName: string): { name: string; namespace?: string } => {
+    const spec = namespaceCtx.get(flatName)
+    if (spec) return { name: spec.name, namespace: spec.namespace }
+    return { name: flatName }
   }
 
   const writeEvent = (eventType: string, data: Record<string, unknown>): void => {
@@ -632,8 +642,10 @@ export async function convertOpenAIResponsesStreamToAnthropic(
           currentBlockIndex++
           currentBlockType = 'tool_use'
           responsesHasToolCalls = true
-          acc.toolCalls.set(currentBlockIndex, { id: item.call_id as string, type: 'function', function: { name: item.name as string, arguments: '' } })
-          startBlock(currentBlockIndex, { type: 'tool_use', id: item.call_id, name: item.name, input: {} })
+          // 反解 namespace（mcp__xxx__yyy → namespace + name）
+          const nsDecoded = decodeNs((item.name as string) ?? '')
+          acc.toolCalls.set(currentBlockIndex, { id: item.call_id as string, type: 'function', function: { name: nsDecoded.name, arguments: '' } })
+          startBlock(currentBlockIndex, { type: 'tool_use', id: item.call_id, name: nsDecoded.name, input: {} })
         } else if (item?.type === 'computer_call') {
           currentBlockIndex++
           currentBlockType = 'tool_use'
@@ -643,6 +655,18 @@ export async function convertOpenAIResponsesStreamToAnthropic(
           startBlock(currentBlockIndex, { type: 'tool_use', id: item.call_id, name: 'computer', input: anthropicInput })
           // computer_call has no delta events — action is complete at start
           stopBlock(currentBlockIndex)
+        } else if (item?.type === 'reasoning') {
+          // Standalone reasoning output item → 开 thinking block
+          // 携带上游 encrypted_content 作为 signature（多轮 reasoning 关键）
+          ensureMessageStart()
+          if ((item.encrypted_content as string | undefined) && !thinkingSignature) {
+            thinkingSignature = item.encrypted_content as string
+          }
+          if (!thinkingBlockStarted && !closedBlocks.has(0)) {
+            startBlock(0, { type: 'thinking', thinking: '', signature: '' })
+            thinkingBlockStarted = true
+            currentBlockType = 'thinking'
+          }
         }
         continue
       }
@@ -721,6 +745,19 @@ export async function convertOpenAIResponsesStreamToAnthropic(
       // reasoning_text.done
       if (innerType === 'response.reasoning_text.done') {
         if (thinkingBlockStarted) {
+          // 优先用上游传来的 encrypted_content，没有则用伪签名
+          const sig = thinkingSignature || makeSignature(thinkingText)
+          if (sig) writeEvent('content_block_delta', { type: 'content_block_delta', index: 0, delta: { type: 'signature_delta', signature: sig } })
+          stopBlock(0)
+          thinkingBlockStarted = false
+        }
+        continue
+      }
+
+      // reasoning_summary_text.done — Responses API 轮次总结思考的结束事件
+      // （与 reasoning_text.done 类似：发送 signature_delta + content_block_stop）
+      if (innerType === 'response.reasoning_summary_text.done') {
+        if (thinkingBlockStarted) {
           const sig = thinkingSignature || makeSignature(thinkingText)
           if (sig) writeEvent('content_block_delta', { type: 'content_block_delta', index: 0, delta: { type: 'signature_delta', signature: sig } })
           stopBlock(0)
@@ -766,11 +803,20 @@ export async function convertOpenAIResponsesStreamToAnthropic(
           cache_creation_input_tokens: respUsage?.cache_creation_input_tokens as number | undefined,
         }
 
+        // response.completed：补充上游 realSig（如多轮 encrypted_content），即使 block 已 stop
+        const topReasoningForSig = resp?.reasoning as Record<string, unknown> | undefined
+        const realSig = (topReasoningForSig?.encrypted_content as string | undefined) ?? ''
         if (thinkingBlockStarted) {
-          const sig = thinkingSignature || makeSignature(thinkingText)
+          const sig = realSig || thinkingSignature || makeSignature(thinkingText)
           if (sig) writeEvent('content_block_delta', { type: 'content_block_delta', index: 0, delta: { type: 'signature_delta', signature: sig } })
           stopBlock(0)
           thinkingBlockStarted = false
+        } else if (realSig && !thinkingSignature) {
+          // thinking block 已在 reasoning_text.done 时关闭，但 encrypted_content 后于 summary 到达
+          // （OpenAI Responses 某些实现这么做）。补发 signature_delta，保持多轮 reasoning 可重放。
+          // SSE 块顺序不严格但 Anthropic SDK 会接受。
+          writeEvent('content_block_delta', { type: 'content_block_delta', index: 0, delta: { type: 'signature_delta', signature: realSig } })
+          thinkingSignature = realSig
         }
         // 兜底：如果 reasoning 未通过 delta 事件传输，尝试从顶层 reasoning.summary 提取
         if (!thinkingText) {

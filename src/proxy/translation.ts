@@ -842,6 +842,20 @@ interface FullParams {
   stop?: unknown
   tools?: unknown[]
   tool_choice?: unknown
+  /** Responses 协议字段：上游是否持久化响应（默认 true，Codex OAuth 必为 false） */
+  store?: boolean
+  /** Responses 协议字段：响应中额外包含的项（如 reasoning.encrypted_content） */
+  include?: string[]
+  /** Responses 协议字段：与请求关联的元数据（≤16 个 key，value 为 string/number/boolean） */
+  metadata?: Record<string, unknown>
+  /** Responses 协议字段：是否允许多个 function_call 并行（默认 true） */
+  parallel_tool_calls?: boolean
+  /** Responses 协议字段：上一轮 response id（多轮对话载体） */
+  previous_response_id?: string
+  /** Responses 协议字段：截断策略 auto|disabled */
+  truncation?: 'auto' | 'disabled'
+  /** Anthropic 思考签名（跨协议 Responses/Anthropic 时保留） */
+  reasoning_encrypted_content?: string
 }
 
 function extractFullOpenAI(body: Record<string, unknown>): FullParams {
@@ -859,6 +873,9 @@ function extractFullOpenAI(body: Record<string, unknown>): FullParams {
     stop: body.stop,
     tools: body.tools as unknown[] | undefined,
     tool_choice: body.tool_choice,
+    store: body.store as boolean | undefined,
+    metadata: body.metadata as Record<string, unknown> | undefined,
+    parallel_tool_calls: body.parallel_tool_calls as boolean | undefined,
   }
 }
 
@@ -1296,6 +1313,12 @@ function extractFullOpenAIResponses(body: Record<string, unknown>): FullParams {
     stop: body.stop,
     tools: body.tools as unknown[] | undefined,
     tool_choice: body.tool_choice,
+    store: body.store as boolean | undefined,
+    include: body.include as string[] | undefined,
+    metadata: body.metadata as Record<string, unknown> | undefined,
+    parallel_tool_calls: body.parallel_tool_calls as boolean | undefined,
+    previous_response_id: body.previous_response_id as string | undefined,
+    truncation: body.truncation as 'auto' | 'disabled' | undefined,
   }
 }
 
@@ -1338,6 +1361,13 @@ function buildOpenAIResponsesFromFullParams(params: FullParams): Record<string, 
   if (params.stop) body.stop = params.stop
   if (params.tools) body.tools = convertToolsToOpenAIResponses(params.tools)
   if (params.tool_choice !== undefined) body.tool_choice = convertToolChoiceToOpenAIResponses(params.tool_choice)
+  // Responses 协议专有字段透传
+  if (params.store !== undefined) body.store = params.store
+  if (params.include !== undefined) body.include = params.include
+  if (params.metadata !== undefined) body.metadata = params.metadata
+  if (params.parallel_tool_calls !== undefined) body.parallel_tool_calls = params.parallel_tool_calls
+  if (params.previous_response_id !== undefined) body.previous_response_id = params.previous_response_id
+  if (params.truncation !== undefined) body.truncation = params.truncation
   return body
 }
 
@@ -1792,12 +1822,14 @@ export function convertOpenAIResponsesToAnthropic(responsesBody: Record<string, 
   let stopReason = respStatus
 
   // 提取顶层 reasoning.summary → Anthropic thinking 块（作为首个 content block）
+  // encrypted_content 作为 signature 透传给下一轮（多轮 reasoning 必依赖）
   const topReasoning = responsesBody.reasoning as Record<string, unknown> | undefined
   if (topReasoning?.summary) {
     const summaryItems = topReasoning.summary as Array<Record<string, unknown>>
     const summaryText = summaryItems.map((s) => s.text ?? '').join('')
-    if (summaryText) {
-      content.push({ type: 'thinking', thinking: summaryText, signature: '' })
+    const encrypted = (topReasoning.encrypted_content as string | undefined) ?? ''
+    if (summaryText || encrypted) {
+      content.push({ type: 'thinking', thinking: summaryText, signature: encrypted })
     }
   }
 
@@ -1855,13 +1887,12 @@ export function convertOpenAIResponsesToAnthropic(responsesBody: Record<string, 
         // 忽略无 Anthropic 对应物的内置工具输出
         continue
       } else if (item.type === 'reasoning') {
-        // Standalone reasoning output item → thinking block
+        // Standalone reasoning output item → thinking block（encrypted_content 作为 signature 透传）
         const summary = item.summary as Array<Record<string, unknown>> | undefined
-        if (summary) {
-          const reasonText = summary.map((s) => s.text ?? '').join('')
-          if (reasonText) {
-            content.push({ type: 'thinking', thinking: reasonText, signature: '' })
-          }
+        const reasonText = summary ? summary.map((s) => s.text ?? '').join('') : ''
+        const encrypted = (item.encrypted_content as string | undefined) ?? ''
+        if (reasonText || encrypted) {
+          content.push({ type: 'thinking', thinking: reasonText, signature: encrypted })
         }
       }
     }
@@ -1896,6 +1927,7 @@ export function convertAnthropicResponseToOpenAIResponses(anthropicBody: Record<
   const outputMessageContent: unknown[] = []
   const output: unknown[] = []
   let thinkingText = ''
+  let thinkingSignatures: string[] = []
 
   if (content) {
     for (const block of content) {
@@ -1904,6 +1936,8 @@ export function convertAnthropicResponseToOpenAIResponses(anthropicBody: Record<
       } else if (block.type === 'thinking') {
         // 收集 thinking 文本，稍后放到顶层的 reasoning.summary
         thinkingText += (block.thinking as string) ?? ''
+        // 收集 signature 作为 encrypted_content 透传（多轮 reasoning 依赖）
+        if (block.signature) thinkingSignatures.push(block.signature as string)
       } else if (block.type === 'tool_use') {
         const name = block.name as string ?? ''
         if (name === 'computer') {
@@ -1952,8 +1986,13 @@ export function convertAnthropicResponseToOpenAIResponses(anthropicBody: Record<
     status: stopReason === 'end_turn' ? 'completed' : 'incomplete',
     model: anthropicBody.model as string ?? '',
     output,
-    // Anthropic thinking → 顶层 reasoning.summary（非完整推理文本）
-    ...(thinkingText ? { reasoning: { summary: [{ type: 'summary_text', text: thinkingText, index: 0 }] } } : {}),
+    // Anthropic thinking → 顶层 reasoning.summary（非完整推理文本）+ encrypted_content 透传 signature
+    ...(thinkingText || thinkingSignatures.length > 0
+      ? { reasoning: {
+          summary: [{ type: 'summary_text', text: thinkingText, index: 0 }],
+          ...(thinkingSignatures.length > 0 ? { encrypted_content: thinkingSignatures.join('|') } : {}),
+        } }
+      : {}),
     usage: (() => {
       const ai = (usage?.input_tokens as number) ?? 0
       const cr = (usage?.cache_read_input_tokens as number) ?? 0

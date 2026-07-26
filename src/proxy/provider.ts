@@ -366,7 +366,9 @@ export async function forwardRequest(
         }
       } else { // openai-responses
         if (req.inboundType === 'anthropic') {
-          usage = await convertOpenAIResponsesStreamToAnthropic(reader, res, req.logger, req.capture, req.pairId, abortController.signal)
+          // 原始 namespace 工具定义，用于 Responses → Anthropic 流式转换时反解 mcp__xxx__yyy → namespace+name
+          const originalTools = req.originalBody?.tools as unknown[] | undefined
+          usage = await convertOpenAIResponsesStreamToAnthropic(reader, res, req.logger, req.capture, req.pairId, abortController.signal, originalTools)
         } else if (req.inboundType === 'openai') {
           usage = await convertOpenAIResponsesStreamToOpenAI(reader, res, req.logger, req.capture, req.pairId, abortController.signal)
         }
