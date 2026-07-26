@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.24.0](https://github.com/maplezzk/llm-proxy/compare/v0.23.2...v0.24.0) (2026-07-26)
+
+
+### Features
+
+* 完善 Dashboard 用量筛选与数据清理 ([604144d](https://github.com/maplezzk/llm-proxy/commit/604144da5cdf7fc9e396d23ae69c8d8f4ba96bbb))
+* 支持供应商和模型多协议路由 ([3a18224](https://github.com/maplezzk/llm-proxy/commit/3a18224a89f99b7ffeed1ac0b163324792fcf3e2))
+* 支持多协议供应商与菜单栏用量分析 ([9dfed02](https://github.com/maplezzk/llm-proxy/commit/9dfed029dfd6ec24c1b93074849ff55387d8c9a7))
+* 支持多协议供应商并增强用量分析 ([c01cfb9](https://github.com/maplezzk/llm-proxy/commit/c01cfb97f62e5432968af830beffefb84b915a98))
+
+
+### Bug Fixes
+
+* 分离 Dashboard 图表标签与绘图区 ([844602f](https://github.com/maplezzk/llm-proxy/commit/844602fdbd8a9d756455d4ed493b171ef71f573b))
+* 对齐 Dashboard 堆叠柱状图 ([905a3aa](https://github.com/maplezzk/llm-proxy/commit/905a3aa0d3b452ebbae419e097fd8b79ea38e216))
+* 测试页切换协议同步 Base URL ([ec2b518](https://github.com/maplezzk/llm-proxy/commit/ec2b518e52b87610dd30b1d2b6e69e7ec14fa391))
+
 ## [0.23.2](https://github.com/maplezzk/llm-proxy/compare/v0.23.1...v0.23.2) (2026-07-26)
 
 
