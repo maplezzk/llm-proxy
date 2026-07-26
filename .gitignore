@@ -10,11 +10,6 @@ dist/
 .claude/
 .pi/
 
-# Bun compiled binary
-llm-proxy
-
-# macOS app build
-app/.build/
 src/types/i18n.generated.ts
 .worktrees/
 .compound-engineering/

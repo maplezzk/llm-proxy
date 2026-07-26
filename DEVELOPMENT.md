@@ -192,7 +192,6 @@ gh pr create --title "feat: ..." --body "..."
 5. 合并后 release-please 自动：
    - 创建 GitHub Release + git tag
    - 触发 npm publish（通过 `release.yml`）
-   - 触发 macOS app 构建上传（通过 `release-app.yml`）
 
 ### 日常开发流程
 
@@ -222,7 +221,6 @@ git commit -m "fix: 修 bug"
 | `ci.yml` | PR → main, push → main | install → typecheck → test → build |
 | `release.yml` | push → main (releaes-please) | 扫描 commit，创建/更新 Release PR |
 | `release.yml` (publish) | Release PR merged | release-please 创建 GitHub Release + tag，自动发布 npm |
-| `release-app.yml` | Release published | 构建 macOS App，上传 DMG 到 Release，更新 Homebrew tap |
 
 ---
 

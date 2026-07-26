@@ -127,7 +127,7 @@ adapters:
 - **主题**: Appica 默认主题，原生 light/dark（`ThemeProvider`，跟随系统 + localStorage 持久化，侧栏可手动切换）。
 - **路由**: hash 路由 6 个 tab：`#dashboard` / `#providers` / `#adapters` / `#logs` / `#capture` / `#settings`。
 - **构建**: `npm run build:admin`（`vite build admin-ui`）→ singlefile 内联产出单文件 `admin-ui/dist/admin-ui.html`；`npm run build` 会再 `cp` 到 `dist/api/admin-ui.html`。
-- **交付**: `src/api/server.ts` `GET /admin` 直接 `readFileSync` 返回该单文件（CWD 优先、回退 `dist/api/`）；npm `files: dist` 与 macOS app bundle 均依赖此单文件。旧的 `GET /admin-app.js` 路由已移除。
+- **交付**: `src/api/server.ts` `GET /admin` 直接 `readFileSync` 返回该单文件（CWD 优先、回退 `dist/api/`）；npm `files: dist` 依赖此单文件。旧的 `GET /admin-app.js` 路由已移除。
 - **开发**: `npm run dev`（后端 tsx）+ `npm run dev:admin`（Vite dev server，`/admin/*` 反代到 :9000，HMR）。
 - **i18n**: react-i18next，`admin-ui/src/i18n.ts` 复用后端共享的 `locales/{zh,en}/translation.json`。
 

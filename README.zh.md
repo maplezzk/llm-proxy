@@ -9,7 +9,6 @@
 - 🔀 **多协议支持**：单端口提供 Anthropic、OpenAI、OpenAI Responses 三种协议
 - 🔄 **协议互转**：三个协议间双向转换（流式 + 非流式）
 - 📸 **外挂识图**：为不支持图片的模型自动接入识图模型，把图片转成文字描述再转发；自带持久化 LRU 缓存
-- 🖥️ **macOS 桌面应用**：原生菜单栏 App，内嵌代理服务，拖拽安装、零依赖
 - 📊 **管理界面**：Alpine.js 单页应用，包含仪表盘、Provider 管理、适配器配置、识图设置、抓包调试
 - 🎯 **虚拟适配器**：自定义端点 + 模型重映射（`/{adapter-name}/v1/...`）
 - 📡 **SSE 流式**：4 个双向流转换器，每行带时间戳
@@ -18,15 +17,6 @@
 - 📈 **Token 统计**：按 Provider 统计 token 使用量
 
 ## 截图
-
-<p align="center">
-  <img src="docs/images/macos-cn.png" alt="macOS 菜单栏" width="380"/>&nbsp;&nbsp;
-  <img src="docs/images/macos-cn2.png" alt="macOS 菜单栏" width="380"/>
-</p>
-
-<p align="center"><em>macOS 菜单栏 — 服务控制、适配器切换、语言设置 &nbsp;|&nbsp; 适配器列表和模型映射</em></p>
-
-<br>
 
 <img src="docs/images/admin-dashboard-cn.png" alt="Admin 仪表盘" width="720"/>
 
@@ -46,19 +36,6 @@
 
 ## 安装
 
-**macOS（推荐）：**
-从 [Releases](https://github.com/maplezzk/llm-proxy/releases) 下载 `LLMProxy.dmg`，拖入 `/Applications`。如果 macOS 阻止运行，执行：
-```bash
-xattr -cr /Applications/LLMProxy.app
-```
-再次打开即可。内含完整代理服务和管理界面。
-
-**macOS（Homebrew）：**
-```bash
-brew tap maplezzk/tap && brew install --cask llm-proxy
-```
-
-**仅 CLI：**
 ```bash
 npm install -g @maplezzk/llm-proxy
 ```
@@ -227,25 +204,9 @@ Client → POST /v1/{messages|chat/completions|responses}
 ```bash
 npm run dev          # 开发模式启动代理
 npm test             # 运行 280 个测试
-npm run build:app    # 构建 macOS .app + .dmg
 ```
 
 ## FAQ
-
-**Homebrew 安装显示旧版本？** 强制刷新 tap：
-```bash
-brew upgrade --cask llm-proxy
-```
-如果失败，先卸载再重新安装：
-```bash
-brew uninstall --cask llm-proxy
-brew untap maplezzk/tap && brew tap maplezzk/tap && brew install --cask llm-proxy
-```
-
-**macOS 阻止应用运行？** 清除隔离标记：
-```bash
-xattr -cr /Applications/LLMProxy.app
-```
 
 **怎么清空识图缓存？** 任选其一：
 ```bash

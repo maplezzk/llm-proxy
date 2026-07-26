@@ -9,7 +9,6 @@ A local LLM proxy server — single port serving both admin UI and AI API, with 
 - 🔀 **Multi-Protocol**: Anthropic, OpenAI, and OpenAI Responses on a single port
 - 🔄 **Protocol Translation**: Bidirectional conversion across all three protocols (streaming + non-streaming)
 - 📸 **External Vision**: Image-to-text fallback for non-multimodal models — auto-converts images via a configured vision model, with persistent LRU cache
-- 🖥️ **macOS App**: Native menu bar app with built-in proxy — zero dependencies, drag & drop install
 - 📊 **Admin UI**: Alpine.js SPA with dashboard, provider management, adapter config, vision settings, and capture debugger
 - 🎯 **Virtual Adapters**: Custom endpoints with model remapping (`/{adapter-name}/v1/...`)
 - 📡 **SSE Streaming**: 4 bidirectional stream converters with per-line timestamps
@@ -18,15 +17,6 @@ A local LLM proxy server — single port serving both admin UI and AI API, with 
 - 📈 **Token Tracking**: Per-provider token usage statistics
 
 ## Screenshots
-
-<p align="center">
-  <img src="docs/images/macos-en.png" alt="macOS Menu Bar" width="380"/>&nbsp;&nbsp;
-  <img src="docs/images/macos-en2.png" alt="macOS Menu Bar" width="380"/>
-</p>
-
-<p align="center"><em>macOS menu bar — service control, adapter switching, language settings &nbsp;|&nbsp; adapter list &amp; model mapping</em></p>
-
-<br>
 
 <img src="docs/images/admin-dashboard-en.png" alt="Admin Dashboard" width="720"/>
 
@@ -46,19 +36,6 @@ A local LLM proxy server — single port serving both admin UI and AI API, with 
 
 ## Install
 
-**macOS (recommended):**
-Download `LLMProxy.dmg` from [Releases](https://github.com/maplezzk/llm-proxy/releases), drag to `/Applications`. If macOS blocks the app, run:
-```bash
-xattr -cr /Applications/LLMProxy.app
-```
-Then open again. Includes everything — CLI, proxy, and admin UI.
-
-**macOS (Homebrew):**
-```bash
-brew tap maplezzk/tap && brew install --cask llm-proxy
-```
-
-**CLI only:**
 ```bash
 npm install -g @maplezzk/llm-proxy
 ```
@@ -225,30 +202,11 @@ Client → POST /v1/{messages|chat/completions|responses}
 See [DEVELOPMENT.md](./DEVELOPMENT.md) for full development workflow.
 
 ```bash
-# CLI
 npm run dev          # Start proxy in dev mode
 npm test             # Run 280 tests
-
-# macOS app
-npm run build:app    # Build .app + .dmg
 ```
 
 ## FAQ
-
-**Homebrew shows old version?** Refresh tap:
-```bash
-brew upgrade --cask llm-proxy
-```
-If that fails, uninstall first and reinstall:
-```bash
-brew uninstall --cask llm-proxy
-brew untap maplezzk/tap && brew tap maplezzk/tap && brew install --cask llm-proxy
-```
-
-**macOS blocks the app?** Remove quarantine:
-```bash
-xattr -cr /Applications/LLMProxy.app
-```
 
 **How do I clear the vision cache?** Either delete the cache file:
 ```bash
