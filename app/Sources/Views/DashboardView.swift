@@ -3,8 +3,15 @@ import Charts
 
 /// Dashboard 视图 — 双栏紧凑布局
 struct DashboardView: View {
+    private enum CleanupAction {
+        case olderThan(Int)
+        case all
+    }
+
     @StateObject private var viewModel = DashboardViewModel()
     @State private var showCleanupConfirm = false
+    @State private var pendingCleanup: CleanupAction?
+    @State private var cleanupDays = 90
     @State private var localDateStart: Date = Date()
     @State private var localDateEnd: Date = Date()
     @State private var selectedTimelineDate: Date? = nil
@@ -28,16 +35,60 @@ struct DashboardView: View {
         .onAppear { viewModel.startPolling() }
         .onDisappear { viewModel.stopPolling() }
         .confirmationDialog(
-            loc("dashboard.usage.cleanupConfirm"),
+            cleanupConfirmationTitle,
             isPresented: $showCleanupConfirm,
             titleVisibility: .visible
         ) {
-            Button(loc("dashboard.usage.cleanupBtn"), role: .destructive) {
-                Task { _ = await viewModel.cleanupUsage() }
+            Button(cleanupConfirmationButtonTitle, role: .destructive) {
+                let action = pendingCleanup
+                pendingCleanup = nil
+                Task {
+                    switch action {
+                    case .olderThan(let days):
+                        _ = await viewModel.cleanupUsage(days: days)
+                    case .all:
+                        _ = await viewModel.clearAllUsage()
+                    case nil:
+                        break
+                    }
+                }
             }
-            Button(loc("common.cancel"), role: .cancel) {}
+            Button(loc("common.cancel"), role: .cancel) {
+                pendingCleanup = nil
+            }
         } message: {
-            Text(loc("dashboard.usage.cleanupMessage"))
+            Text(cleanupConfirmationMessage)
+        }
+    }
+
+    private var cleanupConfirmationTitle: String {
+        switch pendingCleanup {
+        case .olderThan(let days):
+            return loc("dashboard.usage.cleanupConfirm", days)
+        case .all:
+            return loc("dashboard.usage.cleanupAllConfirm")
+        case nil:
+            return loc("dashboard.usage.cleanupConfirm", cleanupDays)
+        }
+    }
+
+    private var cleanupConfirmationMessage: String {
+        switch pendingCleanup {
+        case .olderThan(let days):
+            return loc("dashboard.usage.cleanupMessage", days)
+        case .all:
+            return loc("dashboard.usage.cleanupAllMessage")
+        case nil:
+            return ""
+        }
+    }
+
+    private var cleanupConfirmationButtonTitle: String {
+        switch pendingCleanup {
+        case .all:
+            return loc("dashboard.usage.cleanupAllBtn")
+        case .olderThan, nil:
+            return loc("dashboard.usage.cleanupBtn")
         }
     }
 
@@ -325,10 +376,7 @@ struct DashboardView: View {
             .padding(.top, 14)
             .padding(.bottom, 8)
 
-            HStack(spacing: 6) {
-                dimensionPicker
-                Spacer()
-            }
+            dimensionButtons
             .padding(.horizontal, 14)
             .padding(.bottom, 10)
 
@@ -342,35 +390,58 @@ struct DashboardView: View {
                 Chart(viewModel.breakdown.prefix(10), id: \.key) { bucket in
                     BarMark(
                         x: .value("Input", bucket.input_tokens),
-                        y: .value("Key", bucket.key)
+                        y: .value("Key", bucket.key),
+                        height: .fixed(5)
                     )
                     .foregroundStyle(by: .value("Series", loc("dashboard.usage.seriesInput")))
                     .position(by: .value("Series", loc("dashboard.usage.seriesInput")))
+                    .cornerRadius(2)
 
                     BarMark(
                         x: .value("Output", bucket.output_tokens),
-                        y: .value("Key", bucket.key)
+                        y: .value("Key", bucket.key),
+                        height: .fixed(5)
                     )
                     .foregroundStyle(by: .value("Series", loc("dashboard.usage.seriesOutput")))
                     .position(by: .value("Series", loc("dashboard.usage.seriesOutput")))
+                    .cornerRadius(2)
 
                     BarMark(
                         x: .value("Cache Read", bucket.cache_read_input_tokens),
-                        y: .value("Key", bucket.key)
+                        y: .value("Key", bucket.key),
+                        height: .fixed(5)
                     )
                     .foregroundStyle(by: .value("Series", loc("dashboard.usage.seriesCacheRead")))
                     .position(by: .value("Series", loc("dashboard.usage.seriesCacheRead")))
+                    .cornerRadius(2)
                 }
                 .chartForegroundStyleScale([
-                    loc("dashboard.usage.seriesInput"): .blue,
-                    loc("dashboard.usage.seriesOutput"): .purple,
-                    loc("dashboard.usage.seriesCacheRead"): .green,
+                    loc("dashboard.usage.seriesInput"): .blue.opacity(0.95),
+                    loc("dashboard.usage.seriesOutput"): .purple.opacity(0.95),
+                    loc("dashboard.usage.seriesCacheRead"): .green.opacity(0.95),
                 ])
                 .chartLegend(position: .top, alignment: .leading)
                 .chartXAxis {
                     AxisMarks(position: .bottom) { value in
-                        AxisGridLine()
-                        AxisValueLabel { if let n = value.as(Double.self) { Text(DashboardViewModel.fmtNum(Int(n))).font(.caption2) } }
+                        AxisGridLine(stroke: StrokeStyle(lineWidth: 0.8, dash: [3, 3]))
+                            .foregroundStyle(Color.secondary.opacity(0.34))
+                        AxisTick()
+                            .foregroundStyle(Color.secondary.opacity(0.45))
+                        AxisValueLabel {
+                            if let n = value.as(Double.self) {
+                                Text(DashboardViewModel.fmtNum(Int(n)))
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                }
+                .chartYAxis {
+                    AxisMarks(position: .leading) { _ in
+                        AxisGridLine(stroke: StrokeStyle(lineWidth: 0.8))
+                            .foregroundStyle(Color.secondary.opacity(0.26))
+                        AxisValueLabel()
+                            .foregroundStyle(Color.secondary.opacity(0.92))
                     }
                 }
                 .chartOverlay { proxy in
@@ -426,16 +497,34 @@ struct DashboardView: View {
         .shadow(color: .black.opacity(0.04), radius: 4, y: 2)
     }
 
-    private var dimensionPicker: some View {
-        Picker("", selection: $viewModel.breakdownDimension) {
-            Text(loc("dashboard.usage.dimProvider")).tag("provider")
-            Text(loc("dashboard.usage.dimAdapter")).tag("adapter")
-            Text(loc("dashboard.usage.dimModel")).tag("model")
-            Text(loc("dashboard.usage.dimAdapterModel")).tag("adapterModel")
-        }
-        .pickerStyle(.menu).controlSize(.small).frame(width: 100)
-        .onChange(of: viewModel.breakdownDimension) { _, _ in
-            Task { await viewModel.setBreakdownDimension(viewModel.breakdownDimension) }
+    private var dimensionButtons: some View {
+        HStack(spacing: 6) {
+            ForEach(MenuUsageDimension.allCases) { dimension in
+                let isSelected = viewModel.breakdownDimension == dimension.rawValue
+                Button {
+                    viewModel.setBreakdownDimension(dimension.rawValue)
+                } label: {
+                    Text(loc(dimension.titleKey))
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(isSelected ? Color.white : Color.primary)
+                        .padding(.horizontal, 11)
+                        .padding(.vertical, 5)
+                        .background(
+                            Capsule(style: .continuous)
+                                .fill(isSelected ? Color.accentColor : Color.secondary.opacity(0.10))
+                        )
+                        .overlay(
+                            Capsule(style: .continuous)
+                                .stroke(
+                                    isSelected ? Color.clear : Color.secondary.opacity(0.18),
+                                    lineWidth: 1
+                                )
+                        )
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(isSelected ? .isSelected : [])
+            }
+            Spacer(minLength: 0)
         }
     }
 
@@ -459,13 +548,41 @@ struct DashboardView: View {
                 }
             }
             Spacer()
-            Button {
-                showCleanupConfirm = true
-            } label: {
-                Text(viewModel.isCleaningUp ? loc("common.loading") : loc("dashboard.usage.cleanupBtn"))
+            HStack(spacing: 7) {
+                Text(loc("dashboard.usage.cleanupOlderThan"))
                     .font(.caption)
+                    .foregroundStyle(.secondary)
+                TextField("", value: $cleanupDays, format: .number)
+                    .textFieldStyle(.roundedBorder)
+                    .multilineTextAlignment(.trailing)
+                    .frame(width: 54)
+                    .accessibilityLabel(loc("dashboard.usage.cleanupDaysUnit"))
+                Text(loc("dashboard.usage.cleanupDaysUnit"))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                Button {
+                    let days = max(1, min(365, cleanupDays))
+                    cleanupDays = days
+                    pendingCleanup = .olderThan(days)
+                    showCleanupConfirm = true
+                } label: {
+                    Text(viewModel.isCleaningUp ? loc("common.loading") : loc("dashboard.usage.cleanupBtn"))
+                        .font(.caption)
+                }
+                .buttonStyle(.bordered)
+
+                Button(role: .destructive) {
+                    pendingCleanup = .all
+                    showCleanupConfirm = true
+                } label: {
+                    Text(loc("dashboard.usage.cleanupAllBtn"))
+                        .font(.caption)
+                }
+                .buttonStyle(.bordered)
+                .tint(.red)
             }
-            .buttonStyle(.bordered).disabled(viewModel.isCleaningUp)
+            .disabled(viewModel.isCleaningUp)
         }
         .padding(16)
         .background(RoundedRectangle(cornerRadius: 12).fill(Color(nsColor: .controlBackgroundColor)))

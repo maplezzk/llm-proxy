@@ -239,13 +239,15 @@ class APIClient {
         return info
     }
 
-    /// 清理 N 天前的历史数据
-    func cleanupTokenUsage(days: Int = 90) async throws -> CleanupResult {
+    /// 清理 N 天前的历史数据，或一次性清空全部用量数据。
+    func cleanupTokenUsage(days: Int = 90, all: Bool = false) async throws -> CleanupResult {
         let url = URL(string: "\(baseURL)/admin/token-stats/cleanup")!
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.httpBody = try JSONSerialization.data(withJSONObject: ["days": days])
+        req.httpBody = try JSONSerialization.data(
+            withJSONObject: all ? ["all": true] : ["days": max(1, min(365, days))]
+        )
         let (data, _) = try await URLSession.shared.data(for: req)
         let resp = try JSONDecoder().decode(CleanupResponse.self, from: data)
         guard resp.success, let result = resp.data else {

@@ -266,9 +266,14 @@
 "dashboard.usage.seriesCacheCreate" = "缓存创建";
 "dashboard.usage.storageTitle" = "用量数据存储";
 "dashboard.usage.storageDesc" = "%d 条事件 · %d 条预聚合 · %@";
-"dashboard.usage.cleanupBtn" = "清理 90 天前的数据";
-"dashboard.usage.cleanupConfirm" = "清理历史用量数据";
-"dashboard.usage.cleanupMessage" = "确定要清理 90 天前的所有历史用量数据吗？此操作不可恢复。";
+"dashboard.usage.cleanupOlderThan" = "早于";
+"dashboard.usage.cleanupDaysUnit" = "天";
+"dashboard.usage.cleanupBtn" = "清理";
+"dashboard.usage.cleanupAllBtn" = "全部清空";
+"dashboard.usage.cleanupConfirm" = "清理 %d 天前的数据？";
+"dashboard.usage.cleanupMessage" = "将删除所有早于 %d 天的用量事件和预聚合数据，此操作不可恢复。";
+"dashboard.usage.cleanupAllConfirm" = "清空全部用量数据？";
+"dashboard.usage.cleanupAllMessage" = "将删除全部用量事件和预聚合数据，此操作不可恢复。";
 
 // Common
 "console.empty" = "暂无数据";
