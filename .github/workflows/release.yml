@@ -41,7 +41,7 @@ jobs:
       - name: Update npm for OIDC support
         run: |
           corepack enable npm
-          corepack prepare npm@latest --activate
+          corepack prepare npm@11.10.1 --activate
           npm --version
 
       - name: Install dependencies
