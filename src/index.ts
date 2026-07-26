@@ -13,7 +13,11 @@ const COMMANDS: Record<string, () => Promise<void>> = {
     const logLevel = logLevelIndex !== -1 ? process.argv[logLevelIndex + 1] : undefined
     return cmdStart({ config, host, port: isNaN(port as number) ? undefined : port, logLevel })
   },
-  stop: cmdStop,
+  stop: () => {
+    const portIndex = process.argv.indexOf('--port')
+    const port = portIndex !== -1 ? parseInt(process.argv[portIndex + 1], 10) : undefined
+    return cmdStop({ port: isNaN(port as number) ? undefined : port })
+  },
   status: cmdStatus,
   restart: () => {
     const configIndex = process.argv.indexOf('--config')
