@@ -157,10 +157,16 @@ export default function AdaptersPage() {
 
   const load = useCallback(async () => {
     setLoading(true)
-    const res = await fetchJson<ApiRes<{ adapters: AdapterRow[] }>>('/admin/adapters').catch(() => null)
+    const res = await fetchJson<ApiRes<{ adapters: AdapterRow[] }>>('/admin/adapters').catch(
+      (err) => {
+        console.warn('[adapters] 列表加载失败', err)
+        toast(t('admin.common.requestFailed'), 'error')
+        return null
+      },
+    )
     setAdapters(res?.data?.adapters ?? [])
     setLoading(false)
-  }, [])
+  }, [t, toast])
 
   useEffect(() => {
     void load()
@@ -319,11 +325,17 @@ export default function AdaptersPage() {
       ? await fetchJson<ApiRes<unknown>>(`/admin/adapters/${editingName}`, {
           method: 'PUT',
           body: JSON.stringify(body),
-        }).catch(() => null)
+        }).catch((err) => {
+          console.warn('[adapters] 保存失败', err)
+          return null
+        })
       : await fetchJson<ApiRes<unknown>>('/admin/adapters', {
           method: 'POST',
           body: JSON.stringify(body),
-        }).catch(() => null)
+        }).catch((err) => {
+          console.warn('[adapters] 保存失败', err)
+          return null
+        })
 
     if (!res?.success) {
       toast(extractError(res, t('admin.adapters.saveFailed')) || t('admin.adapters.saveFailed'), 'error')
@@ -341,7 +353,10 @@ export default function AdaptersPage() {
     if (!ok) return
     const res = await fetchJson<ApiRes<unknown>>(`/admin/adapters/${name}`, {
       method: 'DELETE',
-    }).catch(() => null)
+    }).catch((err) => {
+      console.warn('[adapters] 删除失败', err)
+      return null
+    })
     if (!res?.success) {
       toast(extractError(res, t('admin.adapters.deleteFailed')) || t('admin.adapters.deleteFailed'), 'error')
       return

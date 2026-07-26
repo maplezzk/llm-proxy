@@ -10,6 +10,7 @@ import {
 import type { ReactNode } from 'react'
 import i18next from 'i18next'
 import { fetchJson } from './api'
+import { toast } from './toast'
 import { switchLang as switchLangI18n } from '../i18n'
 
 export type Tab = 'dashboard' | 'providers' | 'adapters' | 'logs' | 'capture' | 'settings'
@@ -42,18 +43,34 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [currentTab, setCurrentTab] = useState<Tab>('dashboard')
   const [status, setStatus] = useState<Status>('loading')
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const statusRef = useRef<Status>('loading')
 
   // 并发拉取 health / config / token-stats，对齐旧 store.loadDashboard。
+  // 10s 轮询失败不静默：console.warn 留痕，且仅在 running→offline 跳变时 toast（去重兜底防刷屏）。
   const loadDashboard = useCallback(async () => {
     const [h, cfg, stats] = await Promise.all([
-      fetchJson<any>('/admin/health').catch(() => null),
-      fetchJson<any>('/admin/config').catch(() => null),
-      fetchJson<any>('/admin/token-stats').catch(() => null),
+      fetchJson<any>('/admin/health').catch((err) => {
+        console.warn('[app-state] health 拉取失败', err)
+        return null
+      }),
+      fetchJson<any>('/admin/config').catch((err) => {
+        console.warn('[app-state] config 拉取失败', err)
+        return null
+      }),
+      fetchJson<any>('/admin/token-stats').catch((err) => {
+        console.warn('[app-state] token-stats 拉取失败', err)
+        return null
+      }),
     ])
     setHealth(h)
     setConfig(cfg?.data ?? null)
     setTokenStats(stats?.data ?? null)
-    setStatus(h?.success ? 'running' : 'offline')
+    const next: Status = h?.success ? 'running' : 'offline'
+    if (next === 'offline' && statusRef.current !== 'offline') {
+      toast(i18next.t('admin.common.requestFailed'), 'error')
+    }
+    statusRef.current = next
+    setStatus(next)
   }, [])
 
   const startPolling = useCallback(() => {
@@ -92,7 +109,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // 返回提示描述（message/type），由调用方（位于 ToastProvider 子树内）负责弹出 toast，
   // 以保持 main.tsx 既定的 provider 嵌套顺序（AppProvider 在 ToastProvider 之上）。
   const reloadConfig = useCallback(async (): Promise<ReloadResult | null> => {
-    const res = await fetchJson<any>('/admin/config/reload', { method: 'POST' }).catch(() => null)
+    const res = await fetchJson<any>('/admin/config/reload', { method: 'POST' }).catch(
+      (err: unknown) => {
+        console.warn('[app-state] 配置重载请求失败', err)
+        return err instanceof Error ? err : new Error(String(err))
+      },
+    )
+    if (res instanceof Error) {
+      return { message: `${i18next.t('admin.common.reloadFailed')}: ${res.message}`, type: 'error' }
+    }
     if (!res) {
       return { message: i18next.t('admin.common.reloadFailed'), type: 'error' }
     }

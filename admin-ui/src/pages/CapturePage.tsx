@@ -12,6 +12,7 @@ import {
 } from '@appica/ui-react/table'
 import { ClipboardCopy } from '@appica/icons-react'
 import JsonEditorPane from '../components/JsonEditorPane'
+import { useToast } from '../lib/toast'
 
 /* ────────────────────────── 类型 / 常量 ────────────────────────── */
 
@@ -81,45 +82,68 @@ function fmtSize(s: string | null): string {
  */
 export default function CapturePage() {
   const { t } = useTranslation()
+  const { toast } = useToast()
 
   const [entries, setEntries] = useState<CaptureEntry[]>([])
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const [running, setRunning] = useState(false)
   const [sourceFilter, setSourceFilter] = useState('')
   const esRef = useRef<EventSource | null>(null)
+  const abortRef = useRef<AbortController | null>(null)
+  const mountedRef = useRef(true)
 
-  /** 调用后端抓包控制 API。 */
-  const apiControl = useCallback(async (enabled: boolean, clear = false) => {
-    try {
-      await fetch('/admin/debug/captures/control', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ enabled, clear }),
-      })
-    } catch {
-      /* ignore */
+  // 卸载标记：阻止 fetch/SSE 回调在卸载后 setState。
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
     }
   }, [])
+
+  /** 调用后端抓包控制 API。 */
+  const apiControl = useCallback(
+    async (enabled: boolean, clear = false) => {
+      try {
+        await fetch('/admin/debug/captures/control', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ enabled, clear }),
+        })
+      } catch (err) {
+        console.warn('[capture] 控制请求失败', err)
+        toast(t('admin.common.requestFailed'), 'error')
+      }
+    },
+    [t, toast],
+  )
 
   /** 建立 SSE 连接 + 加载历史数据（不修改后端 enabled 状态）。 */
   const connectSSE = useCallback(() => {
     esRef.current?.close()
     esRef.current = null
+    abortRef.current?.abort()
+    const ac = new AbortController()
+    abortRef.current = ac
     setRunning(true)
     setEntries([])
     setSelectedId(null)
 
-    // 历史数据
-    fetch('/admin/debug/captures')
+    // 历史数据（可中止）
+    fetch('/admin/debug/captures', { signal: ac.signal })
       .then((r) => r.json())
       .then((d: { success?: boolean; data?: CaptureEntry[] }) => {
-        if (d.success) setEntries(d.data ?? [])
+        if (d.success && mountedRef.current && !ac.signal.aborted) setEntries(d.data ?? [])
       })
-      .catch(() => {})
+      .catch((err) => {
+        if (ac.signal.aborted) return
+        console.warn('[capture] 历史数据加载失败', err)
+        toast(t('admin.common.requestFailed'), 'error')
+      })
 
     // SSE 实时推送
     const es = new EventSource('/admin/debug/captures/stream')
     es.onmessage = (ev) => {
+      if (!mountedRef.current || esRef.current !== es) return
       try {
         const entry = JSON.parse(ev.data) as CaptureEntry
         setEntries((prev) => {
@@ -132,26 +156,44 @@ export default function CapturePage() {
           const next = [...prev, entry]
           return next.length > MAX_ENTRIES ? next.slice(-MAX_ENTRIES) : next
         })
-      } catch {
-        /* ignore */
+      } catch (err) {
+        // 上游夹杂非 JSON 帧：不丢弃连接，但必须可见（toast 8s 去重防刷屏）
+        console.warn('[capture] SSE 消息解析失败', err)
+        toast(t('admin.common.parseFailed'), 'warning')
+      }
+    }
+    es.onerror = () => {
+      // EventSource 会自动重连；readyState=CLOSED 表示服务端关闭或 fatal，同步 UI 状态
+      console.warn('[capture] SSE 连接异常, readyState=', es.readyState)
+      toast(t('admin.common.requestFailed'), 'warning')
+      if (es.readyState === EventSource.CLOSED) {
+        if (esRef.current === es) esRef.current = null
+        if (mountedRef.current) setRunning(false)
       }
     }
     esRef.current = es
-  }, [])
+  }, [t, toast])
 
-  // 进入页面：查询后端状态，已启用则自动连接；卸载时关闭 SSE。
+  // 进入页面：查询后端状态，已启用则自动连接；卸载时中止 fetch + 关闭 SSE。
   useEffect(() => {
-    fetch('/admin/debug/captures/status')
+    const ac = new AbortController()
+    fetch('/admin/debug/captures/status', { signal: ac.signal })
       .then((r) => r.json())
       .then((d: StatusRes) => {
         if (d.success && d.data?.enabled) connectSSE()
       })
-      .catch(() => {})
+      .catch((err) => {
+        if (ac.signal.aborted) return
+        console.warn('[capture] 状态查询失败', err)
+        toast(t('admin.common.requestFailed'), 'error')
+      })
     return () => {
+      ac.abort()
+      abortRef.current?.abort()
       esRef.current?.close()
       esRef.current = null
     }
-  }, [connectSSE])
+  }, [connectSSE, t, toast])
 
   /* ──── 控制按钮 ──── */
 
@@ -201,7 +243,10 @@ export default function CapturePage() {
 
   const copyRaw = (raw: string | null) => {
     if (raw == null) return
-    navigator.clipboard.writeText(raw).catch(() => {})
+    navigator.clipboard.writeText(raw).catch((err) => {
+      console.warn('[capture] 复制失败', err)
+      toast(t('admin.common.copyFailed'), 'error')
+    })
   }
 
   /* ──── 渲染 ──── */

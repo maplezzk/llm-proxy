@@ -21,11 +21,15 @@ export default function PortSetting() {
 
   // 加载当前配置端口。
   const load = useCallback(async () => {
-    const data = await fetchJson<any>('/admin/port').catch(() => null)
+    const data = await fetchJson<any>('/admin/port').catch((err) => {
+      console.warn('[port-setting] 端口配置加载失败', err)
+      toast(t('admin.common.requestFailed'), 'error')
+      return null
+    })
     const p = data?.data?.port ?? null
     setConfigPort(p)
     setPort(p ? String(p) : '')
-  }, [])
+  }, [t, toast])
 
   useEffect(() => {
     void load()
@@ -50,12 +54,17 @@ export default function PortSetting() {
     const res = await fetchJson<any>('/admin/port', {
       method: 'PUT',
       body: JSON.stringify({ port: portVal }),
-    }).catch(() => null)
+    }).catch((err) => {
+      console.warn('[port-setting] 端口保存失败', err)
+      return null
+    })
     setSaving(false)
     if (res?.success) {
       toast(t('admin.sidebar.portSetSuccess'), 'success')
       setConfigPort(portVal)
       setEditing(false)
+    } else {
+      toast(t('admin.common.requestFailed'), 'error')
     }
   }
 

@@ -176,9 +176,18 @@ export default function ProvidersPage() {
     const [statusRes, configRes] = await Promise.all([
       fetchJson<ApiRes<{ providers: Array<{ name: string; type: string; available?: boolean }> }>>(
         '/admin/status/providers',
-      ).catch(() => null),
-      fetchJson<ApiRes<{ providers: ProviderRow[] }>>('/admin/config').catch(() => null),
+      ).catch((err) => {
+        console.warn('[providers] status 拉取失败', err)
+        return null
+      }),
+      fetchJson<ApiRes<{ providers: ProviderRow[] }>>('/admin/config').catch((err) => {
+        console.warn('[providers] config 拉取失败', err)
+        return null
+      }),
     ])
+    if (!statusRes || !configRes) {
+      toast(t('admin.common.requestFailed'), 'error')
+    }
     const statuses = statusRes?.data?.providers ?? []
     const configs = configRes?.data?.providers ?? []
     setProviders(
@@ -192,7 +201,7 @@ export default function ProvidersPage() {
       })),
     )
     setLoading(false)
-  }, [])
+  }, [t, toast])
 
   useEffect(() => {
     void load()
@@ -334,11 +343,17 @@ export default function ProvidersPage() {
       ? await fetchJson<ApiRes<unknown>>(`/admin/providers/${editingName}`, {
           method: 'PUT',
           body: JSON.stringify(body),
-        }).catch(() => null)
+        }).catch((err) => {
+          console.warn('[providers] 保存失败', err)
+          return null
+        })
       : await fetchJson<ApiRes<unknown>>('/admin/providers', {
           method: 'POST',
           body: JSON.stringify(body),
-        }).catch(() => null)
+        }).catch((err) => {
+          console.warn('[providers] 保存失败', err)
+          return null
+        })
 
     if (!res?.success) {
       toast(extractError(res, t('admin.providers.saveFailed')) || t('admin.providers.saveFailed'), 'error')
@@ -356,7 +371,10 @@ export default function ProvidersPage() {
     if (!ok) return
     const res = await fetchJson<ApiRes<unknown>>(`/admin/providers/${name}`, {
       method: 'DELETE',
-    }).catch(() => null)
+    }).catch((err) => {
+      console.warn('[providers] 删除失败', err)
+      return null
+    })
     if (!res?.success) {
       toast(extractError(res, t('admin.providers.deleteFailed')) || t('admin.providers.deleteFailed'), 'error')
       return
@@ -387,7 +405,10 @@ export default function ProvidersPage() {
     const res = await fetchJson<ApiRes<{ models: Array<{ id: string; description?: string | null }>; existing?: string[] }>>(
       `/admin/providers/${effectiveName}/pull-models`,
       { method: 'POST', body: JSON.stringify(body) },
-    ).catch(() => null)
+    ).catch((err) => {
+      console.warn('[providers] 拉取远程模型失败', err)
+      return null
+    })
 
     if (!res?.success) {
       const detail = extractError(res, t('admin.providers.pullModelsError')) || t('admin.providers.pullModelsError')

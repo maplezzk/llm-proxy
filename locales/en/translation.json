@@ -46,7 +46,10 @@
       "view": "View",
     "reloadConfig": "Reload Config",
     "configReloaded": "Config reloaded",
-    "reloadFailed": "Reload failed"
+    "reloadFailed": "Reload failed",
+      "requestFailed": "Request failed",
+      "copyFailed": "Copy failed",
+      "parseFailed": "Data parse failed"
     },
     "dashboard": {
       "status": "Status",

@@ -79,9 +79,13 @@ function ProxyKeyCard() {
   const [showKey, setShowKey] = useState(false)
 
   const load = useCallback(async () => {
-    const res = await fetchJson<ApiRes<{ set?: boolean }>>('/admin/proxy-key').catch(() => null)
+    const res = await fetchJson<ApiRes<{ set?: boolean }>>('/admin/proxy-key').catch((err) => {
+      console.warn('[settings] proxy-key 状态加载失败', err)
+      toast(t('admin.common.requestFailed'), 'error')
+      return null
+    })
     setHasKey(res?.data?.set ?? false)
-  }, [])
+  }, [t, toast])
 
   useEffect(() => {
     void load()
@@ -92,13 +96,18 @@ function ProxyKeyCard() {
     const res = await fetchJson<ApiRes<unknown>>('/admin/proxy-key', {
       method: 'PUT',
       body: JSON.stringify({ key: value }),
-    }).catch(() => null)
+    }).catch((err) => {
+      console.warn('[settings] proxy-key 保存失败', err)
+      return null
+    })
     setSaving(false)
     if (res?.success) {
       setHasKey(!!value)
       toast(value ? t('admin.dashboard.proxyKeySetSuccess') : t('admin.dashboard.proxyKeyRemoveSuccess'), 'success')
       setKey('')
       void load()
+    } else {
+      toast(t('admin.common.requestFailed'), 'error')
     }
   }
 
@@ -170,10 +179,22 @@ function VisionCard() {
 
   const load = useCallback(async () => {
     const [visionRes, configRes, cacheRes] = await Promise.all([
-      fetchJson<ApiRes<VisionData>>('/admin/vision').catch(() => null),
-      fetchJson<ApiRes<{ providers: ProviderRef[] }>>('/admin/config').catch(() => null),
-      fetchJson<ApiRes<CacheStats>>('/admin/vision-cache/stats').catch(() => null),
+      fetchJson<ApiRes<VisionData>>('/admin/vision').catch((err) => {
+        console.warn('[settings] vision 配置加载失败', err)
+        return null
+      }),
+      fetchJson<ApiRes<{ providers: ProviderRef[] }>>('/admin/config').catch((err) => {
+        console.warn('[settings] providers 加载失败', err)
+        return null
+      }),
+      fetchJson<ApiRes<CacheStats>>('/admin/vision-cache/stats').catch((err) => {
+        console.warn('[settings] vision 缓存统计加载失败', err)
+        return null
+      }),
     ])
+    if (!visionRes || !configRes || !cacheRes) {
+      toast(t('admin.common.requestFailed'), 'error')
+    }
     if (cacheRes?.data) setCache(cacheRes.data)
     const list = configRes?.data?.providers ?? []
     setProviders(list)
@@ -191,7 +212,7 @@ function VisionCard() {
     setProvider(v?.provider ?? '')
     setModel(v?.model ?? '')
     setPrompt(v?.prompt || DEFAULT_VISION_PROMPT)
-  }, [])
+  }, [t, toast])
 
   useEffect(() => {
     void load()
@@ -219,7 +240,10 @@ function VisionCard() {
     const res = await fetchJson<ApiRes<unknown>>('/admin/vision', {
       method: 'PUT',
       body: JSON.stringify(payload),
-    }).catch(() => null)
+    }).catch((err) => {
+      console.warn('[settings] vision 保存失败', err)
+      return null
+    })
     setSaving(false)
     if (res?.success) {
       toast(enabled ? t('admin.vision.saved') : t('admin.vision.removed'), 'success')
@@ -235,7 +259,10 @@ function VisionCard() {
     setClearing(true)
     const res = await fetchJson<ApiRes<CacheStats>>('/admin/vision-cache/clear', {
       method: 'POST',
-    }).catch(() => null)
+    }).catch((err) => {
+      console.warn('[settings] vision 缓存清空失败', err)
+      return null
+    })
     setClearing(false)
     if (res?.success) {
       if (res.data) setCache(res.data)

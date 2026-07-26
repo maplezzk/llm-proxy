@@ -46,7 +46,10 @@
       "view": "查看",
     "reloadConfig": "重载配置",
     "configReloaded": "配置已重载",
-    "reloadFailed": "重载失败"
+    "reloadFailed": "重载失败",
+      "requestFailed": "请求失败",
+      "copyFailed": "复制失败",
+      "parseFailed": "数据解析失败"
     },
     "dashboard": {
       "status": "运行状态",

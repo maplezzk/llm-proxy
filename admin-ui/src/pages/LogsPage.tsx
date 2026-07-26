@@ -147,17 +147,25 @@ export default function LogsPage() {
     const params = new URLSearchParams({ limit: '1000' })
     if (date) params.set('date', date)
     const res = await fetchJson<ApiRes<{ logs: LogEntry[] }>>('/admin/logs?' + params.toString()).catch(
-      () => null,
+      (err) => {
+        console.warn('[logs] 日志加载失败', err)
+        toast(t('admin.common.requestFailed'), 'error')
+        return null
+      },
     )
     setAllLogs(res?.data?.logs ?? [])
     setPage(1)
     setLoading(false)
-  }, [])
+  }, [t, toast])
 
   const loadLogLevel = useCallback(async () => {
-    const res = await fetchJson<ApiRes<{ level: string }>>('/admin/log-level').catch(() => null)
+    const res = await fetchJson<ApiRes<{ level: string }>>('/admin/log-level').catch((err) => {
+      console.warn('[logs] 日志级别加载失败', err)
+      toast(t('admin.common.requestFailed'), 'error')
+      return null
+    })
     setCurrentLogLevel(res?.data?.level ?? 'info')
-  }, [])
+  }, [t, toast])
 
   useEffect(() => {
     void load()
@@ -168,11 +176,16 @@ export default function LogsPage() {
     const res = await fetchJson<ApiRes<unknown>>('/admin/log-level', {
       method: 'PUT',
       body: JSON.stringify({ level }),
-    }).catch(() => null)
+    }).catch((err) => {
+      console.warn('[logs] 日志级别设置失败', err)
+      return null
+    })
     if (res?.success) {
       setCurrentLogLevel(level)
       // 旧版硬编码中文 toast（locales 无对应 key，忠实迁移）
       toast(`日志级别已设为 ${level}`, 'success')
+    } else {
+      toast(t('admin.common.requestFailed'), 'error')
     }
   }
 

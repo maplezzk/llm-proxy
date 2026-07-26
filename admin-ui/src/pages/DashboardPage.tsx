@@ -214,16 +214,28 @@ export default function DashboardPage() {
     const tlUrl = `/admin/token-stats/timeline?startDate=${start}&endDate=${end}`
     const bdUrl = `/admin/token-stats/breakdown?dimension=${dim}&startDate=${start}&endDate=${end}`
     const [tlRes, bdRes, dbRes] = await Promise.all([
-      fetchJson<ApiRes<TimelinePoint[]>>(tlUrl).catch(() => null),
-      fetchJson<ApiRes<UsageBucket[]>>(bdUrl).catch(() => null),
-      fetchJson<ApiRes<DbInfo>>('/admin/token-stats/db-info').catch(() => null),
+      fetchJson<ApiRes<TimelinePoint[]>>(tlUrl).catch((err) => {
+        console.warn('[dashboard] timeline 加载失败', err)
+        return null
+      }),
+      fetchJson<ApiRes<UsageBucket[]>>(bdUrl).catch((err) => {
+        console.warn('[dashboard] breakdown 加载失败', err)
+        return null
+      }),
+      fetchJson<ApiRes<DbInfo>>('/admin/token-stats/db-info').catch((err) => {
+        console.warn('[dashboard] db-info 加载失败', err)
+        return null
+      }),
     ])
     if (id !== reqId.current) return
+    if (!tlRes || !bdRes || !dbRes) {
+      toast(t('admin.common.requestFailed'), 'error')
+    }
     setTimeline(tlRes?.data ?? [])
     setBreakdown(bdRes?.data ?? [])
     setDbInfo((prev) => dbRes?.data ?? prev)
     setLoadingCharts(false)
-  }, [])
+  }, [t, toast])
 
   // 挂载加载一次（对齐旧版 init → loadCharts）
   useEffect(() => {
@@ -274,7 +286,10 @@ export default function DashboardPage() {
     const res = await fetchJson<ApiRes<{ events: number; aggregates: number }>>('/admin/token-stats/cleanup', {
       method: 'POST',
       body: JSON.stringify({ days }),
-    }).catch(() => null)
+    }).catch((err) => {
+      console.warn('[dashboard] 存储清理失败', err)
+      return null
+    })
     setCleaning(false)
     if (res?.success && res.data) {
       toast(

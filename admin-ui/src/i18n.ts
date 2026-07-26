@@ -1,5 +1,6 @@
 import i18next from 'i18next'
 import { initReactI18next } from 'react-i18next'
+import { toast } from './lib/toast'
 // admin-ui/src 上溯两级到仓库根目录的 locales/
 import zh from '../../locales/zh/translation.json'
 import en from '../../locales/en/translation.json'
@@ -55,7 +56,11 @@ export async function switchLang(lang: string): Promise<void> {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ locale: lang }),
     })
-  } catch { /* ignore */ }
+  } catch (err) {
+    // 本地切换仍继续，但服务端同步失败必须可见
+    console.warn('[i18n] 服务端 locale 同步失败', err)
+    toast(i18next.t('admin.common.requestFailed'), 'warning')
+  }
   await i18next.changeLanguage(lang)
 }
 
@@ -74,5 +79,8 @@ export async function syncLocaleFromServer(): Promise<void> {
         await i18next.changeLanguage(serverLang)
       }
     }
-  } catch { /* ignore */ }
+  } catch (err) {
+    console.warn('[i18n] 从服务端读取 locale 失败', err)
+    toast(i18next.t('admin.common.requestFailed'), 'warning')
+  }
 }
