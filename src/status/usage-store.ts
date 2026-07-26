@@ -431,17 +431,24 @@ export class UsageStore {
    * - 否则按 range（默认 'today'）：today / 7d / 30d / all
    */
   getBreakdown(
-    dimension: 'provider' | 'adapter' | 'model',
+    dimension: 'provider' | 'adapter' | 'model' | 'adapterModel',
     opts: { startDate?: string; endDate?: string; range?: 'today' | '7d' | '30d' | 'all' } = {},
   ): UsageBucket[] {
     const t0 = process.hrtime.bigint()
     const { startDate, endDate } = opts
     const range = opts.range ?? 'today'
-    // model 维度按上游真实模型分组（usage_events.upstream_model）：
-    // daily_aggregates.model 存的是客户端请求模型名，适配器请求会混入虚拟名（如 GPT/MAX），
-    // 与直连请求的真实模型 id 语义不一致，故模型维度改为查事件表。
-    const fromEvents = dimension === 'model'
-    const col = dimension === 'provider' ? 'provider' : dimension === 'adapter' ? 'adapter' : 'upstream_model'
+    // model（供应商模型）按上游真实模型分组（usage_events.upstream_model）；
+    // adapterModel（适配器模型）按客户端请求模型名分组、仅含适配器请求（虚拟名如 GPT/MAX）。
+    // daily_aggregates.model 存的是客户端请求模型名且无法区分来源，两者都改查事件表。
+    const fromEvents = dimension === 'model' || dimension === 'adapterModel'
+    const col =
+      dimension === 'provider'
+        ? 'provider'
+        : dimension === 'adapter'
+          ? 'adapter'
+          : dimension === 'model'
+            ? 'upstream_model'
+            : 'model'
     let where = ''
     const params: unknown[] = []
     if (startDate && endDate) {
@@ -454,6 +461,10 @@ export class UsageStore {
       const days = range === '7d' ? 7 : 30
       where = `WHERE date >= date(?, '-' || ? || ' days')`
       params.push(this.today, days - 1)
+    }
+    // 适配器模型维度：只看适配器来源的请求（直连请求的 model 是真实 id，不属于虚拟模型）
+    if (dimension === 'adapterModel') {
+      where += where ? ` AND adapter IS NOT NULL AND adapter != ''` : `WHERE adapter IS NOT NULL AND adapter != ''`
     }
     const rows = this.db.prepare(`
       SELECT ${col} AS key,

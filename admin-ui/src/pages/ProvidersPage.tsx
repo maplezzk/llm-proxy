@@ -538,18 +538,23 @@ export default function ProvidersPage() {
                 </TableCell>
                 <TableCell>
                   <div className="flex items-center justify-end gap-1.5">
-                    <Button variant="ghost" size="sm" onClick={() => openTestPanel(p.name)}>
+                    <Button
+                      variant="soft"
+                      size="sm"
+                      className="bg-info-soft text-info-emphasis"
+                      onClick={() => openTestPanel(p.name)}
+                    >
                       <Activity data-icon="start" className="size-3.5" />
                       {t('admin.common.test')}
                     </Button>
-                    <Button variant="ghost" size="sm" onClick={() => openForm(p.name)}>
+                    <Button variant="outline" size="sm" onClick={() => openForm(p.name)}>
                       <Pencil data-icon="start" className="size-3.5" />
                       {t('admin.common.edit')}
                     </Button>
                     <Button
-                      variant="ghost"
+                      variant="soft"
                       size="sm"
-                      className="text-error-emphasis hover:bg-error-soft"
+                      className="bg-error-soft text-error-emphasis"
                       onClick={() => void confirmDelete(p.name)}
                     >
                       <Trash data-icon="start" className="size-3.5" />

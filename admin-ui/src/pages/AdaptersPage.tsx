@@ -469,18 +469,23 @@ export default function AdaptersPage() {
                 </TableCell>
                 <TableCell>
                   <div className="flex items-center justify-end gap-1.5">
-                    <Button variant="ghost" size="sm" onClick={() => openTestPanel(a.name)}>
+                    <Button
+                      variant="soft"
+                      size="sm"
+                      className="bg-info-soft text-info-emphasis"
+                      onClick={() => openTestPanel(a.name)}
+                    >
                       <Activity data-icon="start" className="size-3.5" />
                       {t('admin.common.test')}
                     </Button>
-                    <Button variant="ghost" size="sm" onClick={() => openForm(a.name)}>
+                    <Button variant="outline" size="sm" onClick={() => openForm(a.name)}>
                       <Pencil data-icon="start" className="size-3.5" />
                       {t('admin.common.edit')}
                     </Button>
                     <Button
-                      variant="ghost"
+                      variant="soft"
                       size="sm"
-                      className="text-error-emphasis hover:bg-error-soft"
+                      className="bg-error-soft text-error-emphasis"
                       onClick={() => void confirmDelete(a.name)}
                     >
                       <Trash data-icon="start" className="size-3.5" />

@@ -218,16 +218,16 @@ export function handleGetTokenTimeline(ctx: ServerContext, req: IncomingMessage,
 }
 
 /**
- * 按维度分桶：'provider' | 'adapter' | 'model'。
+ * 按维度分桶：'provider' | 'adapter' | 'model'（供应商模型） | 'adapterModel'（适配器模型）。
  * GET /admin/token-stats/breakdown?dimension=provider&range=today|7d|30d|all
  * GET /admin/token-stats/breakdown?dimension=provider&startDate=YYYY-MM-DD&endDate=YYYY-MM-DD
  * 自定义日期范围优先；否则按 range（默认 'today'）。
  */
 export function handleGetTokenBreakdown(ctx: ServerContext, req: IncomingMessage, res: ServerResponse): void {
   const url = new URL(req.url ?? '/', 'http://localhost')
-  const dimension = (url.searchParams.get('dimension') ?? 'provider') as 'provider' | 'adapter' | 'model'
-  if (!['provider', 'adapter', 'model'].includes(dimension)) {
-    json(res, 400, { success: false, error: 'dimension 必须是 provider/adapter/model' })
+  const dimension = (url.searchParams.get('dimension') ?? 'provider') as 'provider' | 'adapter' | 'model' | 'adapterModel'
+  if (!['provider', 'adapter', 'model', 'adapterModel'].includes(dimension)) {
+    json(res, 400, { success: false, error: 'dimension 必须是 provider/adapter/model/adapterModel' })
     return
   }
   const startDate = url.searchParams.get('startDate')

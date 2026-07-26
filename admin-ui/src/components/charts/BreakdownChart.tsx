@@ -33,8 +33,8 @@ const COLORS = {
 /** 最多展示条目数（对齐旧版 sorted.slice(0, 12)） */
 const TOP_N = 12
 
-/** 截断过长 key（对齐旧版 truncateKey：>11 字符保留前 10 + …） */
-function truncateKey(k: string, max = 11): string {
+/** 截断过长 key（>22 字符保留前 21 + …；tooltip 始终显示全名） */
+function truncateKey(k: string, max = 22): string {
   if (k.length <= max) return k
   return k.slice(0, max - 1) + '…'
 }
@@ -129,7 +129,7 @@ export default function BreakdownChart({ data }: { data: UsageBucket[] }) {
             <YAxis
               type="category"
               dataKey="label"
-              width={110}
+              width={170}
               interval={0}
               tick={{ fontSize: 11, fill: 'var(--foreground-muted)' }}
               axisLine={false}

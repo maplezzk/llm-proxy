@@ -4,8 +4,6 @@ import { useTranslation } from 'react-i18next'
 import { Button } from '@appica/ui-react/button'
 import { Input } from '@appica/ui-react/input'
 import { Spinner } from '@appica/ui-react/spinner'
-import { Toggle } from '@appica/ui-react/toggle'
-import { ToggleGroup } from '@appica/ui-react/toggle-group'
 import {
   ArrowLeftRight,
   Bolt,
@@ -43,7 +41,7 @@ interface ProviderEntry {
   models?: unknown[]
 }
 
-type BreakdownDimension = 'provider' | 'adapter' | 'model'
+type BreakdownDimension = 'provider' | 'adapter' | 'model' | 'adapterModel'
 
 /** 初始日期预设：近 30 天（对齐旧版 dateStart=daysAgo(30) + presetDays=30 的初始组合） */
 const INITIAL_PRESET_DAYS = 30
@@ -417,26 +415,19 @@ export default function DashboardPage() {
               inputSize="sm"
               className={dateInputClass}
             />
-            <ToggleGroup
-              aria-label={t('admin.dashboard.usage.trendTitle')}
-              value={presetDays > 0 ? [String(presetDays)] : []}
-              onValueChange={(v) => {
-                if (v.length > 0) handlePreset(Number(v[0]))
-              }}
-              className="ms-1"
-            >
+            <div className="ms-1 flex items-center gap-1" role="group" aria-label={t('admin.dashboard.usage.trendTitle')}>
               {[1, 7, 30, 90].map((v) => (
-                <Toggle
+                <Button
                   key={v}
-                  value={String(v)}
-                  render={
-                    <Button variant="outline" size="sm" className="rounded-full px-3 text-[11.5px]" />
-                  }
+                  variant={presetDays === v ? 'primary' : 'outline'}
+                  size="sm"
+                  className="rounded-full px-3 text-[11.5px]"
+                  onClick={() => handlePreset(v)}
                 >
                   {t(`admin.dashboard.usage.days${v}`)}
-                </Toggle>
+                </Button>
               ))}
-            </ToggleGroup>
+            </div>
           </div>
         }
       >
@@ -451,25 +442,19 @@ export default function DashboardPage() {
         title={t('admin.dashboard.usage.breakdownTitle')}
         toolbar={
           <div className="mb-2 flex flex-wrap items-center gap-1">
-            <ToggleGroup
-              aria-label={t('admin.dashboard.usage.breakdownTitle')}
-              value={[dimension]}
-              onValueChange={(v) => {
-                if (v.length > 0) handleDimension(v[0] as BreakdownDimension)
-              }}
-            >
-              {(['provider', 'adapter', 'model'] as const).map((d) => (
-                <Toggle
+            <div className="flex items-center gap-1" role="group" aria-label={t('admin.dashboard.usage.breakdownTitle')}>
+              {(['provider', 'adapter', 'model', 'adapterModel'] as const).map((d) => (
+                <Button
                   key={d}
-                  value={d}
-                  render={
-                    <Button variant="outline" size="sm" className="rounded-full px-3 text-[11.5px]" />
-                  }
+                  variant={dimension === d ? 'primary' : 'outline'}
+                  size="sm"
+                  className="rounded-full px-3 text-[11.5px]"
+                  onClick={() => handleDimension(d)}
                 >
                   {t(`admin.dashboard.usage.dim${d[0].toUpperCase()}${d.slice(1)}`)}
-                </Toggle>
+                </Button>
               ))}
-            </ToggleGroup>
+            </div>
           </div>
         }
       >

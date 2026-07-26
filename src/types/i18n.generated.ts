@@ -144,6 +144,7 @@ export type TranslationKey =
   | 'admin.dashboard.usage.days90'
   | 'admin.dashboard.usage.daysUnit'
   | 'admin.dashboard.usage.dimAdapter'
+  | 'admin.dashboard.usage.dimAdapterModel'
   | 'admin.dashboard.usage.dimModel'
   | 'admin.dashboard.usage.dimProvider'
   | 'admin.dashboard.usage.emptyDesc'
