@@ -34,7 +34,7 @@
     "build:admin": "vite build admin-ui",
     "build:app": "bash app/scripts/build.sh",
     "build:prod": "esbuild src/index.ts --bundle --platform=node --outfile=dist/bundle.js --format=esm",
-    "dev": "tsx src/index.ts",
+    "dev": "tsx scripts/dev.ts",
     "test": "node --import tsx --test test/**/*.test.ts",
     "test:watch": "node --import tsx --watch --test test/**/*.test.ts",
     "typecheck": "tsc --noEmit",

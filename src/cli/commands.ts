@@ -12,6 +12,12 @@ import type { Config } from '../config/types.js'
 import { VisionCache } from '../proxy/vision-cache.js'
 
 const DEFAULT_CONFIG_PATH = `${process.env.HOME ?? '/tmp'}/.llm-proxy/config.yaml`
+const DEFAULT_DATA_DIR = `${process.env.HOME ?? '/tmp'}/.llm-proxy`
+/**
+ * 默认 PID 文件路径，正式服务使用 `/tmp/llm-proxy.pid`。
+ * dev wrapper 通过 `LLM_PROXY_PID_PATH` 覆盖为 `/tmp/llm-proxy-dev.pid`，
+ * 保证正式与开发实例互不干扰。
+ */
 const DEFAULT_PID_PATH = '/tmp/llm-proxy.pid'
 const DEFAULT_HOST = '127.0.0.1'
 const DEFAULT_PORT = 9000
@@ -21,6 +27,10 @@ interface StartOptions {
   host?: string
   port?: number
   logLevel?: string
+  /** 运行时数据目录（日志、usage.db、vision-cache 等）。默认 ~/.llm-proxy */
+  dataDir?: string
+  /** PID 文件路径覆盖（dev wrapper 用）。默认 /tmp/llm-proxy.pid */
+  pidPath?: string
 }
 
 interface ProxyState {
@@ -146,12 +156,11 @@ export function installShutdownHandlers(opts: {
   if (target === '*' || target.includes('SIGINT')) process.on('SIGINT', shutdown)
 }
 
-/** 启动阶段 Logger 尚未创建，写配置加载错误到 ~/.llm-proxy/startup-errors.log */
-function writeConfigErrorLog(configPath: string, error: string): void {
+/** 启动阶段 Logger 尚未创建，写配置加载错误到 dataDir/startup-errors.log */
+function writeConfigErrorLog(dataDir: string, configPath: string, error: string): void {
   try {
-    const logDir = `${process.env.HOME ?? '/tmp'}/.llm-proxy`
-    mkdirSync(logDir, { recursive: true })
-    const logFile = `${logDir}/startup-errors.log`
+    mkdirSync(dataDir, { recursive: true })
+    const logFile = `${dataDir}/startup-errors.log`
     const ts = new Date().toISOString()
     const line = `[${ts}] 配置加载失败 config=${configPath}\n${error}\n${'─'.repeat(60)}\n`
     appendFileSync(logFile, line, 'utf-8')
@@ -165,6 +174,14 @@ export async function cmdStart(opts: StartOptions): Promise<void> {
   let { t } = createI18n('en')
 
   const configPath = opts.config ?? DEFAULT_CONFIG_PATH
+  /**
+   * 运行时数据目录：opts.dataDir 显式 > 默认 ~/.llm-proxy。
+   * dev wrapper 通过 --data-dir 指向 ~/.llm-proxy/dev，避免污染正式实例。
+   */
+  const dataDir = opts.dataDir ?? DEFAULT_DATA_DIR
+  // PID 文件路径：opts.pidPath > LLM_PROXY_PID_PATH > /tmp/llm-proxy.pid。
+  // 用 `||` 而非 `??` 是为了在 env 显式置空时回退到默认值（原 resolvePidPath 行为）。
+  const pidPath = opts.pidPath || process.env.LLM_PROXY_PID_PATH || DEFAULT_PID_PATH
 
   let store: ConfigStore
   if (!existsSync(configPath)) {
@@ -181,8 +198,8 @@ export async function cmdStart(opts: StartOptions): Promise<void> {
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : String(err)
       console.error(t('cli.start.configLoadFailed', { error: errorMessage }))
-      // 启动阶段 Logger 尚未创建，手动写错误日志到 ~/.llm-proxy/
-      writeConfigErrorLog(configPath, errorMessage)
+      // 启动阶段 Logger 尚未创建，手动写错误日志到 dataDir
+      writeConfigErrorLog(dataDir, configPath, errorMessage)
       process.exit(1)
     }
   }
@@ -195,21 +212,22 @@ export async function cmdStart(opts: StartOptions): Promise<void> {
   }
 
   const tracker = new StatusTracker()
-  const logDir = `${process.env.HOME ?? '/tmp'}/.llm-proxy`
-  const usageStore = new UsageStore(`${logDir}/usage.db`, undefined /* Logger 在下面创建后再注入 */)
+  // 日志、SQLite、识图缓存等所有运行时数据都落入 dataDir，保证 dev/正式隔离
+  mkdirSync(dataDir, { recursive: true })
+  const usageStore = new UsageStore(`${dataDir}/usage.db`, undefined /* Logger 在下面创建后再注入 */)
   const capture = new CaptureBuffer(store.getConfig().config.captureMaxSize ?? 100)
   const persistedLevel = store.getConfig().config.logLevel
   const defaultLevel = (opts.logLevel && ['debug', 'info', 'warn', 'error'].includes(opts.logLevel))
     ? opts.logLevel as LogLevel
     : 'info'
   const level = persistedLevel ?? defaultLevel
-  const logger = new Logger(1000, logDir, level)
+  const logger = new Logger(1000, dataDir, level)
   const host = opts.host ?? DEFAULT_HOST
   const configPort = store.getConfig().config.port
   const port = opts.port ?? configPort ?? DEFAULT_PORT
 
   // 外挂识图缓存：图片内容 hash → 描述
-  const visionCache = new VisionCache({ filePath: `${logDir}/vision-cache.json` })
+  const visionCache = new VisionCache({ filePath: `${dataDir}/vision-cache.json` })
   visionCache.load()
 
   const server = createProxyServer({
@@ -229,7 +247,7 @@ export async function cmdStart(opts: StartOptions): Promise<void> {
   // 进程能否退出完全取决于 handler 是否调用 process.exit。
   // 因此每一步都必须 try-catch 包住，保证最后 process.exit(0) 一定执行，
   // 否则进程残留（菜单栏 stopSync 退出后，Node.js 进程会变成孤儿）。
-  installShutdownHandlers({ server, visionCache, t, onShutdown: () => usageStore.close() })
+  installShutdownHandlers({ server, visionCache, t, pidPath, onShutdown: () => usageStore.close() })
 
   logger.log('system', t('cli.start.started', { host, port, config: configPath }), { host, port, config: configPath })
 
@@ -241,7 +259,8 @@ export async function cmdStart(opts: StartOptions): Promise<void> {
     }
   })
   server.listen(port, host, () => {
-    writeFileSync(DEFAULT_PID_PATH, JSON.stringify({ pid: process.pid, port, startedAt: Date.now() }))
+    // PID 文件写入 resolvePidPath() 的结果，而非固定 DEFAULT_PID_PATH
+    writeFileSync(pidPath, JSON.stringify({ pid: process.pid, port, startedAt: Date.now() }))
     console.error(t('cli.start.started', { host, port }))
     console.error(t('cli.start.adminApi', { host, port }))
     console.error(t('cli.start.aiApi', { host, port }))

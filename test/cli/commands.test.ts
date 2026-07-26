@@ -25,14 +25,20 @@ describe('cli/commands', () => {
   })
 
   it('cmdStart 参数接口正确', () => {
-    const opts: { config?: string; host?: string; port?: number } = {
+    const opts: { config?: string; host?: string; port?: number; logLevel?: string; dataDir?: string; pidPath?: string } = {
       config: '/tmp/test.yaml',
       host: '127.0.0.1',
       port: 9000,
+      logLevel: 'debug',
+      dataDir: '/tmp/dev-data',
+      pidPath: '/tmp/dev.pid',
     }
     assert.strictEqual(opts.config, '/tmp/test.yaml')
     assert.strictEqual(opts.host, '127.0.0.1')
     assert.strictEqual(opts.port, 9000)
+    assert.strictEqual(opts.logLevel, 'debug')
+    assert.strictEqual(opts.dataDir, '/tmp/dev-data')
+    assert.strictEqual(opts.pidPath, '/tmp/dev.pid')
   })
 
   describe('installShutdownHandlers', () => {
