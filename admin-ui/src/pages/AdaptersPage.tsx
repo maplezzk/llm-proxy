@@ -60,7 +60,7 @@ interface ProviderRef {
   models?: Array<{ id: string; thinking?: unknown; reasoning_effort?: string }>
 }
 
-/** GET /admin/adapters 返回的映射项（含后端校验出的 status）。 */
+/** GET /api/admin/adapters 返回的映射项（含后端校验出的 status）。 */
 interface AdapterMapping {
   sourceModelId: string
   provider: string
@@ -125,7 +125,7 @@ const emptyForm = (): FormState => ({
  * Adapters 页 — 移植自旧版 adapters.ts：
  * - 列表（baseUrl / 模型映射 / 状态）、搜索过滤、空态/无匹配
  * - 新增/编辑弹窗（name/type/请求默认 max_tokens+stream / 模型映射表）
- * - 批量从供应商导入、删除确认、连通性测试（复用 TestPanelDialog → /admin/test-adapter）
+ * - 批量从供应商导入、删除确认、连通性测试（复用 TestPanelDialog → /api/admin/test-adapter）
  */
 export default function AdaptersPage() {
   const { t } = useTranslation()
@@ -157,7 +157,7 @@ export default function AdaptersPage() {
 
   const load = useCallback(async () => {
     setLoading(true)
-    const res = await fetchJson<ApiRes<{ adapters: AdapterRow[] }>>('/admin/adapters').catch(
+    const res = await fetchJson<ApiRes<{ adapters: AdapterRow[] }>>('/api/admin/adapters').catch(
       (err) => {
         console.warn('[adapters] 列表加载失败', err)
         toast(t('admin.common.requestFailed'), 'error')
@@ -322,14 +322,14 @@ export default function AdaptersPage() {
       models: validModels,
     }
     const res = editingName
-      ? await fetchJson<ApiRes<unknown>>(`/admin/adapters/${editingName}`, {
+      ? await fetchJson<ApiRes<unknown>>(`/api/admin/adapters/${editingName}`, {
           method: 'PUT',
           body: JSON.stringify(body),
         }).catch((err) => {
           console.warn('[adapters] 保存失败', err)
           return null
         })
-      : await fetchJson<ApiRes<unknown>>('/admin/adapters', {
+      : await fetchJson<ApiRes<unknown>>('/api/admin/adapters', {
           method: 'POST',
           body: JSON.stringify(body),
         }).catch((err) => {
@@ -351,7 +351,7 @@ export default function AdaptersPage() {
   const confirmDelete = async (name: string) => {
     const ok = await confirm(t('admin.adapters.deleteConfirm', { name }))
     if (!ok) return
-    const res = await fetchJson<ApiRes<unknown>>(`/admin/adapters/${name}`, {
+    const res = await fetchJson<ApiRes<unknown>>(`/api/admin/adapters/${name}`, {
       method: 'DELETE',
     }).catch((err) => {
       console.warn('[adapters] 删除失败', err)
@@ -804,13 +804,13 @@ export default function AdaptersPage() {
         </DialogContent>
       </Dialog>
 
-      {/* 连通性测试弹窗（adapters → /admin/test-adapter） */}
+      {/* 连通性测试弹窗（adapters → /api/admin/test-adapter） */}
       <TestPanelDialog
         open={test.open}
         onClose={() => setTest((prev) => ({ ...prev, open: false }))}
         name={test.name}
         modelIds={test.modelIds}
-        endpoint="/admin/test-adapter"
+        endpoint="/api/admin/test-adapter"
         buildBody={(modelId) => ({ adapterName: test.name, modelId })}
       />
     </div>

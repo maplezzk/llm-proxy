@@ -127,7 +127,7 @@ API Key 通过环境变量注入（`${VAR}`），配置文件不保存明文密�
 - 键：base64 图片用 `md5:<hash>`，URL 图片用 `url:<原 URL>`
 - LRU 淘汰上限 1000 条（可通过 `vision_cache.max_entries` 调整）
 - 内存变更后 5s 防抖刷盘；进程退出前同步刷盘
-- 统计信息：`hits / misses / hit-rate`，通过 `/admin/vision-cache/stats` 查看
+- 统计信息：`hits / misses / hit-rate`，通过 `/api/admin/vision-cache/stats` 查看
 
 缓存文件位置：`~/.llm-proxy/vision-cache.json`
 
@@ -145,26 +145,25 @@ llm-proxy status    # 查看状态
 
 | 端点 | 方法 | 说明 |
 |----------|--------|-------------|
-| `/admin/config` | GET | 查看配置（Key 脱敏） |
-| `/admin/config/reload` | POST | 热加载配置 |
-| `/admin/health` | GET | 健康检查 |
-| `/admin/status/providers` | GET | Provider 状态统计 |
-| `/admin/logs` | GET | 请求日志 |
-| `/admin/logs/stats` | GET | 日志统计 |
-| `/admin/token-stats` | GET | Token 统计 |
-| `/admin/log-level` | GET / PUT | 查看 / 修改日志级别 |
-| `/admin/locale` | GET / PUT | 查看 / 修改界面语言（zh / en） |
-| `/admin/port` | GET / PUT | 查看 / 修改监听端口（需重启生效） |
-| `/admin/proxy-key` | GET / PUT | 查看 / 修改代理认证密钥 |
-| `/admin/vision` | GET / PUT | 查看 / 修改外挂识图配置 |
-| `/admin/vision-cache/stats` | GET | 识图缓存命中率 / 容量 |
-| `/admin/vision-cache/clear` | POST | 清空识图缓存 |
-| `/admin/adapters` | GET / POST / PUT / DELETE | 适配器 CRUD |
-| `/admin/providers` | POST / PUT / DELETE | Provider CRUD |
-| `/admin/providers/:name/pull-models` | POST | 拉取远程模型列表 |
-| `/admin/test-model` | POST | 向 Provider/Model 发送测试请求 |
-| `/admin/test-adapter` | POST | 通过适配器发送测试请求 |
-| `/admin/debug/captures/*` | GET / POST | 协议抓包环形缓冲 + SSE 推送 |
+| `/api/admin/config` | GET | 查看配置（Key 脱敏） |
+| `/api/admin/config/reload` | POST | 热加载配置 |
+| `/api/admin/health` | GET | 健康检查 |
+| `/api/admin/status/providers` | GET | Provider 状态统计 |
+| `/api/admin/logs` | GET | 请求日志 |
+| `/api/admin/token-stats` | GET | Token 统计 |
+| `/api/admin/log-level` | GET / PUT | 查看 / 修改日志级别 |
+| `/api/admin/locale` | GET / PUT | 查看 / 修改界面语言（zh / en） |
+| `/api/admin/port` | GET / PUT | 查看 / 修改监听端口（需重启生效） |
+| `/api/admin/proxy-key` | GET / PUT | 查看 / 修改代理认证密钥 |
+| `/api/admin/vision` | GET / PUT | 查看 / 修改外挂识图配置 |
+| `/api/admin/vision-cache/stats` | GET | 识图缓存命中率 / 容量 |
+| `/api/admin/vision-cache/clear` | POST | 清空识图缓存 |
+| `/api/admin/adapters` | GET / POST / PUT / DELETE | 适配器 CRUD |
+| `/api/admin/providers` | POST / PUT / DELETE | Provider CRUD |
+| `/api/admin/providers/:name/pull-models` | POST | 拉取远程模型列表 |
+| `/api/admin/test-model` | POST | 向 Provider/Model 发送测试请求 |
+| `/api/admin/test-adapter` | POST | 通过适配器发送测试请求 |
+| `/api/admin/debug/captures/*` | GET / POST | 协议抓包环形缓冲 + SSE 推送 |
 
 ## 协议转换矩阵
 
@@ -212,7 +211,7 @@ npm test             # 运行 280 个测试
 ```bash
 rm ~/.llm-proxy/vision-cache.json
 ```
-或调用 `POST /admin/vision-cache/clear`（也可以在管理界面 → 识图设置 → 「清空缓存」按钮）。
+或调用 `POST /api/admin/vision-cache/clear`（也可以在管理界面 → 识图设置 → 「清空缓存」按钮）。
 
 **识图缓存在哪里？** `~/.llm-proxy/vision-cache.json`，重启后保留，5s 防抖刷盘。
 

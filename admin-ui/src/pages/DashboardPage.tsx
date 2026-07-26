@@ -180,7 +180,7 @@ function ChartCard({
  * - 时间线折线图 + 分维度堆叠柱状图（共用日期范围；维度独立切换）
  * - 日期预设/自定义 + 维度切换触发两图刷新；失败不阻塞卡片
  * - 数据库信息与 90 天清理（confirm → toast → 刷新）
- * 今日 token 数据来自 useApp().tokenStats（AppProvider 已 10s 轮询 /admin/token-stats，
+ * 今日 token 数据来自 useApp().tokenStats（AppProvider 已 10s 轮询 /api/admin/token-stats，
  * 覆盖旧版 dashboard 自身 30s refreshToday 的行为，无需重复轮询）。
  */
 export default function DashboardPage() {
@@ -210,8 +210,8 @@ export default function DashboardPage() {
   const loadCharts = useCallback(async (start: string, end: string, dim: BreakdownDimension) => {
     const id = ++reqId.current
     setLoadingCharts(true)
-    const tlUrl = `/admin/token-stats/timeline?startDate=${start}&endDate=${end}`
-    const bdUrl = `/admin/token-stats/breakdown?dimension=${dim}&startDate=${start}&endDate=${end}`
+    const tlUrl = `/api/admin/token-stats/timeline?startDate=${start}&endDate=${end}`
+    const bdUrl = `/api/admin/token-stats/breakdown?dimension=${dim}&startDate=${start}&endDate=${end}`
     const [tlRes, bdRes, dbRes] = await Promise.all([
       fetchJson<ApiRes<TimelinePoint[]>>(tlUrl).catch((err) => {
         console.warn('[dashboard] timeline 加载失败', err)
@@ -221,7 +221,7 @@ export default function DashboardPage() {
         console.warn('[dashboard] breakdown 加载失败', err)
         return null
       }),
-      fetchJson<ApiRes<DbInfo>>('/admin/token-stats/db-info').catch((err) => {
+      fetchJson<ApiRes<DbInfo>>('/api/admin/token-stats/db-info').catch((err) => {
         console.warn('[dashboard] db-info 加载失败', err)
         return null
       }),
@@ -287,7 +287,7 @@ export default function DashboardPage() {
     )
     if (!confirmed) return
     setCleaning(true)
-    const res = await fetchJson<ApiRes<{ events: number; aggregates: number }>>('/admin/token-stats/cleanup', {
+    const res = await fetchJson<ApiRes<{ events: number; aggregates: number }>>('/api/admin/token-stats/cleanup', {
       method: 'POST',
       body: JSON.stringify(all ? { all: true } : { days }),
     }).catch((err) => {

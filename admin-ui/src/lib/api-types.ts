@@ -1,4 +1,4 @@
-/** 后端 /admin/* JSON 的统一响应结构。 */
+/** 后端 /api/admin/* JSON 的统一响应结构。 */
 export interface ApiRes<T> {
   success?: boolean
   data?: T

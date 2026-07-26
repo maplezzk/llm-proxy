@@ -149,7 +149,7 @@ function ProxyKeyCard() {
   const [showKey, setShowKey] = useState(false)
 
   const load = useCallback(async () => {
-    const res = await fetchJson<ApiRes<{ set?: boolean }>>('/admin/proxy-key').catch((err) => {
+    const res = await fetchJson<ApiRes<{ set?: boolean }>>('/api/admin/proxy-key').catch((err) => {
       console.warn('[settings] proxy-key 状态加载失败', err)
       toast(t('admin.common.requestFailed'), 'error')
       return null
@@ -163,7 +163,7 @@ function ProxyKeyCard() {
 
   const save = async (value: string) => {
     setSaving(true)
-    const res = await fetchJson<ApiRes<unknown>>('/admin/proxy-key', {
+    const res = await fetchJson<ApiRes<unknown>>('/api/admin/proxy-key', {
       method: 'PUT',
       body: JSON.stringify({ key: value }),
     }).catch((err) => {
@@ -249,15 +249,15 @@ function VisionCard() {
 
   const load = useCallback(async () => {
     const [visionRes, configRes, cacheRes] = await Promise.all([
-      fetchJson<ApiRes<VisionData>>('/admin/vision').catch((err) => {
+      fetchJson<ApiRes<VisionData>>('/api/admin/vision').catch((err) => {
         console.warn('[settings] vision 配置加载失败', err)
         return null
       }),
-      fetchJson<ApiRes<{ providers: ProviderRef[] }>>('/admin/config').catch((err) => {
+      fetchJson<ApiRes<{ providers: ProviderRef[] }>>('/api/admin/config').catch((err) => {
         console.warn('[settings] providers 加载失败', err)
         return null
       }),
-      fetchJson<ApiRes<CacheStats>>('/admin/vision-cache/stats').catch((err) => {
+      fetchJson<ApiRes<CacheStats>>('/api/admin/vision-cache/stats').catch((err) => {
         console.warn('[settings] vision 缓存统计加载失败', err)
         return null
       }),
@@ -307,7 +307,7 @@ function VisionCard() {
     const payload = enabled
       ? { provider: provider.trim(), model: model.trim(), prompt: promptToSend }
       : { provider: '', model: '', prompt: '' }
-    const res = await fetchJson<ApiRes<unknown>>('/admin/vision', {
+    const res = await fetchJson<ApiRes<unknown>>('/api/admin/vision', {
       method: 'PUT',
       body: JSON.stringify(payload),
     }).catch((err) => {
@@ -327,7 +327,7 @@ function VisionCard() {
     const ok = await confirm(t('admin.vision.cache.clearConfirm'))
     if (!ok) return
     setClearing(true)
-    const res = await fetchJson<ApiRes<CacheStats>>('/admin/vision-cache/clear', {
+    const res = await fetchJson<ApiRes<CacheStats>>('/api/admin/vision-cache/clear', {
       method: 'POST',
     }).catch((err) => {
       console.warn('[settings] vision 缓存清空失败', err)
@@ -469,7 +469,7 @@ function VisionCard() {
 /**
  * Settings 页 — 移植自旧版 proxy-key.ts + vision-setting.ts，并收纳原侧栏页脚的通用设置：
  * - 通用卡片（语言/主题/端口/重载配置）
- * - Proxy Key 卡片（设置/移除 /admin/proxy-key）
+ * - Proxy Key 卡片（设置/移除 /api/admin/proxy-key）
  * - Vision 卡片（启用/供应商/模型/提示词 + 缓存统计与清除）
  */
 export default function SettingsPage() {

@@ -51,7 +51,7 @@ export async function switchLang(lang: string): Promise<void> {
   localStorage.setItem('llm-proxy-lang', lang)
   // 先同步到服务端（await 确保请求完成后再切换）
   try {
-    await fetch('/admin/locale', {
+    await fetch('/api/admin/locale', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ locale: lang }),
@@ -69,7 +69,7 @@ export async function switchLang(lang: string): Promise<void> {
  */
 export async function syncLocaleFromServer(): Promise<void> {
   try {
-    const resp = await fetch('/admin/locale')
+    const resp = await fetch('/api/admin/locale')
     const json = await resp.json()
     const serverLang = json?.data?.locale
     if (serverLang === 'zh' || serverLang === 'en') {

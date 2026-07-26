@@ -7,7 +7,7 @@ import { useToast } from '../lib/toast'
 
 /**
  * 端口设置行（设置页-通用卡片）。
- * GET/PUT /admin/port；端口范围 1-65535，非法不发请求并 toast 错误。
+ * GET/PUT /api/admin/port；端口范围 1-65535，非法不发请求并 toast 错误。
  * 对齐旧 src/api/admin/components/port-setting.ts。
  */
 export default function PortSetting() {
@@ -20,7 +20,7 @@ export default function PortSetting() {
 
   // 加载当前配置端口。
   const load = useCallback(async () => {
-    const data = await fetchJson<any>('/admin/port').catch((err) => {
+    const data = await fetchJson<any>('/api/admin/port').catch((err) => {
       console.warn('[port-setting] 端口配置加载失败', err)
       toast(t('admin.common.requestFailed'), 'error')
       return null
@@ -50,7 +50,7 @@ export default function PortSetting() {
       setSaving(false)
       return
     }
-    const res = await fetchJson<any>('/admin/port', {
+    const res = await fetchJson<any>('/api/admin/port', {
       method: 'PUT',
       body: JSON.stringify({ port: portVal }),
     }).catch((err) => {

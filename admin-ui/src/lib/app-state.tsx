@@ -49,15 +49,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // 10s 轮询失败不静默：console.warn 留痕，且仅在 running→offline 跳变时 toast（去重兜底防刷屏）。
   const loadDashboard = useCallback(async () => {
     const [h, cfg, stats] = await Promise.all([
-      fetchJson<any>('/admin/health').catch((err) => {
+      fetchJson<any>('/api/admin/health').catch((err) => {
         console.warn('[app-state] health 拉取失败', err)
         return null
       }),
-      fetchJson<any>('/admin/config').catch((err) => {
+      fetchJson<any>('/api/admin/config').catch((err) => {
         console.warn('[app-state] config 拉取失败', err)
         return null
       }),
-      fetchJson<any>('/admin/token-stats').catch((err) => {
+      fetchJson<any>('/api/admin/token-stats').catch((err) => {
         console.warn('[app-state] token-stats 拉取失败', err)
         return null
       }),
@@ -109,7 +109,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // 返回提示描述（message/type），由调用方（位于 ToastProvider 子树内）负责弹出 toast，
   // 以保持 main.tsx 既定的 provider 嵌套顺序（AppProvider 在 ToastProvider 之上）。
   const reloadConfig = useCallback(async (): Promise<ReloadResult | null> => {
-    const res = await fetchJson<any>('/admin/config/reload', { method: 'POST' }).catch(
+    const res = await fetchJson<any>('/api/admin/config/reload', { method: 'POST' }).catch(
       (err: unknown) => {
         console.warn('[app-state] 配置重载请求失败', err)
         return err instanceof Error ? err : new Error(String(err))

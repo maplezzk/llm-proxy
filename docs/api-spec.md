@@ -266,18 +266,18 @@ event: message_stop
 | 端点 | 方法 | 功能 |
 |------|------|------|
 | `/admin/` | GET | Admin UI 页面 |
-| `/admin/config` | GET | 获取当前配置 |
-| `/admin/config/reload` | POST | 热重载配置 |
-| `/admin/health` | GET | 健康检查 |
-| `/admin/status/providers` | GET | Provider 状态统计 |
-| `/admin/logs` | GET | 查询日志（支持分页/级别过滤/搜索） |
-| `/admin/log-level` | GET/PUT | 获取/设置日志级别（持久化到 config.yaml） |
-| `/admin/token-stats` | GET | Token 使用统计（今日/历史/按 Provider 聚合） |
-| `/admin/proxy-key` | GET/PUT | 获取/设置代理 API 密钥 |
-| `/admin/adapters` | GET/POST/PUT/DELETE | 适配器 CRUD |
-| `/admin/providers` | POST/PUT/DELETE | Provider CRUD |
-| `/admin/test-model` | POST | 模型连通性测试 |
-| `/admin/providers/{name}/pull-models` | POST | 拉取远端模型列表 |
+| `/api/admin/config` | GET | 获取当前配置 |
+| `/api/admin/config/reload` | POST | 热重载配置 |
+| `/api/admin/health` | GET | 健康检查 |
+| `/api/admin/status/providers` | GET | Provider 状态统计 |
+| `/api/admin/logs` | GET | 查询日志（支持分页/级别过滤/搜索） |
+| `/api/admin/log-level` | GET/PUT | 获取/设置日志级别（持久化到 config.yaml） |
+| `/api/admin/token-stats` | GET | Token 使用统计（今日/历史/按 Provider 聚合） |
+| `/api/admin/proxy-key` | GET/PUT | 获取/设置代理 API 密钥 |
+| `/api/admin/adapters` | GET/POST/PUT/DELETE | 适配器 CRUD |
+| `/api/admin/providers` | POST/PUT/DELETE | Provider CRUD |
+| `/api/admin/test-model` | POST | 模型连通性测试 |
+| `/api/admin/providers/{name}/pull-models` | POST | 拉取远端模型列表 |
 
 ### 5.1 Token 统计响应格式
 
@@ -302,7 +302,7 @@ event: message_stop
 
 - `proxy_key` 配置在 `config.yaml` 中
 - 若设置，所有 `/v1/*` 请求须携带 `Authorization: Bearer <key>` 或 `x-api-key: <key>`
-- `/admin/*` 路由不校验
+- `/api/admin/*` 路由不校验
 
 ## 六、已知限制 / 待核对项
 
