@@ -36,7 +36,7 @@ function mockRes() {
 type MockRes = ReturnType<typeof mockRes>
 
 describe('api/handlers', () => {
-  it('GET /admin/config 返回脱敏配置', () => {
+  it('GET /api/admin/config 返回脱敏配置', () => {
     const store = new ConfigStore('/fake', createConfig())
     const tracker = new StatusTracker()
     const ctx = { store, tracker, logger: new Logger() }
@@ -47,7 +47,7 @@ describe('api/handlers', () => {
     assert.strictEqual(data.data.providers[0].api_key, 'sk-123')
   })
 
-  it('GET /admin/health 返回 ok', () => {
+  it('GET /api/admin/health 返回 ok', () => {
     const store = new ConfigStore('/fake', createConfig())
     const tracker = new StatusTracker()
     const ctx = { store, tracker, logger: new Logger() }
@@ -57,7 +57,7 @@ describe('api/handlers', () => {
     assert.strictEqual(data.data.status, 'ok')
   })
 
-  it('POST /admin/config/reload 失败时返回错误', async () => {
+  it('POST /api/admin/config/reload 失败时返回错误', async () => {
     const store = new ConfigStore('/nonexistent', createConfig())
     const tracker = new StatusTracker()
     const ctx = { store, tracker, logger: new Logger() }
@@ -67,7 +67,7 @@ describe('api/handlers', () => {
     assert.strictEqual(data.success, false)
   })
 
-  it('GET /admin/status/providers 返回结构', () => {
+  it('GET /api/admin/status/providers 返回结构', () => {
     const store = new ConfigStore('/fake', createConfig())
     const tracker = new StatusTracker()
     const ctx = { store, tracker, logger: new Logger() }
@@ -80,7 +80,7 @@ describe('api/handlers', () => {
     assert.strictEqual(data.data.providers[0].name, 'p1')
   })
 
-  it('GET /admin/locale 返回默认 locale en', () => {
+  it('GET /api/admin/locale 返回默认 locale en', () => {
     const store = new ConfigStore('/fake', createConfig())
     const ctx = { store, tracker: new StatusTracker(), logger: new Logger() }
     const res = mockRes()
@@ -90,7 +90,7 @@ describe('api/handlers', () => {
     assert.strictEqual(data.data.locale, 'en')
   })
 
-  it('GET /admin/locale 返回配置中的 locale', () => {
+  it('GET /api/admin/locale 返回配置中的 locale', () => {
     const config = createConfig()
     config.locale = 'zh'
     const store = new ConfigStore('/fake', config)
@@ -102,7 +102,7 @@ describe('api/handlers', () => {
     assert.strictEqual(data.data.locale, 'zh')
   })
 
-  it('PUT /admin/locale 设置 locale 为 zh', async () => {
+  it('PUT /api/admin/locale 设置 locale 为 zh', async () => {
     const tmpDir = (await import('node:fs')).mkdtempSync((await import('node:os')).tmpdir() + '/llm-proxy-test-')
     const configPath = tmpDir + '/config.yaml'
     const store = new ConfigStore(configPath, createConfig())
@@ -122,7 +122,7 @@ describe('api/handlers', () => {
     assert.strictEqual(data2.data.locale, 'zh')
   })
 
-  it('PUT /admin/locale 无效参数返回 400', async () => {
+  it('PUT /api/admin/locale 无效参数返回 400', async () => {
     const tmpDir = (await import('node:fs')).mkdtempSync((await import('node:os')).tmpdir() + '/llm-proxy-test-')
     const configPath = tmpDir + '/config.yaml'
     const store = new ConfigStore(configPath, createConfig())

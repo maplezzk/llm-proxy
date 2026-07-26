@@ -15,7 +15,7 @@ graph TB
 
     subgraph Server["HTTP Server (api/server.ts)"]
         routeTable["路由表匹配<br/>method + regex"]
-        subgraph AdminRoutes["管理路由 /admin/*"]
+        subgraph AdminRoutes["管理路由 /api/admin/*"]
             adminUI["Admin UI HTML"]
             adminConfig["配置 CRUD"]
             adminStatus["Provider 状态"]
@@ -152,20 +152,20 @@ POST /{name}/v1/messages 或 POST /{name}/v1/chat/completions
 | 端点 | 方法 | 功能 |
 |------|------|------|
 | `/admin/` | GET | Admin UI 页面 |
-| `/admin/config` | GET | 获取当前配置 |
-| `/admin/config/reload` | POST | 热重载配置 |
-| `/admin/health` | GET | 健康检查 |
-| `/admin/status/providers` | GET | Provider 状态统计 |
-| `/admin/logs` | GET | 查询日志 |
-| `/admin/log-level` | GET/PUT | 日志级别（持久化到 config.yaml） |
-| `/admin/token-stats` | GET | Token 用量统计（今日/历史/按 Provider） |
-| `/admin/debug/captures` | GET | 协议抓包数据 |
-| `/admin/debug/captures/stream` | GET | 抓包 SSE 实时推送 |
-| `/admin/proxy-key` | GET/PUT | 代理 API Key |
-| `/admin/adapters` | GET/POST/PUT/DELETE | 适配器 CRUD |
-| `/admin/providers` | POST/PUT/DELETE | Provider CRUD |
-| `/admin/test-model` | POST | 模型连通性测试 |
-| `/admin/providers/{name}/pull-models` | POST | 拉取远端模型列表 |
+| `/api/admin/config` | GET | 获取当前配置 |
+| `/api/admin/config/reload` | POST | 热重载配置 |
+| `/api/admin/health` | GET | 健康检查 |
+| `/api/admin/status/providers` | GET | Provider 状态统计 |
+| `/api/admin/logs` | GET | 查询日志 |
+| `/api/admin/log-level` | GET/PUT | 日志级别（持久化到 config.yaml） |
+| `/api/admin/token-stats` | GET | Token 用量统计（今日/历史/按 Provider） |
+| `/api/admin/debug/captures` | GET | 协议抓包数据 |
+| `/api/admin/debug/captures/stream` | GET | 抓包 SSE 实时推送 |
+| `/api/admin/proxy-key` | GET/PUT | 代理 API Key |
+| `/api/admin/adapters` | GET/POST/PUT/DELETE | 适配器 CRUD |
+| `/api/admin/providers` | POST/PUT/DELETE | Provider CRUD |
+| `/api/admin/test-model` | POST | 模型连通性测试 |
+| `/api/admin/providers/{name}/pull-models` | POST | 拉取远端模型列表 |
 
 ### 4. 跨协议 thinking ↔ reasoning 转换链路
 
@@ -196,7 +196,7 @@ POST /{name}/v1/messages 或 POST /{name}/v1/chat/completions
 | `llm-proxy start` | 加载配置 → 创建 ConfigStore/StatusTracker/Logger → 启动 HTTP Server |
 | `llm-proxy stop` | 读取 PID 文件 → kill SIGTERM |
 | `llm-proxy status` | 检查 PID 文件 + process.kill(pid, 0) |
-| `llm-proxy reload` | `fetch POST /admin/config/reload` |
+| `llm-proxy reload` | `fetch POST /api/admin/config/reload` |
 
 ## 配置模型
 

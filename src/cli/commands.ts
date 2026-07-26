@@ -387,7 +387,7 @@ export async function cmdReload(opts: { port?: number }): Promise<void> {
 
   const state = getState()
   const port = opts.port ?? state?.port ?? DEFAULT_PORT
-  const url = `http://${DEFAULT_HOST}:${port}/admin/config/reload`
+  const url = `http://${DEFAULT_HOST}:${port}/api/admin/config/reload`
 
   try {
     const response = await fetch(url, { method: 'POST' })

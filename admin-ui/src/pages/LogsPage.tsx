@@ -126,7 +126,7 @@ function DetailCell({ details }: { details: unknown }) {
 /**
  * Logs 页 — 移植自旧版 logs.ts：
  * - 加载（limit=1000，可按日期）、类型/级别筛选、关键词搜索、分页（50/页）
- * - 日志级别切换（GET/PUT /admin/log-level）、刷新
+ * - 日志级别切换（GET/PUT /api/admin/log-level）、刷新
  * - 详情可展开 JSON + 复制
  */
 export default function LogsPage() {
@@ -146,7 +146,7 @@ export default function LogsPage() {
     setLoading(true)
     const params = new URLSearchParams({ limit: '1000' })
     if (date) params.set('date', date)
-    const res = await fetchJson<ApiRes<{ logs: LogEntry[] }>>('/admin/logs?' + params.toString()).catch(
+    const res = await fetchJson<ApiRes<{ logs: LogEntry[] }>>('/api/admin/logs?' + params.toString()).catch(
       (err) => {
         console.warn('[logs] 日志加载失败', err)
         toast(t('admin.common.requestFailed'), 'error')
@@ -159,7 +159,7 @@ export default function LogsPage() {
   }, [t, toast])
 
   const loadLogLevel = useCallback(async () => {
-    const res = await fetchJson<ApiRes<{ level: string }>>('/admin/log-level').catch((err) => {
+    const res = await fetchJson<ApiRes<{ level: string }>>('/api/admin/log-level').catch((err) => {
       console.warn('[logs] 日志级别加载失败', err)
       toast(t('admin.common.requestFailed'), 'error')
       return null
@@ -173,7 +173,7 @@ export default function LogsPage() {
   }, [load, loadLogLevel])
 
   const setLogLevel = async (level: string) => {
-    const res = await fetchJson<ApiRes<unknown>>('/admin/log-level', {
+    const res = await fetchJson<ApiRes<unknown>>('/api/admin/log-level', {
       method: 'PUT',
       body: JSON.stringify({ level }),
     }).catch((err) => {

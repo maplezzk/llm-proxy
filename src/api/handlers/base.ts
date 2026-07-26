@@ -194,8 +194,8 @@ export function handleGetTokenStats(ctx: ServerContext, _req: IncomingMessage, r
 
 /**
  * 趋势折线图数据。
- * GET /admin/token-stats/timeline?days=30
- * GET /admin/token-stats/timeline?startDate=YYYY-MM-DD&endDate=YYYY-MM-DD
+ * GET /api/admin/token-stats/timeline?days=30
+ * GET /api/admin/token-stats/timeline?startDate=YYYY-MM-DD&endDate=YYYY-MM-DD
  * 自定义日期范围优先；缺失/无效时回退到 days（默认 30，封顶 365）。
  */
 export function handleGetTokenTimeline(ctx: ServerContext, req: IncomingMessage, res: ServerResponse): void {
@@ -219,8 +219,8 @@ export function handleGetTokenTimeline(ctx: ServerContext, req: IncomingMessage,
 
 /**
  * 按维度分桶：'provider' | 'adapter' | 'model'（供应商模型） | 'adapterModel'（适配器模型）。
- * GET /admin/token-stats/breakdown?dimension=provider&range=today|7d|30d|all
- * GET /admin/token-stats/breakdown?dimension=provider&startDate=YYYY-MM-DD&endDate=YYYY-MM-DD
+ * GET /api/admin/token-stats/breakdown?dimension=provider&range=today|7d|30d|all
+ * GET /api/admin/token-stats/breakdown?dimension=provider&startDate=YYYY-MM-DD&endDate=YYYY-MM-DD
  * 自定义日期范围优先；否则按 range（默认 'today'）。
  */
 export function handleGetTokenBreakdown(ctx: ServerContext, req: IncomingMessage, res: ServerResponse): void {
@@ -250,7 +250,7 @@ export function handleGetTokenBreakdown(ctx: ServerContext, req: IncomingMessage
 
 /**
  * 数据库概况：条目数 + 文件大小。
- * GET /admin/token-stats/db-info
+ * GET /api/admin/token-stats/db-info
  */
 export function handleGetTokenDbInfo(ctx: ServerContext, _req: IncomingMessage, res: ServerResponse): void {
   json(res, 200, { success: true, data: ctx.usageStore.stats() })
@@ -258,7 +258,7 @@ export function handleGetTokenDbInfo(ctx: ServerContext, _req: IncomingMessage, 
 
 /**
  * 清理历史数据。body: { days: 90 } 清理 N 天前；{ all: true } 清空全部。
- * POST /admin/token-stats/cleanup
+ * POST /api/admin/token-stats/cleanup
  */
 export async function handlePostTokenCleanup(ctx: ServerContext, req: IncomingMessage, res: ServerResponse): Promise<void> {
   let body: { days?: number; all?: boolean } = {}

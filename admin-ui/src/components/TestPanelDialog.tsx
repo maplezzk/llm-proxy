@@ -42,8 +42,8 @@ interface TestResult {
  *
  * 受控组件：open/onClose 由调用方持有；测试目标（名称 / 可选类型标签 / 模型列表）
  * 与请求体构造、端点均由调用方通过 props 注入：
- * - providers：endpoint 缺省 `/admin/test-model`，buildBody → {providerName, model, type}
- * - adapters：endpoint 传 `/admin/test-adapter`，buildBody → {adapterName, modelId}
+ * - providers：endpoint 缺省 `/api/admin/test-model`，buildBody → {providerName, model, type}
+ * - adapters：endpoint 传 `/api/admin/test-adapter`，buildBody → {adapterName, modelId}
  *
  * 行为对齐旧版：选模型 → 运行 → 结果 unshift 列表（默认展开详情）→ 可清空。
  */
@@ -56,7 +56,7 @@ export interface TestPanelDialogProps {
   typeLabel?: string
   /** 可选模型 ID 列表 */
   modelIds: string[]
-  /** 测试端点；providers 用默认 `/admin/test-model`，adapters 传 `/admin/test-adapter` */
+  /** 测试端点；providers 用默认 `/api/admin/test-model`，adapters 传 `/api/admin/test-adapter` */
   endpoint?: string
   /** 依据选中模型 ID 构造请求体 */
   buildBody: (modelId: string) => Record<string, unknown>
@@ -159,7 +159,7 @@ export default function TestPanelDialog({
   name,
   typeLabel,
   modelIds,
-  endpoint = '/admin/test-model',
+  endpoint = '/api/admin/test-model',
   buildBody,
 }: TestPanelDialogProps) {
   const { t } = useTranslation()

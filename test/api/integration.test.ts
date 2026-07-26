@@ -222,15 +222,15 @@ describe('integration', { timeout: 15000 }, () => {
 
   // --- Admin API ---
 
-  it('管理 API: GET /admin/health', async () => {
-    const resp = await fetch(`http://127.0.0.1:${PROXY_PORT}/admin/health`)
+  it('管理 API: GET /api/admin/health', async () => {
+    const resp = await fetch(`http://127.0.0.1:${PROXY_PORT}/api/admin/health`)
     const data = await resp.json()
     assert.strictEqual(data.success, true)
     assert.strictEqual(data.data.status, 'ok')
   })
 
-  it('管理 API: GET /admin/config 返回原始 Key', async () => {
-    const resp = await fetch(`http://127.0.0.1:${PROXY_PORT}/admin/config`)
+  it('管理 API: GET /api/admin/config 返回原始 Key', async () => {
+    const resp = await fetch(`http://127.0.0.1:${PROXY_PORT}/api/admin/config`)
     const data = await resp.json()
     assert.strictEqual(data.success, true)
     assert.strictEqual(data.data.providers[0].api_key, 'sk-test')
@@ -269,8 +269,8 @@ describe('integration', { timeout: 15000 }, () => {
     assert.strictEqual(resp.status, 404)
   })
 
-  it('管理 API: GET /admin/adapters 返回适配器列表', async () => {
-    const resp = await fetch(`http://127.0.0.1:${PROXY_PORT}/admin/adapters`)
+  it('管理 API: GET /api/admin/adapters 返回适配器列表', async () => {
+    const resp = await fetch(`http://127.0.0.1:${PROXY_PORT}/api/admin/adapters`)
     const data = await resp.json()
     assert.strictEqual(data.success, true)
     assert.ok(data.data.adapters.length > 0)

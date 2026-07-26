@@ -104,7 +104,7 @@ export default function CapturePage() {
   const apiControl = useCallback(
     async (enabled: boolean, clear = false) => {
       try {
-        await fetch('/admin/debug/captures/control', {
+        await fetch('/api/admin/debug/captures/control', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ enabled, clear }),
@@ -129,7 +129,7 @@ export default function CapturePage() {
     setSelectedId(null)
 
     // 历史数据（可中止）
-    fetch('/admin/debug/captures', { signal: ac.signal })
+    fetch('/api/admin/debug/captures', { signal: ac.signal })
       .then((r) => r.json())
       .then((d: { success?: boolean; data?: CaptureEntry[] }) => {
         if (d.success && mountedRef.current && !ac.signal.aborted) setEntries(d.data ?? [])
@@ -141,7 +141,7 @@ export default function CapturePage() {
       })
 
     // SSE 实时推送
-    const es = new EventSource('/admin/debug/captures/stream')
+    const es = new EventSource('/api/admin/debug/captures/stream')
     es.onmessage = (ev) => {
       if (!mountedRef.current || esRef.current !== es) return
       try {
@@ -177,7 +177,7 @@ export default function CapturePage() {
   // 进入页面：查询后端状态，已启用则自动连接；卸载时中止 fetch + 关闭 SSE。
   useEffect(() => {
     const ac = new AbortController()
-    fetch('/admin/debug/captures/status', { signal: ac.signal })
+    fetch('/api/admin/debug/captures/status', { signal: ac.signal })
       .then((r) => r.json())
       .then((d: StatusRes) => {
         if (d.success && d.data?.enabled) connectSSE()

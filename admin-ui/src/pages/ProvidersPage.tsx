@@ -176,12 +176,12 @@ export default function ProvidersPage() {
     setLoading(true)
     const [statusRes, configRes] = await Promise.all([
       fetchJson<ApiRes<{ providers: Array<{ name: string; type: string; available?: boolean }> }>>(
-        '/admin/status/providers',
+        '/api/admin/status/providers',
       ).catch((err) => {
         console.warn('[providers] status 拉取失败', err)
         return null
       }),
-      fetchJson<ApiRes<{ providers: ProviderRow[] }>>('/admin/config').catch((err) => {
+      fetchJson<ApiRes<{ providers: ProviderRow[] }>>('/api/admin/config').catch((err) => {
         console.warn('[providers] config 拉取失败', err)
         return null
       }),
@@ -341,14 +341,14 @@ export default function ProvidersPage() {
       models: validModels,
     }
     const res = editingName
-      ? await fetchJson<ApiRes<unknown>>(`/admin/providers/${editingName}`, {
+      ? await fetchJson<ApiRes<unknown>>(`/api/admin/providers/${editingName}`, {
           method: 'PUT',
           body: JSON.stringify(body),
         }).catch((err) => {
           console.warn('[providers] 保存失败', err)
           return null
         })
-      : await fetchJson<ApiRes<unknown>>('/admin/providers', {
+      : await fetchJson<ApiRes<unknown>>('/api/admin/providers', {
           method: 'POST',
           body: JSON.stringify(body),
         }).catch((err) => {
@@ -370,7 +370,7 @@ export default function ProvidersPage() {
   const confirmDelete = async (name: string) => {
     const ok = await confirm(t('admin.providers.deleteConfirm', { name }))
     if (!ok) return
-    const res = await fetchJson<ApiRes<unknown>>(`/admin/providers/${name}`, {
+    const res = await fetchJson<ApiRes<unknown>>(`/api/admin/providers/${name}`, {
       method: 'DELETE',
     }).catch((err) => {
       console.warn('[providers] 删除失败', err)
@@ -405,7 +405,7 @@ export default function ProvidersPage() {
     if (apiBase) body.api_base = apiBase
 
     const res = await fetchJson<ApiRes<{ models: Array<{ id: string; description?: string | null }>; existing?: string[] }>>(
-      `/admin/providers/${effectiveName}/pull-models`,
+      `/api/admin/providers/${effectiveName}/pull-models`,
       { method: 'POST', body: JSON.stringify(body) },
     ).catch((err) => {
       console.warn('[providers] 拉取远程模型失败', err)
@@ -946,7 +946,7 @@ export default function ProvidersPage() {
         </DialogContent>
       </Dialog>
 
-      {/* 连通性测试弹窗（providers → /admin/test-model） */}
+      {/* 连通性测试弹窗（providers → /api/admin/test-model） */}
       <TestPanelDialog
         open={test.open}
         onClose={() => setTest((prev) => ({ ...prev, open: false }))}

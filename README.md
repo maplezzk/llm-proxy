@@ -127,7 +127,7 @@ When the routed model **does not** declare `input: image`, llm-proxy can automat
 - Keys: `md5:<hash>` for base64 images, `url:<original>` for URLs
 - LRU eviction at 1000 entries (configurable via `vision_cache.max_entries`)
 - 5s debounced flush to disk; sync flush on process exit
-- Stats: hits / misses / hit-rate exposed at `/admin/vision-cache/stats`
+- Stats: hits / misses / hit-rate exposed at `/api/admin/vision-cache/stats`
 
 Cache storage location: `~/.llm-proxy/vision-cache.json`
 
@@ -145,26 +145,26 @@ llm-proxy status    # Show status
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/admin/config` | GET | Current config (keys redacted) |
-| `/admin/config/reload` | POST | Hot-reload config |
-| `/admin/health` | GET | Health check |
-| `/admin/status/providers` | GET | Provider stats |
-| `/admin/logs` | GET | Request logs |
-| `/admin/logs/stats` | GET | Log statistics |
-| `/admin/token-stats` | GET | Token usage stats |
-| `/admin/log-level` | GET / PUT | Read / update log level |
-| `/admin/locale` | GET / PUT | Read / update UI locale (zh / en) |
-| `/admin/port` | GET / PUT | Read / update listening port (requires restart) |
-| `/admin/proxy-key` | GET / PUT | Read / update proxy auth key |
-| `/admin/vision` | GET / PUT | Read / update external-vision config |
-| `/admin/vision-cache/stats` | GET | Vision cache hit / miss / size |
-| `/admin/vision-cache/clear` | POST | Clear vision cache |
-| `/admin/adapters` | GET / POST / PUT / DELETE | Adapter CRUD |
-| `/admin/providers` | POST / PUT / DELETE | Provider CRUD |
-| `/admin/providers/:name/pull-models` | POST | Pull remote model list |
-| `/admin/test-model` | POST | Send a test request to a provider/model |
-| `/admin/test-adapter` | POST | Send a test request through an adapter |
-| `/admin/debug/captures/*` | GET / POST | Protocol capture ring buffer + SSE stream |
+| `/api/admin/config` | GET | Current config (keys redacted) |
+| `/api/admin/config/reload` | POST | Hot-reload config |
+| `/api/admin/health` | GET | Health check |
+| `/api/admin/status/providers` | GET | Provider stats |
+| `/api/admin/logs` | GET | Request logs |
+| `/api/admin/logs/stats` | GET | Log statistics |
+| `/api/admin/token-stats` | GET | Token usage stats |
+| `/api/admin/log-level` | GET / PUT | Read / update log level |
+| `/api/admin/locale` | GET / PUT | Read / update UI locale (zh / en) |
+| `/api/admin/port` | GET / PUT | Read / update listening port (requires restart) |
+| `/api/admin/proxy-key` | GET / PUT | Read / update proxy auth key |
+| `/api/admin/vision` | GET / PUT | Read / update external-vision config |
+| `/api/admin/vision-cache/stats` | GET | Vision cache hit / miss / size |
+| `/api/admin/vision-cache/clear` | POST | Clear vision cache |
+| `/api/admin/adapters` | GET / POST / PUT / DELETE | Adapter CRUD |
+| `/api/admin/providers` | POST / PUT / DELETE | Provider CRUD |
+| `/api/admin/providers/:name/pull-models` | POST | Pull remote model list |
+| `/api/admin/test-model` | POST | Send a test request to a provider/model |
+| `/api/admin/test-adapter` | POST | Send a test request through an adapter |
+| `/api/admin/debug/captures/*` | GET / POST | Protocol capture ring buffer + SSE stream |
 
 ## Protocol Translation Matrix
 
@@ -212,7 +212,7 @@ npm test             # Run 280 tests
 ```bash
 rm ~/.llm-proxy/vision-cache.json
 ```
-or call `POST /admin/vision-cache/clear` (or use the **Clear** button in the Admin UI → Vision settings).
+or call `POST /api/admin/vision-cache/clear` (or use the **Clear** button in the Admin UI → Vision settings).
 
 **Where is vision cache stored?** `~/.llm-proxy/vision-cache.json` — survives restarts and is debounced-flushed every 5s.
 
