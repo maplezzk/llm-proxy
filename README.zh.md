@@ -37,7 +37,7 @@
 ## 安装
 
 ```bash
-npm install -g @maplezzk/llm-proxy
+npm install -g @mutallip/llm-proxy
 ```
 
 ## 快速开始

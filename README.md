@@ -37,7 +37,7 @@ A local LLM proxy server — single port serving both admin UI and AI API, with 
 ## Install
 
 ```bash
-npm install -g @maplezzk/llm-proxy
+npm install -g @mutallip/llm-proxy
 ```
 
 ## Quick Start

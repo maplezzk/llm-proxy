@@ -173,6 +173,31 @@ node --import tsx --test test/proxy/stream-converter.test.ts
 npm run build
 ```
 
+## npm 发布
+
+- **包名**: `@mutallip/llm-proxy`（npm 公开包）
+- **npm 账号**: `mutallip`（2FA: passkey/Touch ID）
+- **GitHub 仓库**: `mutallipp/llm-proxy`
+- **CI 自动发布**: `.github/workflows/publish.yml`，push tag `v*` 触发，通过 OIDC Trusted Publishing 发布（无需 token / 2FA）
+- **Trusted Publisher 配置**: npm 包设置页已绑定 `mutallipp/llm-proxy` + `publish.yml`
+
+### 发新版操作
+
+```bash
+npm version patch                    # 升版本号 + commit + 打 tag
+git push origin main                 # push 代码
+git push origin v0.xx.x             # push tag 触发 CI 自动发布
+```
+
+> ⚠️ 不要用 `git push --tags`，会把本地所有历史 tag 推上去。只推新 tag。
+
+### 安装
+
+```bash
+npm install -g @mutallip/llm-proxy
+llm-proxy start
+```
+
 ## 常见问题
 
 - **跨协议 thinking 丢失**: 检查 stream-converter 的 content_block 索引和思考块关闭时机
