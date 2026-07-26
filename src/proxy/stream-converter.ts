@@ -167,8 +167,9 @@ export async function convertAnthropicStreamToOpenAI(
             // OpenAI prompt_tokens = 总输入 token（含缓存命中）
             const ai = (anthropicUsage.input_tokens as number) ?? 0
             const cr = (anthropicUsage.cache_read_input_tokens as number) ?? 0
+            const cc = (anthropicUsage.cache_creation_input_tokens as number) ?? 0
             const co = (anthropicUsage.output_tokens as number) ?? 0
-            const promptTokens = ai + cr
+            const promptTokens = ai + cr + cc
             const usage: Record<string, unknown> = {
               prompt_tokens: promptTokens,
               completion_tokens: co,
@@ -528,11 +529,25 @@ export async function convertOpenAIResponsesStreamToAnthropic(
   let outLines: string[] = []
   let lastUsage: StreamUsage | null = null
   let responsesHasToolCalls = false
+  const openBlocks = new Set<number>()
+  const closedBlocks = new Set<number>()
 
   const writeEvent = (eventType: string, data: Record<string, unknown>): void => {
     const json = JSON.stringify(data)
     outLines.push(`[${ts()}] event: ${eventType}\ndata: ${json}\n\n`)
     res.write(`event: ${eventType}\ndata: ${json}\n\n`)
+  }
+
+  const startBlock = (index: number, contentBlock: Record<string, unknown>): void => {
+    if (closedBlocks.has(index) || openBlocks.has(index)) return
+    openBlocks.add(index)
+    writeEvent('content_block_start', { type: 'content_block_start', index, content_block: contentBlock })
+  }
+
+  const stopBlock = (index: number): void => {
+    if (!openBlocks.delete(index)) return
+    closedBlocks.add(index)
+    writeEvent('content_block_stop', { type: 'content_block_stop', index })
   }
 
   while (true) {
@@ -572,29 +587,23 @@ export async function convertOpenAIResponsesStreamToAnthropic(
             message: { id: `msg_${Date.now()}`, type: 'message', role: 'assistant', content: [], model: '', stop_reason: null, stop_sequence: null, usage: { input_tokens: 0, output_tokens: 0 } },
           })
           thinkingBlockStarted = true
-          writeEvent('content_block_start', { type: 'content_block_start', index: 0, content_block: { type: 'thinking', thinking: '', signature: '' } })
-          writeEvent('content_block_start', { type: 'content_block_start', index: 1, content_block: { type: 'text', text: '' } })
+          startBlock(0, { type: 'thinking', thinking: '', signature: '' })
+          startBlock(1, { type: 'text', text: '' })
         } else if (item?.type === 'function_call') {
           currentBlockIndex++
           currentBlockType = 'tool_use'
           responsesHasToolCalls = true
           acc.toolCalls.set(currentBlockIndex, { id: item.call_id as string, type: 'function', function: { name: item.name as string, arguments: '' } })
-          writeEvent('content_block_start', {
-            type: 'content_block_start', index: currentBlockIndex,
-            content_block: { type: 'tool_use', id: item.call_id, name: item.name, input: {} },
-          })
+          startBlock(currentBlockIndex, { type: 'tool_use', id: item.call_id, name: item.name, input: {} })
         } else if (item?.type === 'computer_call') {
           currentBlockIndex++
           currentBlockType = 'tool_use'
           responsesHasToolCalls = true
           const action = item.action as Record<string, unknown> | undefined
           const anthropicInput = convertActionToAnthropic(action ?? {})
-          writeEvent('content_block_start', {
-            type: 'content_block_start', index: currentBlockIndex,
-            content_block: { type: 'tool_use', id: item.call_id, name: 'computer', input: anthropicInput },
-          })
+          startBlock(currentBlockIndex, { type: 'tool_use', id: item.call_id, name: 'computer', input: anthropicInput })
           // computer_call has no delta events — action is complete at start
-          writeEvent('content_block_stop', { type: 'content_block_stop', index: currentBlockIndex })
+          stopBlock(currentBlockIndex)
         }
         continue
       }
@@ -612,7 +621,7 @@ export async function convertOpenAIResponsesStreamToAnthropic(
           if (thinkingBlockStarted) {
           const sig = thinkingSignature || makeSignature(thinkingText)
           if (sig) writeEvent('content_block_delta', { type: 'content_block_delta', index: 0, delta: { type: 'signature_delta', signature: sig } })
-            writeEvent('content_block_stop', { type: 'content_block_stop', index: 0 })
+            stopBlock(0)
             thinkingBlockStarted = false
           }
           acc.content += delta
@@ -626,10 +635,10 @@ export async function convertOpenAIResponsesStreamToAnthropic(
         if (thinkingBlockStarted) {
           const sig = thinkingSignature || makeSignature(thinkingText)
           if (sig) writeEvent('content_block_delta', { type: 'content_block_delta', index: 0, delta: { type: 'signature_delta', signature: sig } })
-          writeEvent('content_block_stop', { type: 'content_block_stop', index: 0 })
+          stopBlock(0)
           thinkingBlockStarted = false
         }
-        writeEvent('content_block_stop', { type: 'content_block_stop', index: 1 })
+        stopBlock(1)
         continue
       }
 
@@ -639,12 +648,14 @@ export async function convertOpenAIResponsesStreamToAnthropic(
         if (delta) {
           thinkingChunks.push(delta)
           thinkingText += delta
-          if (!thinkingBlockStarted) {
-            writeEvent('content_block_start', { type: 'content_block_start', index: 0, content_block: { type: 'thinking', thinking: '', signature: '' } })
+          if (!thinkingBlockStarted && !closedBlocks.has(0)) {
+            startBlock(0, { type: 'thinking', thinking: '', signature: '' })
             thinkingBlockStarted = true
             currentBlockType = 'thinking'
           }
-          writeEvent('content_block_delta', { type: 'content_block_delta', index: 0, delta: { type: 'thinking_delta', thinking: delta } })
+          if (openBlocks.has(0)) {
+            writeEvent('content_block_delta', { type: 'content_block_delta', index: 0, delta: { type: 'thinking_delta', thinking: delta } })
+          }
         }
         continue
       }
@@ -654,7 +665,7 @@ export async function convertOpenAIResponsesStreamToAnthropic(
         if (thinkingBlockStarted) {
           const sig = thinkingSignature || makeSignature(thinkingText)
           if (sig) writeEvent('content_block_delta', { type: 'content_block_delta', index: 0, delta: { type: 'signature_delta', signature: sig } })
-          writeEvent('content_block_stop', { type: 'content_block_stop', index: 0 })
+          stopBlock(0)
           thinkingBlockStarted = false
         }
         continue
@@ -670,7 +681,7 @@ export async function convertOpenAIResponsesStreamToAnthropic(
       }
 
       if (innerType === 'response.function_call_arguments.done') {
-        writeEvent('content_block_stop', { type: 'content_block_stop', index: currentBlockIndex })
+        stopBlock(currentBlockIndex)
         continue
       }
 
@@ -688,17 +699,19 @@ export async function convertOpenAIResponsesStreamToAnthropic(
           input_tokens: (respUsage?.input_tokens ?? 0) as number,
           output_tokens: (respUsage?.output_tokens ?? 0) as number,
         }
+        const cachedTokens = ((respUsage?.input_tokens_details as Record<string, unknown> | undefined)?.cached_tokens ?? respUsage?.cache_read_input_tokens) as number | undefined
+        if (cachedTokens !== undefined) usage.cache_read_input_tokens = cachedTokens
         lastUsage = {
           input_tokens: usage.input_tokens as number,
           output_tokens: usage.output_tokens as number,
-          cache_read_input_tokens: respUsage?.cache_read_input_tokens as number | undefined,
+          cache_read_input_tokens: cachedTokens,
           cache_creation_input_tokens: respUsage?.cache_creation_input_tokens as number | undefined,
         }
 
         if (thinkingBlockStarted) {
           const sig = thinkingSignature || makeSignature(thinkingText)
           if (sig) writeEvent('content_block_delta', { type: 'content_block_delta', index: 0, delta: { type: 'signature_delta', signature: sig } })
-          writeEvent('content_block_stop', { type: 'content_block_stop', index: 0 })
+          stopBlock(0)
           thinkingBlockStarted = false
         }
         // 兜底：如果 reasoning 未通过 delta 事件传输，尝试从顶层 reasoning.summary 提取
@@ -710,15 +723,15 @@ export async function convertOpenAIResponsesStreamToAnthropic(
             if (summaryText) {
               thinkingChunks.push(summaryText)
               thinkingText = summaryText
-              // 在 text block 关闭之后补发 thinking block
-              writeEvent('content_block_delta', { type: 'content_block_delta', index: 0, delta: { type: 'thinking_delta', thinking: summaryText } })
-              const sig = makeSignature(summaryText)
-              if (sig) writeEvent('content_block_delta', { type: 'content_block_delta', index: 0, delta: { type: 'signature_delta', signature: sig } })
-              writeEvent('content_block_stop', { type: 'content_block_stop', index: 0 })
+              // The Responses summary arrives only at completion. At this point the
+              // Anthropic thinking block may already be closed, so emitting it would
+              // violate SSE block ordering. Keep it for logs, but do not replay it.
             }
           }
         }
-        writeEvent('content_block_stop', { type: 'content_block_stop', index: currentBlockIndex })
+        // Upstreams do not consistently send *.done for every output item. Close
+        // only blocks that are still open, once each, before ending the message.
+        for (const index of [...openBlocks].sort((a, b) => b - a)) stopBlock(index)
         writeEvent('message_delta', { type: 'message_delta', delta: { stop_reason: stopReason, stop_sequence: null }, usage })
         writeEvent('message_stop', { type: 'message_stop' })
         res.end()
@@ -972,9 +985,15 @@ export async function convertAnthropicStreamToOpenAIResponses(
       if (Object.keys(anthropicUsage).length > 0) {
         const ai = (anthropicUsage.input_tokens as number) ?? 0
         const cr = (anthropicUsage.cache_read_input_tokens as number) ?? 0
+        const cc = (anthropicUsage.cache_creation_input_tokens as number) ?? 0
         const co = (anthropicUsage.output_tokens as number) ?? 0
-        const inputTokens = ai + cr
-        respData.usage = { input_tokens: inputTokens, output_tokens: co, total_tokens: inputTokens + co }
+        respData.usage = {
+          input_tokens: ai,
+          output_tokens: co,
+          total_tokens: ai + cr + cc + co,
+          ...(cr > 0 ? { input_tokens_details: { cached_tokens: cr } } : {}),
+          ...(cc > 0 ? { cache_creation_input_tokens: cc } : {}),
+        }
       }
       writeRaw('event: response.completed\ndata: ' + JSON.stringify({ type: 'response.completed', response: respData }) + '\n\n')
       res.end()
@@ -1042,9 +1061,15 @@ export async function convertAnthropicStreamToOpenAIResponses(
       if (Object.keys(anthropicUsage).length > 0) {
         const ai = (anthropicUsage.input_tokens as number) ?? 0
         const cr = (anthropicUsage.cache_read_input_tokens as number) ?? 0
+        const cc = (anthropicUsage.cache_creation_input_tokens as number) ?? 0
         const co = (anthropicUsage.output_tokens as number) ?? 0
-        const inputTokens = ai + cr
-        respData.usage = { input_tokens: inputTokens, output_tokens: co, total_tokens: inputTokens + co }
+        respData.usage = {
+          input_tokens: ai,
+          output_tokens: co,
+          total_tokens: ai + cr + cc + co,
+          ...(cr > 0 ? { input_tokens_details: { cached_tokens: cr } } : {}),
+          ...(cc > 0 ? { cache_creation_input_tokens: cc } : {}),
+        }
       }
       writeRaw('event: response.completed\ndata: ' + JSON.stringify({ type: 'response.completed', response: respData }) + '\n\n')
     }
@@ -1102,6 +1127,35 @@ export async function convertOpenAIStreamToOpenAIResponses(
     res.write(data)
   }
 
+  const buildResponsesUsage = (): Record<string, unknown> => {
+    const details = (lastUsage.prompt_tokens_details ?? lastUsage.prompt_cache_details) as Record<string, unknown> | undefined
+    const cacheRead = ((details?.cached_tokens ?? lastUsage.cache_read_input_tokens) as number | undefined) ?? 0
+    const cacheCreate = ((details?.cache_creation_input_tokens ?? lastUsage.cache_creation_input_tokens ?? lastUsage.prompt_cache_miss_tokens) as number | undefined) ?? 0
+    const inputTokens = typeof lastUsage.prompt_tokens === 'number'
+      ? Math.max(0, (lastUsage.prompt_tokens as number) - cacheRead - cacheCreate)
+      : ((lastUsage.input_tokens as number | undefined) ?? 0)
+    const outputTokens = ((lastUsage.completion_tokens ?? lastUsage.output_tokens) as number | undefined) ?? 0
+    return {
+      input_tokens: inputTokens,
+      output_tokens: outputTokens,
+      total_tokens: inputTokens + cacheRead + cacheCreate + outputTokens,
+      ...(cacheRead > 0 ? { input_tokens_details: { cached_tokens: cacheRead } } : {}),
+      ...(cacheCreate > 0 ? { cache_creation_input_tokens: cacheCreate } : {}),
+    }
+  }
+
+  const buildStreamUsage = (): StreamUsage | null => {
+    if (Object.keys(lastUsage).length === 0) return null
+    const usage = buildResponsesUsage()
+    const cacheRead = ((usage.input_tokens_details as Record<string, unknown> | undefined)?.cached_tokens as number | undefined) ?? 0
+    return {
+      input_tokens: usage.input_tokens as number,
+      output_tokens: usage.output_tokens as number,
+      cache_read_input_tokens: cacheRead || undefined,
+      cache_creation_input_tokens: usage.cache_creation_input_tokens as number | undefined,
+    }
+  }
+
   while (true) {
     if (await abortAndCancel(signal, reader)) break
     const { done, value } = await reader.read()
@@ -1141,9 +1195,7 @@ export async function convertOpenAIStreamToOpenAIResponses(
         if (thinkingText) {
           respData.reasoning = { summary: [{ type: 'summary_text', text: thinkingText, index: 0 }] }
         }
-        if (Object.keys(lastUsage).length > 0) {
-          respData.usage = { input_tokens: lastUsage.input_tokens ?? 0, output_tokens: lastUsage.output_tokens ?? 0, total_tokens: ((lastUsage.input_tokens as number) ?? 0) + ((lastUsage.output_tokens as number) ?? 0) }
-        }
+        if (Object.keys(lastUsage).length > 0) respData.usage = buildResponsesUsage()
         writeRaw('event: response.completed\ndata: ' + JSON.stringify({ type: 'response.completed', response: respData }) + '\n\n')
         res.end()
 
@@ -1161,19 +1213,7 @@ export async function convertOpenAIStreamToOpenAIResponses(
           capture.updateRequest(pairId, 'responseOut', outLines.join(''))
         }
 
-        if (Object.keys(lastUsage).length > 0) {
-          const promptDetails = (lastUsage.prompt_tokens_details ?? lastUsage.prompt_cache_details) as Record<string, unknown> | undefined
-          const baseTokens = (lastUsage.input_tokens ?? lastUsage.prompt_tokens ?? 0) as number
-          const cachedTokens = (promptDetails?.cached_tokens as number | undefined) ?? 0
-          return {
-            // DB 统一语义：OpenAI Chat prompt_tokens 含缓存，需减去 cached_tokens 才是计费部分
-            input_tokens: Math.max(0, baseTokens - cachedTokens),
-            output_tokens: (lastUsage.output_tokens ?? lastUsage.completion_tokens ?? 0) as number,
-            cache_read_input_tokens: cachedTokens as number | undefined,
-            cache_creation_input_tokens: lastUsage.prompt_cache_miss_tokens as number | undefined,
-          }
-        }
-        return null
+        return buildStreamUsage()
       }
 
       let parsed: Record<string, unknown>
@@ -1306,29 +1346,12 @@ export async function convertOpenAIStreamToOpenAIResponses(
     if (thinkingText) {
       respData.reasoning = { summary: [{ type: 'summary_text', text: thinkingText, index: 0 }] }
     }
-    if (Object.keys(lastUsage).length > 0) {
-      const input = ((lastUsage.input_tokens ?? lastUsage.prompt_tokens) as number) ?? 0
-      const output = ((lastUsage.output_tokens ?? lastUsage.completion_tokens) as number) ?? 0
-      respData.usage = { input_tokens: input, output_tokens: output, total_tokens: input + output }
-    }
+    if (Object.keys(lastUsage).length > 0) respData.usage = buildResponsesUsage()
     writeRaw('event: response.completed\ndata: ' + JSON.stringify({ type: 'response.completed', response: respData }) + '\n\n')
   }
   res.end()
 
-  if (Object.keys(lastUsage).length > 0) {
-    const promptDetails = (lastUsage.prompt_tokens_details ?? lastUsage.prompt_cache_details) as Record<string, unknown> | undefined
-    const baseTokens = ((lastUsage.input_tokens ?? lastUsage.prompt_tokens) as number) ?? 0
-    const cachedTokens = (promptDetails?.cached_tokens as number | undefined) ?? 0
-    const output = ((lastUsage.output_tokens ?? lastUsage.completion_tokens) as number) ?? 0
-    return {
-      // DB 统一语义：OpenAI Chat prompt_tokens 含缓存，需减去 cached_tokens 才是计费部分
-      input_tokens: Math.max(0, baseTokens - cachedTokens),
-      output_tokens: output,
-      cache_read_input_tokens: cachedTokens as number | undefined,
-      cache_creation_input_tokens: lastUsage.prompt_cache_miss_tokens as number | undefined,
-    }
-  }
-  return null
+  return buildStreamUsage()
 }
 
 // --- OpenAI Responses SSE → OpenAI Chat SSE ---
@@ -1472,16 +1495,21 @@ export async function convertOpenAIResponsesStreamToOpenAI(
           choices: [{ delta: finalDelta, finish_reason: finishReason, index: 0 }],
         }
         if (respUsage) {
+          const cachedTokens = ((respUsage.input_tokens_details as Record<string, unknown> | undefined)?.cached_tokens ?? respUsage.cache_read_input_tokens ?? 0) as number
+          const inputTokens = (respUsage.input_tokens ?? 0) as number
+          const outputTokens = (respUsage.output_tokens ?? 0) as number
           lastUsage = {
-            input_tokens: (respUsage.input_tokens ?? 0) as number,
-            output_tokens: (respUsage.output_tokens ?? 0) as number,
-            cache_read_input_tokens: respUsage.cache_read_input_tokens as number | undefined,
+            input_tokens: inputTokens,
+            output_tokens: outputTokens,
+            cache_read_input_tokens: cachedTokens || undefined,
             cache_creation_input_tokens: respUsage.cache_creation_input_tokens as number | undefined,
           }
           finalChunk.usage = {
-            prompt_tokens: respUsage.input_tokens ?? 0,
-            completion_tokens: respUsage.output_tokens ?? 0,
-            total_tokens: ((respUsage.input_tokens as number) ?? 0) + ((respUsage.output_tokens as number) ?? 0),
+            // Responses input_tokens excludes cache hits; Chat prompt_tokens includes them.
+            prompt_tokens: inputTokens + cachedTokens,
+            completion_tokens: outputTokens,
+            total_tokens: inputTokens + cachedTokens + outputTokens,
+            ...(cachedTokens > 0 ? { prompt_tokens_details: { cached_tokens: cachedTokens } } : {}),
           }
         }
         write(finalChunk)

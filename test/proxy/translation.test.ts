@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert'
-import { transformInboundRequest, convertOpenAIResponseToAnthropic, convertAnthropicResponseToOpenAI, convertOpenAIResponsesToAnthropic, convertAnthropicResponseToOpenAIResponses, convertOpenAIResponsesResponseToOpenAI, buildNamespaceToolContext, remapNamespaceFunctionCalls } from '../../src/proxy/translation.js'
+import { transformInboundRequest, convertOpenAIResponseToAnthropic, convertAnthropicResponseToOpenAI, convertOpenAIResponseToOpenAIResponses, convertOpenAIResponsesToAnthropic, convertAnthropicResponseToOpenAIResponses, convertOpenAIResponsesResponseToOpenAI, buildNamespaceToolContext, remapNamespaceFunctionCalls } from '../../src/proxy/translation.js'
 
 const anthropicRoute = {
   providerName: 'anthropic-main',
@@ -352,6 +352,44 @@ describe('proxy/translation', () => {
       const output = cco[0].output as Record<string, unknown>
       assert.strictEqual(output.type, 'computer_screenshot')
       assert.strictEqual(output.image_url, 'https://example.com/desktop.png')
+    })
+
+    it('Anthropic function tool 和 tool_choice → Responses 扁平格式', async () => {
+      const result = await transformInboundRequest('anthropic', responsesRoute, {
+        model: 'claude-sonnet',
+        messages: [{ role: 'user', content: 'weather?' }],
+        tools: [{
+          name: 'get_weather',
+          description: 'Get weather',
+          input_schema: { type: 'object', properties: { city: { type: 'string' } } },
+        }],
+        tool_choice: { type: 'tool', name: 'get_weather' },
+      })
+
+      assert.deepStrictEqual(result.body.tools, [{
+        type: 'function',
+        name: 'get_weather',
+        description: 'Get weather',
+        parameters: { type: 'object', properties: { city: { type: 'string' } } },
+      }])
+      assert.deepStrictEqual(result.body.tool_choice, { type: 'function', name: 'get_weather' })
+    })
+
+    it('OpenAI Chat function tool → Responses 扁平格式', async () => {
+      const result = await transformInboundRequest('openai', responsesRoute, {
+        model: 'gpt-4o',
+        messages: [{ role: 'user', content: 'weather?' }],
+        tools: [{
+          type: 'function',
+          function: { name: 'get_weather', description: 'Get weather', parameters: { type: 'object' } },
+        }],
+        tool_choice: { type: 'function', function: { name: 'get_weather' } },
+      })
+
+      assert.deepStrictEqual(result.body.tools, [{
+        type: 'function', name: 'get_weather', description: 'Get weather', parameters: { type: 'object' },
+      }])
+      assert.deepStrictEqual(result.body.tool_choice, { type: 'function', name: 'get_weather' })
     })
   })
 
@@ -964,7 +1002,7 @@ describe('proxy/response-conversion', () => {
         role: 'assistant',
         content: [{ type: 'output_text', text: 'Hello!', annotations: [] }],
       }],
-      usage: { input_tokens: 10, output_tokens: 5, total_tokens: 15 },
+      usage: { input_tokens: 10, input_tokens_details: { cached_tokens: 7 }, output_tokens: 5, total_tokens: 15 },
     })
     assert.strictEqual(result.type, 'message')
     assert.strictEqual(result.role, 'assistant')
@@ -975,6 +1013,7 @@ describe('proxy/response-conversion', () => {
     assert.strictEqual(result.stop_reason, 'end_turn')
     assert.strictEqual(result.usage.input_tokens, 10)
     assert.strictEqual(result.usage.output_tokens, 5)
+    assert.strictEqual(result.usage.cache_read_input_tokens, 7)
   })
 
   it('OpenAI Responses function_call → Anthropic tool_use', () => {
@@ -1137,6 +1176,74 @@ describe('proxy/response-conversion', () => {
     assert.strictEqual(tcs[0].function.name, 'computer')
     const args = JSON.parse(tcs[0].function.arguments as string)
     assert.strictEqual(args.type, 'click')
+  })
+
+  it('OpenAI Responses function_call → Chat tool_calls finish_reason 与缓存用量', () => {
+    const result = convertOpenAIResponsesResponseToOpenAI({
+      model: 'gpt-5',
+      status: 'completed',
+      output: [{ type: 'function_call', call_id: 'call_weather', name: 'get_weather', arguments: '{"city":"Shanghai"}' }],
+      usage: { input_tokens: 20, input_tokens_details: { cached_tokens: 80 }, output_tokens: 5 },
+    })
+
+    const choice = (result.choices as Array<Record<string, unknown>>)[0]
+    const message = choice.message as Record<string, unknown>
+    assert.strictEqual(choice.finish_reason, 'tool_calls')
+    assert.strictEqual(message.content, null)
+    const usage = result.usage as Record<string, unknown>
+    assert.strictEqual(usage.prompt_tokens, 100)
+    assert.strictEqual(usage.total_tokens, 105)
+    assert.deepStrictEqual(usage.prompt_tokens_details, { cached_tokens: 80 })
+  })
+
+  it('跨协议 usage 保持计费输入与缓存字段独立', () => {
+    const chatUsage = {
+      prompt_tokens: 105,
+      completion_tokens: 5,
+      prompt_tokens_details: { cached_tokens: 80, cache_creation_input_tokens: 5 },
+    }
+    const toAnthropic = convertOpenAIResponseToAnthropic({
+      model: 'gpt-5',
+      choices: [{ message: { role: 'assistant', content: 'hi' }, finish_reason: 'stop' }],
+      usage: chatUsage,
+    })
+    assert.deepStrictEqual(toAnthropic.usage, {
+      input_tokens: 20,
+      output_tokens: 5,
+      cache_read_input_tokens: 80,
+      cache_creation_input_tokens: 5,
+    })
+
+    const toResponses = convertOpenAIResponseToOpenAIResponses({
+      model: 'gpt-5',
+      choices: [{ message: { role: 'assistant', content: 'hi' }, finish_reason: 'stop' }],
+      usage: chatUsage,
+    })
+    assert.deepStrictEqual(toResponses.usage, {
+      input_tokens: 20,
+      output_tokens: 5,
+      total_tokens: 110,
+      input_tokens_details: { cached_tokens: 80 },
+      cache_creation_input_tokens: 5,
+    })
+
+    const anthropicUsage = { input_tokens: 20, output_tokens: 5, cache_read_input_tokens: 80, cache_creation_input_tokens: 5 }
+    const toOpenAI = convertAnthropicResponseToOpenAI({ content: [{ type: 'text', text: 'hi' }], usage: anthropicUsage })
+    assert.deepStrictEqual(toOpenAI.usage, {
+      prompt_tokens: 105,
+      completion_tokens: 5,
+      total_tokens: 110,
+      prompt_tokens_details: { cached_tokens: 80, cache_creation_input_tokens: 5 },
+    })
+
+    const anthropicToResponses = convertAnthropicResponseToOpenAIResponses({ content: [{ type: 'text', text: 'hi' }], usage: anthropicUsage })
+    assert.deepStrictEqual(anthropicToResponses.usage, {
+      input_tokens: 20,
+      output_tokens: 5,
+      total_tokens: 110,
+      input_tokens_details: { cached_tokens: 80 },
+      cache_creation_input_tokens: 5,
+    })
   })
 
   it('OpenAI reasoning_content → Anthropic thinking 块', () => {

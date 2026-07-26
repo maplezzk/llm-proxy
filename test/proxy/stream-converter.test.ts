@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert'
 import type { ServerResponse } from 'node:http'
-import { convertAnthropicStreamToOpenAI, convertOpenAIStreamToAnthropic, convertOpenAIResponsesStreamToAnthropic, convertAnthropicStreamToOpenAIResponses } from '../../src/proxy/stream-converter.js'
+import { convertAnthropicStreamToOpenAI, convertOpenAIStreamToAnthropic, convertOpenAIResponsesStreamToAnthropic, convertAnthropicStreamToOpenAIResponses, convertOpenAIResponsesStreamToOpenAI } from '../../src/proxy/stream-converter.js'
 
 function makeReader(chunks: string[], delayMs = 0): ReadableStreamDefaultReader<Uint8Array> {
   const encoder = new TextEncoder()
@@ -357,7 +357,7 @@ describe('proxy/stream-converter', () => {
         'event: response.content_part.added\ndata: {"type":"response.content_part.added","output_index":0,"content_index":0,"part":{"type":"output_text","text":"","annotations":[]}}\n\n',
         'event: response.output_text.delta\ndata: {"type":"response.output_text.delta","output_index":0,"content_index":0,"delta":"Hel"}\n\n',
         'event: response.output_text.delta\ndata: {"type":"response.output_text.delta","output_index":0,"content_index":0,"delta":"lo"}\n\n',
-        'event: response.completed\ndata: {"type":"response.completed","response":{"id":"resp_1","status":"completed"}}\n\n',
+        'event: response.completed\ndata: {"type":"response.completed","response":{"id":"resp_1","status":"completed","usage":{"input_tokens":20,"input_tokens_details":{"cached_tokens":80},"output_tokens":8}}}\n\n',
       ])
       await convertOpenAIResponsesStreamToAnthropic(reader, res)
       const output = chunks.join('')
@@ -365,7 +365,38 @@ describe('proxy/stream-converter', () => {
       assert.ok(output.includes('event: content_block_start'), '应有 content_block_start')
       assert.ok(output.includes('"text_delta"'), '应有 text_delta')
       assert.ok(output.includes('"text":"Hel"'), '应有第一个文字块')
+      assert.ok(output.includes('"cache_read_input_tokens":80'), 'Responses 缓存命中应映射到 Anthropic usage')
       assert.ok(output.includes('event: message_stop'), '应有 message_stop')
+    })
+
+    it('每个内容块只关闭一次，缺失 *.done 时在 completed 补齐', async () => {
+      const { chunks, res } = makeResponse()
+      const reader = makeReader([
+        'event: response.output_item.added\ndata: {"type":"response.output_item.added","output_index":0,"item":{"type":"message","role":"assistant"}}\n\n',
+        'event: response.output_text.delta\ndata: {"type":"response.output_text.delta","output_index":0,"delta":"hello"}\n\n',
+        'event: response.output_text.done\ndata: {"type":"response.output_text.done","output_index":0,"text":"hello"}\n\n',
+        'event: response.output_item.added\ndata: {"type":"response.output_item.added","output_index":1,"item":{"type":"function_call","call_id":"call_1","name":"weather"}}\n\n',
+        'event: response.completed\ndata: {"type":"response.completed","response":{"status":"completed"}}\n\n',
+      ])
+
+      await convertOpenAIResponsesStreamToAnthropic(reader, res)
+      const events = chunks.join('').split('\n\n').flatMap((block) => {
+        const line = block.split('\n').find((entry) => entry.startsWith('data: '))
+        return line ? [JSON.parse(line.slice(6)) as Record<string, unknown>] : []
+      })
+      const starts = events.filter((event) => event.type === 'content_block_start')
+      const stops = events.filter((event) => event.type === 'content_block_stop')
+      const startCounts = new Map<number, number>()
+      const stopCounts = new Map<number, number>()
+      for (const event of starts) {
+        const index = event.index as number
+        startCounts.set(index, (startCounts.get(index) ?? 0) + 1)
+      }
+      for (const event of stops) {
+        const index = event.index as number
+        stopCounts.set(index, (stopCounts.get(index) ?? 0) + 1)
+      }
+      assert.deepStrictEqual(stopCounts, startCounts, '每个开始的 content block 必须恰好关闭一次')
     })
 
     it('function_call_arguments.delta → input_json_delta', async () => {
@@ -430,6 +461,30 @@ describe('proxy/stream-converter', () => {
       // Verify content_block_stop for computer tool_use is emitted
       const stopEvents = [...output.matchAll(/content_block_stop/g)]
       assert.ok(stopEvents.length >= 2, '应有至少 2 个 content_block_stop（text + computer tool_use）')
+    })
+  })
+
+  describe('OpenAI Responses SSE → OpenAI Chat SSE', () => {
+    it('Responses 缓存命中计入 Chat prompt_tokens，并保留 details', async () => {
+      const { chunks, res } = makeResponse()
+      const reader = makeReader([
+        'event: response.output_item.added\ndata: {"type":"response.output_item.added","output_index":0,"item":{"type":"message","role":"assistant"}}\n\n',
+        'event: response.output_text.delta\ndata: {"type":"response.output_text.delta","output_index":0,"delta":"Hi"}\n\n',
+        'event: response.completed\ndata: {"type":"response.completed","response":{"status":"completed","usage":{"input_tokens":20,"input_tokens_details":{"cached_tokens":80},"output_tokens":5}}}\n\n',
+      ])
+
+      const usage = await convertOpenAIResponsesStreamToOpenAI(reader, res)
+      const output = chunks.join('')
+      assert.ok(output.includes('"prompt_tokens":100'))
+      assert.ok(output.includes('"completion_tokens":5'))
+      assert.ok(output.includes('"total_tokens":105'))
+      assert.ok(output.includes('"prompt_tokens_details":{"cached_tokens":80}'))
+      assert.deepStrictEqual(usage, {
+        input_tokens: 20,
+        output_tokens: 5,
+        cache_read_input_tokens: 80,
+        cache_creation_input_tokens: undefined,
+      })
     })
   })
 

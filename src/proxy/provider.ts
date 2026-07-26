@@ -136,13 +136,16 @@ async function forwardPassthroughStream(
   } else if (upstreamType === 'openai' && openaiUsage) {
     const details = openaiUsage.prompt_tokens_details as Record<string, unknown> | undefined
     const cachedTokens = (details?.cached_tokens as number | undefined) ?? (openaiUsage.cache_read_input_tokens as number | undefined) ?? 0
-    const promptTokens = (openaiUsage.prompt_tokens ?? openaiUsage.input_tokens ?? 0) as number
+    const cacheCreate = (details?.cache_creation_input_tokens ?? openaiUsage.cache_creation_input_tokens ?? openaiUsage.prompt_cache_miss_tokens) as number | undefined
+    const inputTokens = typeof openaiUsage.prompt_tokens === 'number'
+      ? Math.max(0, (openaiUsage.prompt_tokens as number) - cachedTokens - (cacheCreate ?? 0))
+      : (openaiUsage.input_tokens ?? 0) as number
     usage = {
-      // DB 统一语义：OpenAI Chat prompt_tokens 含缓存，需减去 cached_tokens 才是计费部分
-      input_tokens: Math.max(0, promptTokens - cachedTokens),
+      // Chat prompt_tokens is total input; input_tokens-only compat responses are already billable.
+      input_tokens: inputTokens,
       output_tokens: (openaiUsage.completion_tokens ?? openaiUsage.output_tokens ?? 0) as number,
       cache_read_input_tokens: cachedTokens as number | undefined,
-      cache_creation_input_tokens: (openaiUsage.cache_creation_input_tokens ?? openaiUsage.prompt_cache_miss_tokens) as number | undefined,
+      cache_creation_input_tokens: cacheCreate,
     }
     logger?.log('request', '直通流式 (OpenAI Chat) token 统计', {
       input_tokens: usage.input_tokens,
@@ -151,10 +154,11 @@ async function forwardPassthroughStream(
       cache_create: usage.cache_creation_input_tokens,
     }, 'debug')
   } else if (upstreamType === 'openai-responses' && openaiUsage) {
+    const details = openaiUsage.input_tokens_details as Record<string, unknown> | undefined
     usage = {
       input_tokens: (openaiUsage.input_tokens ?? 0) as number,
       output_tokens: (openaiUsage.output_tokens ?? 0) as number,
-      cache_read_input_tokens: openaiUsage.cache_read_input_tokens as number | undefined,
+      cache_read_input_tokens: (openaiUsage.cache_read_input_tokens ?? details?.cached_tokens) as number | undefined,
       cache_creation_input_tokens: openaiUsage.cache_creation_input_tokens as number | undefined,
     }
     logger?.log('request', '直通流式 (OpenAI Responses) token 统计', {
@@ -232,17 +236,19 @@ export async function forwardRequest(
         const usage = parsed.usage as Record<string, unknown> | undefined
         if (usage) {
           const outputTokens = (usage.output_tokens ?? usage.completion_tokens ?? 0) as number
-          const details = usage.prompt_tokens_details as Record<string, unknown> | undefined
-          const cacheRead = (usage.cache_read_input_tokens ?? details?.cached_tokens) as number | undefined
-          const cacheCreate = (usage.cache_creation_input_tokens ?? usage.prompt_cache_miss_tokens) as number | undefined
+          const promptDetails = usage.prompt_tokens_details as Record<string, unknown> | undefined
+          const inputDetails = usage.input_tokens_details as Record<string, unknown> | undefined
+          const cacheRead = (usage.cache_read_input_tokens ?? promptDetails?.cached_tokens ?? inputDetails?.cached_tokens) as number | undefined
+          const cacheCreate = (promptDetails?.cache_creation_input_tokens ?? usage.cache_creation_input_tokens ?? usage.prompt_cache_miss_tokens) as number | undefined
           // DB 统一语义：input_tokens 永远 = 计费部分（不含缓存）。
           // - Anthropic API: usage.input_tokens 已是计费部分
           // - OpenAI Responses: usage.input_tokens 已是计费部分
           // - OpenAI Chat: usage.prompt_tokens 含 cached_tokens，需减去才是计费部分
           let inputTokens: number
           if (req.upstreamType === 'openai') {
-            const promptTokens = (usage.prompt_tokens ?? usage.input_tokens ?? 0) as number
-            inputTokens = Math.max(0, promptTokens - (cacheRead ?? 0))
+            inputTokens = typeof usage.prompt_tokens === 'number'
+              ? Math.max(0, (usage.prompt_tokens as number) - (cacheRead ?? 0) - (cacheCreate ?? 0))
+              : (usage.input_tokens ?? 0) as number
           } else {
             inputTokens = (usage.input_tokens ?? 0) as number
           }
