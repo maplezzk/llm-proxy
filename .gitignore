@@ -14,3 +14,6 @@ src/types/i18n.generated.ts
 .worktrees/
 .compound-engineering/
 .idea/
+
+# 临时产物（截图/演示草稿），不纳入版本控制
+_temp/
