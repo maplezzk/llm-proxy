@@ -16,7 +16,8 @@ struct DashboardView: View {
                 if viewModel.isLoading && viewModel.config == nil {
                     loadingView
                 } else {
-                    statsGridSection
+                    heroCard
+                    todayUsageCard
                     trendChartCard
                     breakdownCard
                     storageCard
@@ -50,98 +51,54 @@ struct DashboardView: View {
         .frame(maxWidth: .infinity, minHeight: 300)
     }
 
-    // MARK: - Stats Grid（2 行 4 列）
-    private var statsGridSection: some View {
-        VStack(spacing: 12) {
-            HStack(spacing: 12) {
-                statCard(title: loc("dashboard.serviceStatus"),
-                         value: viewModel.health ? loc("dashboard.online") : loc("dashboard.offline"),
-                         icon: viewModel.health ? "checkmark.circle.fill" : "xmark.circle.fill",
-                         accentColor: viewModel.health ? .green : .red)
-                statCard(title: loc("dashboard.providerCount"),
-                         value: "\(viewModel.providerCount)",
-                         icon: "server.rack", accentColor: .blue)
-                statCard(title: loc("dashboard.modelCount"),
-                         value: "\(viewModel.modelCount)",
-                         icon: "cube", accentColor: .purple)
-                statCard(title: loc("dashboard.adapterCount"),
-                         value: "\(viewModel.adapterCount)",
-                         icon: "arrow.triangle.branch", accentColor: .orange)
-            }
-            if let today = viewModel.tokenStats?.today {
-                HStack(spacing: 12) {
-                    let inp = today.input_tokens
-                    let out = today.output_tokens
-                    let cr = today.cache_read_input_tokens
-                    let cc = today.cache_creation_input_tokens
-                    let total = DashboardViewModel.totalTokens(input: inp, output: out, cacheRead: cr, cacheCreate: cc)
-                    let totalInput = DashboardViewModel.totalInput(input: inp, cacheRead: cr, cacheCreate: cc)
-                    let hitRate = DashboardViewModel.hitRate(input: inp, output: out, cacheRead: cr, cacheCreate: cc)
-                    statCard(title: loc("dashboard.totalTokens"),
-                             value: DashboardViewModel.fmtNum(total),
-                             subtitle: nil,
-                             icon: "sum", accentColor: .blue)
-                    statCard(title: loc("dashboard.inputTokens"),
-                             value: DashboardViewModel.fmtNum(totalInput),
-                             subtitle: loc("dashboard.today"),
-                             icon: "arrow.down.circle", accentColor: .accentColor)
-                    statCard(title: loc("dashboard.outputTokens"),
-                             value: DashboardViewModel.fmtNum(out),
-                             subtitle: loc("dashboard.today"),
-                             icon: "arrow.up.circle", accentColor: .gray)
-                    statCard(title: loc("dashboard.hitRate"),
-                             value: hitRate,
-                             subtitle: loc("dashboard.today"),
-                             icon: "bolt.fill", accentColor: .green)
-                }
-            }
+    // MARK: - Hero 状态卡（CodexBar 风格：大号状态指示 + 概览摘要）
+    private var heroCard: some View {
+        DashboardHeroView(
+            online: viewModel.health,
+            providerCount: viewModel.providerCount,
+            modelCount: viewModel.modelCount,
+            adapterCount: viewModel.adapterCount
+        )
+    }
+
+    // MARK: - 今日用量条（紧凑指标，CodexBar 风格）
+    @ViewBuilder
+    private var todayUsageCard: some View {
+        if let today = viewModel.tokenStats?.today {
+            let inp = today.input_tokens
+            let out = today.output_tokens
+            let cr = today.cache_read_input_tokens
+            let cc = today.cache_creation_input_tokens
+            TodayUsageStripView(
+                total: DashboardViewModel.fmtNum(DashboardViewModel.totalTokens(input: inp, output: out, cacheRead: cr, cacheCreate: cc)),
+                input: DashboardViewModel.fmtNum(DashboardViewModel.totalInput(input: inp, cacheRead: cr, cacheCreate: cc)),
+                output: DashboardViewModel.fmtNum(out),
+                hitRate: DashboardViewModel.hitRate(input: inp, output: out, cacheRead: cr, cacheCreate: cc)
+            )
         }
     }
 
-    private func statCard(title: String, value: String, subtitle: String? = nil,
-                          icon: String, accentColor: Color) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 6) {
+    /// 卡片头：彩色图标 tile + 标题（统一视觉语言，macOS 设置风格）
+    private func cardHeader(icon: String, color: Color, title: String) -> some View {
+        HStack(spacing: 8) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                    .fill(color.opacity(0.15))
+                    .frame(width: 22, height: 22)
                 Image(systemName: icon)
-                    .font(.caption)
-                    .foregroundColor(accentColor)
-                Text(title)
-                    .font(.caption)
-                    .foregroundColor(.secondary)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(color)
             }
-            Text(value)
-                .font(.title2)
-                .fontWeight(.bold)
-                .fontDesign(.rounded)
-                .monospacedDigit()
-                .foregroundColor(accentColor)
-            if let subtitle {
-                Text(subtitle)
-                    .font(.caption2)
-                    .foregroundColor(.secondary)
-                    .lineLimit(1)
-            }
+            Text(title)
+                .font(.headline)
+            Spacer()
         }
-        .frame(maxWidth: .infinity, minHeight: 78, alignment: .leading)
-        .padding(12)
-        .background(RoundedRectangle(cornerRadius: 10).fill(Color(nsColor: .controlBackgroundColor)))
-        .overlay(alignment: .top) {
-            RoundedRectangle(cornerRadius: 10)
-                .fill(accentColor.opacity(0.6))
-                .frame(height: 2)
-        }
-        .shadow(color: .black.opacity(0.03), radius: 2, y: 1)
     }
 
     // MARK: - Trend Chart Card（全宽）
     private var trendChartCard: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 8) {
-                Image(systemName: "chart.xyaxis.line").foregroundColor(.blue)
-                Text(loc("dashboard.usage.trendTitle"))
-                    .font(.headline)
-                Spacer()
-            }
+            cardHeader(icon: "chart.xyaxis.line", color: .blue, title: loc("dashboard.usage.trendTitle"))
             .padding(.horizontal, 16)
             .padding(.top, 14)
             .padding(.bottom, 2)
@@ -383,11 +340,7 @@ struct DashboardView: View {
     // 分维度柱状图
     private var breakdownCard: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 8) {
-                Image(systemName: "chart.bar.xaxis").foregroundColor(.purple)
-                Text(loc("dashboard.usage.breakdownTitle")).font(.headline)
-                Spacer()
-            }
+            cardHeader(icon: "chart.bar.xaxis", color: .purple, title: loc("dashboard.usage.breakdownTitle"))
             .padding(.horizontal, 14)
             .padding(.top, 14)
             .padding(.bottom, 8)
@@ -508,7 +461,14 @@ struct DashboardView: View {
     // MARK: - Storage Card
     private var storageCard: some View {
         HStack(spacing: 14) {
-            Image(systemName: "externaldrive.fill").font(.title3).foregroundColor(.gray)
+            ZStack {
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .fill(Color.gray.opacity(0.15))
+                    .frame(width: 30, height: 30)
+                Image(systemName: "externaldrive.fill")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(.gray)
+            }
             VStack(alignment: .leading, spacing: 2) {
                 Text(loc("dashboard.usage.storageTitle")).font(.subheadline).fontWeight(.semibold)
                 if let info = viewModel.dbInfo {
@@ -641,5 +601,78 @@ struct BreakdownTooltip: View {
             RoundedRectangle(cornerRadius: 8)
                 .stroke(Color.secondary.opacity(0.2), lineWidth: 1)
         )
+    }
+}
+// MARK: - Hero 状态卡（独立组件，便于快照测试）
+struct DashboardHeroView: View {
+    let online: Bool
+    let providerCount: Int
+    let modelCount: Int
+    let adapterCount: Int
+
+    var body: some View {
+        let tint: Color = online ? Color(red: 0.20, green: 0.68, blue: 0.30) : .red
+        HStack(spacing: 14) {
+            ZStack {
+                Circle().fill(tint.opacity(0.15)).frame(width: 40, height: 40)
+                Circle().fill(tint).frame(width: 12, height: 12)
+            }
+            VStack(alignment: .leading, spacing: 3) {
+                Text(online ? loc("menu.status.running") : loc("menu.status.stopped"))
+                    .font(.title3).fontWeight(.semibold)
+                Text(loc("dashboard.overviewSummary", providerCount, modelCount, adapterCount))
+                    .font(.caption).foregroundColor(.secondary)
+            }
+            Spacer()
+            Image(systemName: online ? "checkmark.shield.fill" : "exclamationmark.triangle.fill")
+                .font(.system(size: 22))
+                .foregroundStyle(tint)
+        }
+        .padding(18)
+        .background(RoundedRectangle(cornerRadius: 12).fill(tint.opacity(0.07)))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(tint.opacity(0.18), lineWidth: 1))
+    }
+}
+
+// MARK: - 今日用量条（独立组件，便于快照测试）
+struct TodayUsageStripView: View {
+    let total: String
+    let input: String
+    let output: String
+    let hitRate: String
+
+    var body: some View {
+        HStack(spacing: 0) {
+            metricBlock(title: loc("dashboard.totalTokens"), value: total, accent: .primary)
+            metricDivider
+            metricBlock(title: loc("dashboard.inputTokens"), value: input, accent: .blue)
+            metricDivider
+            metricBlock(title: loc("dashboard.outputTokens"), value: output, accent: .purple)
+            metricDivider
+            metricBlock(title: loc("dashboard.hitRate"), value: hitRate, accent: .green)
+        }
+        .padding(.vertical, 14)
+        .padding(.horizontal, 16)
+        .background(RoundedRectangle(cornerRadius: 12).fill(Color(nsColor: .controlBackgroundColor)))
+        .shadow(color: .black.opacity(0.04), radius: 4, y: 2)
+    }
+
+    private var metricDivider: some View {
+        Divider().frame(height: 30).padding(.horizontal, 12)
+    }
+
+    private func metricBlock(title: String, value: String, accent: Color) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.caption2)
+                .foregroundColor(.secondary)
+            Text(value)
+                .font(.title3)
+                .fontWeight(.bold)
+                .fontDesign(.rounded)
+                .monospacedDigit()
+                .foregroundColor(accent)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }

@@ -158,6 +158,7 @@ export default function ProvidersPage() {
     loading: false,
     error: '',
   })
+  const [pullSearch, setPullSearch] = useState('')
 
   // ──── 测试弹窗 ────
   const [test, setTest] = useState<TestTarget>({
@@ -397,6 +398,7 @@ export default function ProvidersPage() {
       return
     }
     setPull({ open: true, models: [], existing: [], loading: true, error: '' })
+    setPullSearch('')
 
     const body: Record<string, unknown> = { type }
     if (apiKey) body.api_key = apiKey
@@ -444,6 +446,33 @@ export default function ProvidersPage() {
     setForm((f) => ({ ...f, models: [...f.models, ...addedRows] }))
     setPull((p) => ({ ...p, open: false }))
   }
+
+  /* ──── pull-models 搜索 + 批量选择 ──── */
+
+  /** 按搜索词过滤后的模型（搜索 ID 或描述）。 */
+  const filteredPullModels = useMemo(() => {
+    const q = pullSearch.trim().toLowerCase()
+    if (!q) return pull.models
+    return pull.models.filter(
+      (m) => m.id.toLowerCase().includes(q) || (m.description ?? '').toLowerCase().includes(q),
+    )
+  }, [pull.models, pullSearch])
+
+  /** 对过滤结果中可勾选（非已存在）的模型批量设置 checked。 */
+  const setFilteredChecked = (mode: 'all' | 'invert' | 'clear') => {
+    const ids = new Set(filteredPullModels.filter((m) => !pull.existing.includes(m.id)).map((m) => m.id))
+    if (ids.size === 0) return
+    setPull((p) => ({
+      ...p,
+      models: p.models.map((m) =>
+        ids.has(m.id)
+          ? { ...m, checked: mode === 'all' ? true : mode === 'clear' ? false : !m.checked }
+          : m,
+      ),
+    }))
+  }
+
+  const pullSelectedCount = pull.models.filter((m) => m.checked && !pull.existing.includes(m.id)).length
 
   /* ──── 测试 ──── */
 
@@ -846,49 +875,72 @@ export default function ProvidersPage() {
             )}
 
             {!pull.loading && pull.models.length > 0 && (
-              <div className="max-h-[48vh] overflow-y-auto pe-1">
-                <Table size="sm">
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="w-10" />
-                      <TableHead>{t('admin.providers.formModelId')}</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {pull.models.map((m, i) => (
-                      <TableRow key={m.id}>
-                        <TableCell>
-                          <Checkbox
-                            checked={m.checked}
-                            disabled={pull.existing.includes(m.id)}
-                            aria-label={m.id}
-                            onCheckedChange={(c) =>
-                              setPull((p) => ({
-                                ...p,
-                                models: p.models.map((x, xi) => (xi === i ? { ...x, checked: c } : x)),
-                              }))
-                            }
-                          />
-                        </TableCell>
-                        <TableCell>
-                          <span className="font-mono text-[12px] text-foreground">{m.id}</span>
-                          {m.description && (
-                            <span className="ms-2 text-[11px] text-muted-foreground">{m.description}</span>
-                          )}
-                        </TableCell>
+              <>
+                {/* 搜索 + 批量选择工具栏 */}
+                <div className="mb-2 flex items-center gap-2">
+                  <div className="relative flex-1">
+                    <Search className="pointer-events-none absolute start-2 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      value={pullSearch}
+                      onChange={(e) => setPullSearch(e.target.value)}
+                      placeholder={t('admin.providers.pullModelsSearch')}
+                      className="h-8 ps-7 text-[12px]"
+                    />
+                  </div>
+                  <Button variant="outline" size="sm" onClick={() => setFilteredChecked('all')}>
+                    {t('admin.providers.pullModelsSelectAll')}
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={() => setFilteredChecked('invert')}>
+                    {t('admin.providers.pullModelsInvert')}
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={() => setFilteredChecked('clear')}>
+                    {t('admin.providers.pullModelsClear')}
+                  </Button>
+                </div>
+                <div className="max-h-[48vh] overflow-y-auto pe-1">
+                  <Table size="sm">
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-10" />
+                        <TableHead>{t('admin.providers.formModelId')}</TableHead>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredPullModels.map((m) => (
+                        <TableRow key={m.id}>
+                          <TableCell>
+                            <Checkbox
+                              checked={m.checked}
+                              disabled={pull.existing.includes(m.id)}
+                              aria-label={m.id}
+                              onCheckedChange={(c) =>
+                                setPull((p) => ({
+                                  ...p,
+                                  models: p.models.map((x) => (x.id === m.id ? { ...x, checked: c } : x)),
+                                }))
+                              }
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <span className="font-mono text-[12px] text-foreground">{m.id}</span>
+                            {m.description && (
+                              <span className="ms-2 text-[11px] text-muted-foreground">{m.description}</span>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </>
             )}
           </DialogBody>
           <DialogFooter>
             <Button variant="outline" onClick={() => setPull((p) => ({ ...p, open: false }))}>
               {t('admin.common.cancel')}
             </Button>
-            <Button variant="primary" disabled={pull.loading} onClick={importPullModels}>
-              {t('admin.providers.pullModelsImport')}
+            <Button variant="primary" disabled={pull.loading || pullSelectedCount === 0} onClick={importPullModels}>
+              {t('admin.providers.pullModelsImport')}（{pullSelectedCount}）
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -28,4 +28,34 @@ final class MenuBarPreviewTests: XCTestCase {
             XCTAssertFalse(value.isEmpty, "Localization key '\(key)' should return a non-empty string")
         }
     }
+
+    // MARK: - 菜单栏卡片模型
+
+    func testAdapterCardModelsBuildsMappings() {
+        let adapters = [
+            Adapter(name: "my-tool", type: "anthropic", maxTokens: nil, stream: nil, baseUrl: nil, models: [
+                AdapterModel(sourceModelId: "claude-sonnet-4", provider: "anthropic", targetModelId: "claude-sonnet-4-20250514", status: nil),
+                AdapterModel(sourceModelId: "gpt-4o", provider: "deepseek", targetModelId: "deepseek-chat", status: nil),
+            ]),
+        ]
+        let cards = makeAdapterCardModels(adapters: adapters)
+
+        XCTAssertEqual(cards.count, 1)
+        XCTAssertEqual(cards[0].name, "my-tool")
+        XCTAssertEqual(cards[0].type, "anthropic")
+        XCTAssertEqual(cards[0].mappings.count, 2)
+
+        let first = cards[0].mappings[0]
+        XCTAssertEqual(first.sourceModelId, "claude-sonnet-4")
+        XCTAssertEqual(first.provider, "anthropic")
+        XCTAssertEqual(first.targetModelId, "claude-sonnet-4-20250514")
+        XCTAssertEqual(first.currentLabel, "anthropic/claude-sonnet-4-20250514")
+
+        let second = cards[0].mappings[1]
+        XCTAssertEqual(second.currentLabel, "deepseek/deepseek-chat")
+    }
+
+    func testAdapterCardModelsEmptyAdapters() {
+        XCTAssertEqual(makeAdapterCardModels(adapters: []).count, 0)
+    }
 }

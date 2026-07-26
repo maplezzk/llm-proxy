@@ -197,7 +197,11 @@
       "inputModalitiesHint": "Check the input modalities supported by the model. When image is unchecked, images in requests will be routed through a vision fallback model.",
       "visionBadgeTitle": "Models with image input:",
       "validationProviderName": "Please enter a provider name first",
-      "keepOriginal": "Leave empty to keep original value"
+      "keepOriginal": "Leave empty to keep original value",
+      "pullModelsSearch": "Search model ID or description…",
+      "pullModelsSelectAll": "Select All",
+      "pullModelsInvert": "Invert",
+      "pullModelsClear": "Clear"
     },
     "vision": {
       "title": "Vision Fallback",

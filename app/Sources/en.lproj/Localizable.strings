@@ -121,6 +121,11 @@
 "providers.pullModels.new" = "%d new";
 "providers.pullModels.empty" = "No models returned from API";
 "providers.pullModels.importAll" = "Import Selected";
+"providers.pullModels.importCount" = "Import Selected (%d)";
+"providers.pullModels.search" = "Search model ID or description…";
+"providers.pullModels.selectAll" = "Select All";
+"providers.pullModels.invert" = "Invert";
+"providers.pullModels.clear" = "Clear";
 "providers.pullModels.imported" = "Imported %d model(s)";
 "providers.pullModels.importedWithSkip" = "Imported %d model(s), %d already existed";
 "adapter.searchPlaceholder" = "Search adapters...";
@@ -296,3 +301,16 @@
 "menu.help" = "Help";
 "adapter.importFromProvider" = "Import Models";
 "test.copyCurl" = "Copy curl";
+
+// MARK: - Menu bar cards (CodexBar style)
+"menu.status.starting" = "Starting…";
+"menu.status.running" = "Running";
+"menu.status.stopped" = "Not Running";
+"menu.todayUsage" = "Today %@ · cache hit %@";
+"dashboard.overviewSummary" = "%d providers · %d models · %d adapters";
+"menu.settings" = "Settings";
+"menu.versionCheck" = "Version %@ · Check for Updates…";
+"menu.btn.stop" = "Stop";
+"menu.btn.restart" = "Restart";
+"menu.btn.reload" = "Reload";
+"menu.btn.start" = "Start";

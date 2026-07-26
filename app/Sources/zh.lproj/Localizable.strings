@@ -134,6 +134,11 @@
 "providers.pullModels.new" = "%d 个新模型";
 "providers.pullModels.empty" = "API 未返回模型";
 "providers.pullModels.importAll" = "全部导入";
+"providers.pullModels.importCount" = "导入选中 (%d)";
+"providers.pullModels.search" = "搜索模型 ID 或描述…";
+"providers.pullModels.selectAll" = "全选";
+"providers.pullModels.invert" = "反选";
+"providers.pullModels.clear" = "清空";
 "providers.pullModels.imported" = "已导入 %d 个模型";
 "providers.pullModels.importedWithSkip" = "已导入 %d 个模型，%d 个已存在";
 
@@ -322,3 +327,16 @@
 "logs.filter.type" = "类型";
 "adapter.importFromProvider" = "导入模型";
 "test.copyCurl" = "复制 curl";
+
+// MARK: - 菜单栏卡片（CodexBar 风格）
+"menu.status.starting" = "正在启动…";
+"menu.status.running" = "运行中";
+"menu.status.stopped" = "未运行";
+"menu.todayUsage" = "今日 %@ · 缓存命中 %@";
+"dashboard.overviewSummary" = "%d 个供应商 · %d 个模型 · %d 个适配器";
+"menu.settings" = "设置";
+"menu.versionCheck" = "版本 %@ · 检查更新…";
+"menu.btn.stop" = "停止";
+"menu.btn.restart" = "重启";
+"menu.btn.reload" = "重载";
+"menu.btn.start" = "启动";
