@@ -296,3 +296,10 @@
 "menu.help" = "Help";
 "adapter.importFromProvider" = "Import Models";
 "test.copyCurl" = "Copy curl";
+
+// MARK: - Menu bar cards (CodexBar style)
+"menu.status.starting" = "Starting…";
+"menu.status.running" = "Running";
+"menu.status.stopped" = "Not Running";
+"menu.todayUsage" = "Today %@ · cache hit %@";
+"dashboard.overviewSummary" = "%d providers · %d models · %d adapters";

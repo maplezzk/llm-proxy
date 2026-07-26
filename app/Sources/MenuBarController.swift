@@ -1,4 +1,5 @@
 import AppKit
+import SwiftUI
 
 /// 代理服务的三态状态
 enum ServiceState {
@@ -32,6 +33,11 @@ class MenuBarController: NSObject {
     private var isServiceOperationInProgress = false
     private var isQuitting = false
     private var pendingUpdate: UpdateInfo?
+    /// 操作进行中的临时状态文案（“正在停止...”），仅在 serviceOperation 期间保留
+    private var transientStatus: String?
+    /// 菜单栏状态卡片上的今日用量摘要
+    private var todayTokensText: String?
+    private var todayHitRateText: String?
     private var isCheckingUpdate = false
     private var isDownloadingUpdate = false
     private var downloadProgress: Double = 0
@@ -108,6 +114,20 @@ class MenuBarController: NSObject {
         }
         serviceState = ((try? await client.fetchHealth()) ?? false) ? .running : .stopped
         currentLogLevel = (try? await client.fetchLogLevel()) ?? "info"
+        // 今日 token 用量摘要（菜单栏状态卡片）
+        if serviceState == .running,
+           let stats = try? await client.fetchTokenStats() {
+            let today = stats.today
+            todayTokensText = DashboardViewModel.fmtNum(DashboardViewModel.totalTokens(
+                input: today.input_tokens, output: today.output_tokens,
+                cacheRead: today.cache_read_input_tokens, cacheCreate: today.cache_creation_input_tokens))
+            todayHitRateText = DashboardViewModel.hitRate(
+                input: today.input_tokens, output: today.output_tokens,
+                cacheRead: today.cache_read_input_tokens, cacheCreate: today.cache_creation_input_tokens)
+        } else {
+            todayTokensText = nil
+            todayHitRateText = nil
+        }
         // 从服务端同步端口（仅当服务端可达时才更新，不覆盖用户意图）
         if let sp = try? await client.fetchPort() {
             currentPort = sp
@@ -121,141 +141,58 @@ class MenuBarController: NSObject {
 
     @MainActor
     func rebuildMenu() {
+        // 临时状态文案只在 serviceOperation 期间保留，操作结束后重建时清除
+        if !isServiceOperationInProgress { transientStatus = nil }
         let menu = NSMenu()
 
-        // 状态行
-        let statusMenuItem = NSMenuItem()
-        let statusText: String
-        let color: NSColor
-        switch serviceState {
-        case .starting:
-            statusText = loc("status.starting")
-            color = NSColor.systemOrange
-        case .running:
-            statusText = loc("status.running")
-            color = NSColor(srgbRed: 0.20, green: 0.68, blue: 0.30, alpha: 1.0)
-        case .stopped:
-            statusText = loc("status.notRunning")
-            color = .secondaryLabelColor
-        }
-        let attrTitle = NSMutableAttributedString(string: statusText)
-        attrTitle.addAttribute(.foregroundColor, value: color, range: NSRange(location: 0, length: attrTitle.length))
-        attrTitle.addAttribute(.font, value: NSFont.systemFont(ofSize: 13, weight: .medium), range: NSRange(location: 0, length: attrTitle.length))
-        statusMenuItem.attributedTitle = attrTitle
-        statusMenuItem.isEnabled = false
-        menu.addItem(statusMenuItem)
+        // ── 状态卡片（CodexBar 风格：状态 + 端口 + 今日用量 + 服务控制按钮）──
+        let statusCard = StatusCardView(
+            model: StatusCardModel(
+                state: serviceState,
+                port: currentPort,
+                todayTokensText: todayTokensText,
+                hitRateText: todayHitRateText,
+                isOperationInProgress: isServiceOperationInProgress,
+                transientText: transientStatus
+            ),
+            onStart: { [weak self] in self?.startService() },
+            onStop: { [weak self] in self?.stopService() },
+            onRestart: { [weak self] in self?.restartService() }
+        )
+        menu.addItem(makeCardItem(statusCard, interactive: true))
         menu.addItem(.separator())
 
-        // 服务控制
-        if isRunning {
-            let stopItem = NSMenuItem(title: loc("action.stop"), action: #selector(stopService), keyEquivalent: "")
-            stopItem.target = self
-            stopItem.isEnabled = !isServiceOperationInProgress
-            if #available(macOS 11.0, *) {
-                stopItem.image = NSImage(systemSymbolName: "stop.fill", accessibilityDescription: loc("action.stop"))
-            }
-            menu.addItem(stopItem)
-            let restartItem = NSMenuItem(title: loc("action.restart"), action: #selector(restartService), keyEquivalent: "")
-            restartItem.target = self
-            restartItem.isEnabled = !isServiceOperationInProgress
-            if #available(macOS 11.0, *) {
-                restartItem.image = NSImage(systemSymbolName: "arrow.clockwise", accessibilityDescription: loc("action.restart"))
-            }
-            menu.addItem(restartItem)
+        // ── 适配器卡片（每行内联下拉直接切换模型，无多级菜单）──
+        if adapters.isEmpty {
+            let isLoading = serviceState == .starting
+            let hint = isLoading ? loc("status.loading") : loc("status.cannotConnect")
+            menu.addItem(makeCardItem(MenuHintCardView(text: hint, isLoading: isLoading), interactive: false))
         } else {
-            let startItem = NSMenuItem(title: loc("action.start"), action: #selector(startService), keyEquivalent: "")
-            startItem.target = self
-            startItem.isEnabled = !isServiceOperationInProgress
-            if #available(macOS 11.0, *) {
-                startItem.image = NSImage(systemSymbolName: "play.fill", accessibilityDescription: loc("action.start"))
+            for card in makeAdapterCardModels(adapters: adapters, providers: providers) {
+                let cardView = AdapterCardView(model: card) { [weak self] sourceModelId, provider, targetModelId in
+                    self?.handleCardSwitch(adapterName: card.name, sourceModelId: sourceModelId, provider: provider, targetModelId: targetModelId)
+                }
+                menu.addItem(makeCardItem(cardView, interactive: true))
             }
-            menu.addItem(startItem)
         }
-        // 重载配置放在服务控制区
-        let reloadItem = NSMenuItem(title: loc("action.reloadConfig"), action: #selector(reloadConfig), keyEquivalent: "r")
-        reloadItem.target = self
-        if #available(macOS 11.0, *) {
-            reloadItem.image = NSImage(systemSymbolName: "gearshape", accessibilityDescription: loc("action.reloadConfig"))
-        }
-        menu.addItem(reloadItem)
+
+        menu.addItem(.separator())
 
         // 控制台入口
-        let consoleItem = NSMenuItem()
-        let consoleText = loc("console.openConsole")
-        let attrConsole = NSMutableAttributedString(string: consoleText)
-        attrConsole.addAttribute(.font, value: NSFont.systemFont(ofSize: 13, weight: .medium), range: NSRange(location: 0, length: attrConsole.length))
-        consoleItem.attributedTitle = attrConsole
+        let consoleItem = NSMenuItem(title: loc("console.openConsole"), action: #selector(openConsole), keyEquivalent: "o")
         consoleItem.target = self
-        consoleItem.action = #selector(openConsole)
         if #available(macOS 11.0, *) {
             consoleItem.image = NSImage(systemSymbolName: "sidebar.left", accessibilityDescription: loc("console.openConsole"))
         }
         menu.addItem(consoleItem)
 
-        menu.addItem(.separator())
-
-        if adapters.isEmpty {
-            let emptyText = serviceState == .starting ? loc("status.loading") : loc("status.cannotConnect")
-            let item = NSMenuItem(title: emptyText, action: nil, keyEquivalent: "")
-            item.isEnabled = false
-            menu.addItem(item)
-        } else {
-            for adapter in adapters {
-                // 适配器名 + 协议类型作为 header
-                let headerItem = NSMenuItem(title: "\(adapter.name)（\(adapter.type)）", action: nil, keyEquivalent: "")
-                headerItem.isEnabled = false
-                let titleAttr = NSMutableAttributedString(string: "\(adapter.name)（\(adapter.type)）")
-                titleAttr.addAttribute(.font, value: NSFont.systemFont(ofSize: 12, weight: .semibold), range: NSRange(location: 0, length: titleAttr.length))
-                titleAttr.addAttribute(.foregroundColor, value: NSColor.labelColor, range: NSRange(location: 0, length: titleAttr.length))
-                headerItem.attributedTitle = titleAttr
-                menu.addItem(headerItem)
-
-                // 每个模型映射直接平铺，缩进显示
-                for mapping in adapter.models {
-                    let separator = " · "
-                    let displayText = "  \(mapping.sourceModelId)\(separator)\(mapping.provider)/\(mapping.targetModelId)"
-                    let attrTitle = NSMutableAttributedString(string: displayText)
-                    let srcEnd = "  \(mapping.sourceModelId)\(separator)".count
-                    attrTitle.addAttribute(.font, value: NSFont.systemFont(ofSize: 13), range: NSRange(location: 0, length: srcEnd))
-                    let tgtRange = NSRange(location: srcEnd, length: displayText.count - srcEnd)
-                    attrTitle.addAttribute(.font, value: NSFont.systemFont(ofSize: 12), range: tgtRange)
-                    attrTitle.addAttribute(.foregroundColor, value: NSColor.secondaryLabelColor, range: tgtRange)
-                    
-                    let mappingItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
-                    mappingItem.attributedTitle = attrTitle
-                    let mappingSubMenu = NSMenu()
-
-                    for provider in providers {
-                        for model in provider.models {
-                            let label = "\(provider.name)/\(model.id)"
-                            let item = NSMenuItem(title: label, action: #selector(switchMapping(_:)), keyEquivalent: "")
-                            item.target = self
-                            item.representedObject = SwitchAction(
-                                adapter: adapter,
-                                sourceModelId: mapping.sourceModelId,
-                                provider: provider.name,
-                                targetModelId: model.id
-                            )
-                            if provider.name == mapping.provider && model.id == mapping.targetModelId {
-                                item.state = .on
-                            }
-                            mappingSubMenu.addItem(item)
-                        }
-                        mappingSubMenu.addItem(.separator())
-                    }
-                    if mappingSubMenu.items.last?.isSeparatorItem == true {
-                        mappingSubMenu.removeItem(at: mappingSubMenu.items.count - 1)
-                    }
-                    mappingItem.submenu = mappingSubMenu
-                    menu.addItem(mappingItem)
-                }
-                menu.addItem(.separator())
-            }
-            // 移除最后多余的 separator
-            if menu.items.last?.isSeparatorItem == true {
-                menu.removeItem(at: menu.items.count - 1)
-            }
+        // 重载配置
+        let reloadItem = NSMenuItem(title: loc("action.reloadConfig"), action: #selector(reloadConfig), keyEquivalent: "r")
+        reloadItem.target = self
+        if #available(macOS 11.0, *) {
+            reloadItem.image = NSImage(systemSymbolName: "arrow.triangle.2.circlepath", accessibilityDescription: loc("action.reloadConfig"))
         }
+        menu.addItem(reloadItem)
 
         menu.addItem(.separator())
 
@@ -399,10 +336,33 @@ class MenuBarController: NSObject {
         statusItem.menu = menu
     }
 
-    @objc func switchMapping(_ sender: NSMenuItem) {
-        guard let action = sender.representedObject as? SwitchAction else { return }
+    /// 将 SwiftUI 卡片包装成菜单项（CodexBar 风格富菜单）
+    @MainActor
+    private func makeCardItem<Content: View>(_ view: Content, interactive: Bool) -> NSMenuItem {
+        let hosting = NSHostingView(rootView: view)
+        hosting.frame = NSRect(origin: .zero, size: NSSize(width: MenuCardMetrics.width, height: 1))
+        let height = max(1, ceil(hosting.fittingSize.height))
+        hosting.frame = NSRect(origin: .zero, size: NSSize(width: MenuCardMetrics.width, height: height))
+        let item = NSMenuItem()
+        item.view = hosting
+        item.isEnabled = interactive
+        return item
+    }
+
+    /// 适配器卡片行内下拉选择模型后回调
+    private func handleCardSwitch(adapterName: String, sourceModelId: String, provider: String, targetModelId: String) {
+        guard let adapter = adapters.first(where: { $0.name == adapterName }) else { return }
+        // 选择未变化时不发请求
+        guard adapter.models.contains(where: {
+            $0.sourceModelId == sourceModelId && ($0.provider != provider || $0.targetModelId != targetModelId)
+        }) else { return }
         Task { @MainActor in
-            await performSwitch(action)
+            await performSwitch(SwitchAction(
+                adapter: adapter,
+                sourceModelId: sourceModelId,
+                provider: provider,
+                targetModelId: targetModelId
+            ))
         }
     }
 
@@ -566,22 +526,9 @@ class MenuBarController: NSObject {
 
     @MainActor
     func setTransientStatus(_ text: String) {
-        guard let menu = statusItem.menu,
-              let first = menu.items.first else { return }
-        let attrTitle = NSMutableAttributedString(string: text)
-        attrTitle.addAttribute(.foregroundColor, value: NSColor.systemOrange,
-                               range: NSRange(location: 0, length: attrTitle.length))
-        attrTitle.addAttribute(.font, value: NSFont.systemFont(ofSize: 13, weight: .medium),
-                               range: NSRange(location: 0, length: attrTitle.length))
-        first.attributedTitle = attrTitle
-        // 禁用所有服务控制按钮
-        for item in menu.items where !item.isSeparatorItem && item !== first {
-            if item.action == #selector(startService) ||
-               item.action == #selector(stopService) ||
-               item.action == #selector(restartService) {
-                item.isEnabled = false
-            }
-        }
+        // 卡片化菜单：临时文案写入状态卡片并整体重建（按钮由 isOperationInProgress 禁用）
+        transientStatus = text
+        rebuildMenu()
     }
 
     func bundledBinaryPath() -> String? {
