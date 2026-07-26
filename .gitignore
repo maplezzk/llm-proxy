@@ -1,8 +1,9 @@
 node_modules/
 dist/
 *.log
-
 .env
+.env.local
+.env.*.local
 .DS_Store
 # Added by code-review-graph
 .code-review-graph/
@@ -17,3 +18,11 @@ src/types/i18n.generated.ts
 
 # 临时产物（截图/演示草稿），不纳入版本控制
 _temp/
+
+# Playwright 产物
+playwright-report/
+test-results/
+
+# Biome 缓存
+.biome/
+

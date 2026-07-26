@@ -1,89 +1,219 @@
 #!/usr/bin/env node
-import { cmdStart, cmdStop, cmdStatus, cmdReload, cmdRestart } from './cli/commands.js'
+/**
+ * llm-proxy CLI entry (citty skeleton).
+ *
+ * Subcommands:
+ *   start      boot Hono server (auto-runs migrate unless --skip-migrate)
+ *   stop       graceful stop via pid file
+ *   restart    stop + start
+ *   reload     hot-reload config (P1 hook)
+ *   migrate    run drizzle migrate only, no HTTP
+ *
+ * Design:
+ * - Core orchestration is in plain async functions (executeStart/Stop/Restart/...).
+ * - citty commands are thin wrappers: they only parse args and dispatch.
+ * - SIGTERM uses process.exit(0) because SSE long-poll blocks server.close().
+ */
+import { defineCommand, runMain } from 'citty';
+import { readFileSync, writeFileSync, existsSync, unlinkSync, mkdirSync } from 'node:fs';
+import { dirname } from 'node:path';
+import { loadEnv } from './config/env.js';
+import { log } from './lib/logger.js';
+import { startServer } from './server.js';
+import { runMigrations } from './db/migrate.js';
 
-function readArg(name: string): string | undefined {
-  const i = process.argv.indexOf(name)
-  return i !== -1 ? process.argv[i + 1] : undefined
+const DEFAULT_PID_PATH = '/tmp/llm-proxy.pid';
+const DEFAULT_HOST = '127.0.0.1';
+const DEFAULT_PORT = 9000;
+const PID_RESTART_GRACE_MS = 300;
+const VALID_PORT_MIN = 1;
+const VALID_PORT_MAX = 65535;
+
+interface ProxyState {
+  pid: number;
+  port: number;
+  startedAt: number;
 }
 
-function readIntArg(name: string): number | undefined {
-  const v = readArg(name)
-  if (v === undefined) return undefined
-  const n = parseInt(v, 10)
-  return isNaN(n) ? undefined : n
-}
-
-const COMMANDS: Record<string, () => Promise<void>> = {
-  start: () => {
-    const config = readArg('--config')
-    const host = readArg('--host')
-    const port = readIntArg('--port')
-    const logLevel = readArg('--log-level')
-    // --data-dir 让 dev wrapper 可以把日志/usage.db/vision-cache 等运行时数据
-    // 隔离到独立目录，避免污染正式 ~/.llm-proxy。默认仍是 ~/.llm-proxy。
-    const dataDir = readArg('--data-dir')
-    // --pid-path 显式覆盖 PID 文件路径，仅 dev wrapper 使用，避免 env 污染正式服务。
-    const pidPath = readArg('--pid-path')
-    return cmdStart({ config, host, port, logLevel, dataDir, pidPath })
-  },
-  stop: () => {
-    const port = readIntArg('--port')
-    return cmdStop({ port })
-  },
-  status: cmdStatus,
-  restart: () => {
-    const config = readArg('--config')
-    const host = readArg('--host')
-    const port = readIntArg('--port')
-    const logLevel = readArg('--log-level')
-    const dataDir = readArg('--data-dir')
-    const pidPath = readArg('--pid-path')
-    return cmdRestart({ config, host, port, logLevel, dataDir, pidPath })
-  },
-  reload: () => {
-    const port = readIntArg('--port')
-    return cmdReload({ port })
-  },
-}
-
-function printHelp(): void {
-  console.log(`
-llm-proxy — 本地统一 LLM 模型代理
-
-用法:
-  llm-proxy start      启动代理
-  llm-proxy stop       停止代理
-  llm-proxy restart    重启代理
-  llm-proxy status     查看代理状态
-  llm-proxy reload     重新加载配置
-  llm-proxy --help     显示帮助
-
-选项:
-  --config <path>      配置文件路径 (默认: ~/.llm-proxy/config.yaml)
-  --host <host>        绑定地址 (默认: 127.0.0.1)
-  --port <port>        端口 (默认: 9000，也可在 config.yaml 中设置 port)
-  --log-level <level>  日志级别: debug, info, warn, error (默认: info)
-  --data-dir <path>    运行时数据目录（日志、usage.db、vision-cache，默认 ~/.llm-proxy）
-  --pid-path <path>   PID 文件路径覆盖（仅显式传入，默认 /tmp/llm-proxy.pid）
-`)
-}
-
-async function main(): Promise<void> {
-  const command = process.argv[2]
-
-  if (!command || command === '--help' || command === '-h') {
-    printHelp()
-    return
+const readState = (pidPath: string): ProxyState | null => {
+  try {
+    const raw = readFileSync(pidPath, 'utf-8').trim();
+    const parsed = JSON.parse(raw) as unknown;
+    if (
+      parsed &&
+      typeof parsed === 'object' &&
+      typeof (parsed as ProxyState).pid === 'number' &&
+      typeof (parsed as ProxyState).port === 'number' &&
+      (parsed as ProxyState).pid > 0 &&
+      (parsed as ProxyState).port >= VALID_PORT_MIN &&
+      (parsed as ProxyState).port <= VALID_PORT_MAX
+    ) {
+      return parsed as ProxyState;
+    }
+    return null;
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    log.warn({ err: msg, pidPath }, 'failed to read pid file; treating as not running');
+    return null;
   }
+};
 
-  const handler = COMMANDS[command]
-  if (!handler) {
-    console.error(`Unknown command: ${command}`)
-    printHelp()
-    process.exit(1)
+const writeState = (pidPath: string, state: ProxyState): void => {
+  mkdirSync(dirname(pidPath), { recursive: true });
+  writeFileSync(pidPath, JSON.stringify(state));
+};
+
+const removeState = (pidPath: string): void => {
+  if (!existsSync(pidPath)) return;
+  unlinkSync(pidPath);
+};
+
+const isAlive = (pid: number): boolean => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    log.debug({ err: msg, pid }, 'isAlive check failed; treating as not alive');
+    return false;
   }
+};
 
-  await handler()
-}
+const parseListenAddress = (host: string, portRaw: string): { host: string; port: number } => {
+  if (!host || host.trim().length === 0) {
+    throw new Error('host must not be empty');
+  }
+  const port = Number(portRaw);
+  if (Number.isNaN(port) || port < VALID_PORT_MIN || port > VALID_PORT_MAX) {
+    throw new Error(`invalid port: ${portRaw}`);
+  }
+  return { host, port };
+};
 
-main()
+const registerShutdownHandlers = (pidPath: string): void => {
+  const shutdown = (signal: NodeJS.Signals): void => {
+    log.info({ signal, pid: process.pid }, 'shutting down');
+    removeState(pidPath);
+    process.exit(0);
+  };
+  process.on('SIGTERM', shutdown);
+  process.on('SIGINT', shutdown);
+};
+
+const runStartupMigration = async (): Promise<void> => {
+  if (!loadEnv().DATABASE_URL) {
+    log.warn('DATABASE_URL not set; skipping migrations');
+    return;
+  }
+  await runMigrations();
+};
+
+const blockForever = (): Promise<never> => new Promise<never>(() => {});
+
+export const executeStart = async (opts: {
+  host: string;
+  port: number;
+  pidPath: string;
+  skipMigrate: boolean;
+}): Promise<void> => {
+  if (!opts.skipMigrate) {
+    await runStartupMigration();
+  }
+  const { server } = startServer({ port: opts.port, host: opts.host });
+  writeState(opts.pidPath, { pid: process.pid, port: opts.port, startedAt: Date.now() });
+  log.info({ pid: process.pid, port: opts.port, host: opts.host, pidPath: opts.pidPath }, 'llm-proxy started');
+  registerShutdownHandlers(opts.pidPath);
+  void server;
+  await blockForever();
+};
+
+export const executeStop = (pidPath: string): void => {
+  const state = readState(pidPath);
+  if (!state) {
+    log.info({ pidPath }, 'no pid file; nothing to stop');
+    return;
+  }
+  if (!isAlive(state.pid)) {
+    log.info({ pid: state.pid, pidPath }, 'pid not alive; cleaning stale pid file');
+    removeState(pidPath);
+    return;
+  }
+  process.kill(state.pid, 'SIGTERM');
+  log.info({ pid: state.pid, pidPath }, 'sent SIGTERM');
+};
+
+export const executeReload = (pidPath: string): void => {
+  const state = readState(pidPath);
+  if (!state || !isAlive(state.pid)) {
+    log.warn({ pidPath }, 'no live process to reload');
+    return;
+  }
+  log.info({ pid: state.pid }, 'reload signal sent (SIGHUP)');
+  process.kill(state.pid, 'SIGHUP');
+};
+
+const startCommand = defineCommand({
+  meta: { name: 'start', description: '启动 llm-proxy HTTP 服务' },
+  args: {
+    host: { type: 'string', default: DEFAULT_HOST },
+    port: { type: 'string', default: String(DEFAULT_PORT) },
+    'pid-path': { type: 'string', default: DEFAULT_PID_PATH },
+    'skip-migrate': { type: 'boolean', default: false },
+  },
+  async run({ args }) {
+    const { host, port } = parseListenAddress(args.host, args.port);
+    await executeStart({ host, port, pidPath: args['pid-path'], skipMigrate: args['skip-migrate'] });
+  },
+});
+
+const stopCommand = defineCommand({
+  meta: { name: 'stop', description: '停止 llm-proxy 服务（按 pid 文件）' },
+  args: { 'pid-path': { type: 'string', default: DEFAULT_PID_PATH } },
+  run({ args }) {
+    executeStop(args['pid-path']);
+  },
+});
+
+const restartCommand = defineCommand({
+  meta: { name: 'restart', description: '重启 llm-proxy' },
+  args: {
+    host: { type: 'string', default: DEFAULT_HOST },
+    port: { type: 'string', default: String(DEFAULT_PORT) },
+    'pid-path': { type: 'string', default: DEFAULT_PID_PATH },
+  },
+  async run({ args }) {
+    executeStop(args['pid-path']);
+    await new Promise((r) => setTimeout(r, PID_RESTART_GRACE_MS));
+    const { host, port } = parseListenAddress(args.host, args.port);
+    await executeStart({ host, port, pidPath: args['pid-path'], skipMigrate: false });
+  },
+});
+
+const reloadCommand = defineCommand({
+  meta: { name: 'reload', description: '热加载配置（P1 接入 config store）' },
+  args: { 'pid-path': { type: 'string', default: DEFAULT_PID_PATH } },
+  run({ args }) {
+    executeReload(args['pid-path']);
+  },
+});
+
+const migrateCommand = defineCommand({
+  meta: { name: 'migrate', description: '只跑 drizzle migrate，不启 HTTP' },
+  args: {},
+  async run() {
+    await runMigrations();
+  },
+});
+
+const main = defineCommand({
+  meta: { name: 'llm-proxy', description: '本地统一 LLM 模型代理' },
+  subCommands: {
+    start: startCommand,
+    stop: stopCommand,
+    restart: restartCommand,
+    reload: reloadCommand,
+    migrate: migrateCommand,
+  },
+});
+
+runMain(main);

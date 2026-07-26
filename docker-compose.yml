@@ -1,0 +1,29 @@
+# docker-compose for llm-proxy P0.
+#
+# Only the app service is defined here; the database is assumed to exist on the
+# host as a sibling container named `postgres` reachable via DNS name `postgres`
+# on the `shared-net` external bridge network. Use scripts/init-db.sh once to
+# create the llmproxy_dev database.
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: llm-proxy:local
+    container_name: llm-proxy
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 9000
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      DATABASE_URL: postgres://${POSTGRES_USER:-dev}:${POSTGRES_PASSWORD:-changeme}@postgres:5432/${POSTGRES_DB:-llmproxy_dev}
+      PROXY_KEY: ${PROXY_KEY:-}
+    ports:
+      - "9000:9000"
+    networks:
+      - shared-net
+
+networks:
+  shared-net:
+    external: true

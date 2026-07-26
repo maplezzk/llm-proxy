@@ -1,6 +1,6 @@
 {
   "name": "@mutallip/llm-proxy",
-  "version": "0.23.3",
+  "version": "0.24.0-p0.0",
   "description": "本地统一 LLM 模型代理工具 — 多协议路由、协议互转、流式 SSE 转换、token 统计、协议抓包调试",
   "type": "module",
   "main": "dist/index.js",
@@ -28,48 +28,70 @@
     "protocol-translation",
     "sse",
     "streaming",
-    "cli"
+    "cli",
+    "gateway",
+    "axonhub"
   ],
   "scripts": {
-    "build": "tsc && npm run build:admin && cp admin-ui/dist/admin-ui.html dist/api/admin-ui.html",
+    "dev": "tsx watch src/index.ts start",
+    "build": "npm run build:app && npm run build:admin",
+    "build:app": "tsup",
     "build:admin": "vite build admin-ui",
-    "build:prod": "esbuild src/index.ts --bundle --platform=node --outfile=dist/bundle.js --format=esm",
-    "dev": "tsx scripts/dev.ts",
-    "test": "node --import tsx --test test/**/*.test.ts",
-    "test:watch": "node --import tsx --watch --test test/**/*.test.ts",
+    "build:full": "npm run build:app && npm run build:admin && cp admin-ui/dist/admin-ui.html dist/api/admin-ui.html",
+    "start": "node dist/index.js start",
     "typecheck": "tsc --noEmit",
+    "test:unit": "vitest run",
+    "test:e2e": "playwright test",
+    "test": "npm run typecheck && npm run test:unit",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:push": "drizzle-kit push",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "format": "biome format --write .",
+    "init-db": "bash scripts/init-db.sh",
     "clean": "rm -rf dist",
-    "prepublishOnly": "npm run build && npm test",
-    "generate:i18n-types": "tsx scripts/generate-i18n-types.ts",
-    "prebuild": "npm run generate:i18n-types",
-    "dev:admin": "vite admin-ui"
+    "prepublishOnly": "npm run build && npm test"
   },
   "dependencies": {
     "@appica/icons-react": "^1.0.0",
     "@appica/ui-react": "^1.0.0",
-    "@types/better-sqlite3": "^7.6.13",
-    "better-sqlite3": "^12.11.1",
+    "@hono/node-server": "^1.13.7",
+    "citty": "^0.1.6",
+    "drizzle-orm": "^0.36.4",
+    "hono": "^4.6.14",
     "i18next": "^26.0.8",
+    "pino": "^9.5.0",
+    "pino-pretty": "^11.3.0",
+    "postgres": "^3.4.5",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-i18next": "^15.4.0",
     "recharts": "^3.0.0",
-    "yaml": "^2.8.0"
+    "yaml": "^2.8.0",
+    "zod": "^3.23.8"
   },
   "devDependencies": {
+    "@biomejs/biome": "^1.9.4",
+    "@playwright/test": "^1.49.0",
     "@tailwindcss/vite": "^4.0.0",
-    "@types/node": "^22.0.0",
+    "@testcontainers/postgresql": "^10.13.2",
+    "@types/node": "^22.10.1",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^4.7.0",
+    "drizzle-kit": "^0.28.1",
     "esbuild": "^0.25.0",
     "tailwindcss": "^4.0.0",
-    "tsx": "^4.19.0",
-    "typescript": "^5.7.0",
+    "testcontainers": "^10.13.2",
+    "tsup": "^8.3.5",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
     "vite": "^6.4.3",
-    "vite-plugin-singlefile": "^2.0.0"
+    "vite-plugin-singlefile": "^2.0.0",
+    "vitest": "^2.1.8"
   },
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=22.0.0"
   }
 }

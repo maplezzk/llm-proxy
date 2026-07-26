@@ -1,33 +1,82 @@
-name: CI
+name: ci
 
 on:
-  pull_request:
-    branches: [main]
   push:
-    branches: [main]
+    branches: [main, muta/**]
+  pull_request:
+    branches: [main, muta/**]
 
 jobs:
-  test:
+  build-test:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: dev
+          POSTGRES_PASSWORD: dev
+          POSTGRES_DB: llmproxy_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U dev -d llmproxy_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup Node.js
+      - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: '24'
-          cache: 'npm'
+          node-version: 22
+          cache: npm
 
       - name: Install dependencies
         run: npm ci
 
-      - name: Type check
-        run: npx tsc --noEmit
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
 
-      - name: Run tests
-        run: npm test
+      - name: Typecheck
+        run: npm run typecheck
 
-      - name: Build project
-        run: npm run build
+      - name: Unit + integration tests (Vitest)
+        env:
+          DATABASE_URL: postgres://dev:dev@127.0.0.1:5432/llmproxy_test
+        run: npm run test:unit
+
+      - name: Build
+        run: npm run build:app
+
+      - name: E2E tests (Playwright)
+        env:
+          DATABASE_URL: postgres://dev:dev@127.0.0.1:5432/llmproxy_test
+          LLM_PROXY_BASE_URL: http://127.0.0.1:9000
+          LLM_PROXY_NO_WEBSERVER: 1
+        run: |
+          # CI: start the built server in background, run e2e, then stop.
+          PORT=9000 NODE_ENV=production node dist/index.js start &
+          SERVER_PID=$!
+          for i in {1..30}; do
+            if curl -sf http://127.0.0.1:9000/health >/dev/null; then
+              echo "server up after ${i} attempts"
+              break
+            fi
+            sleep 1
+          done
+          npm run test:e2e
+          kill $SERVER_PID 2>/dev/null || true
+          wait $SERVER_PID 2>/dev/null || true
+
+      - name: Upload Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            playwright-report
+            test-results
+          retention-days: 7
