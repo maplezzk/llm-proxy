@@ -4,6 +4,7 @@ import { readBody, getDefaultApiBase, sanitizeApiBase, maskHeaders } from '../..
 import { resolveAdapterRoute, AdapterError } from '../../adapter/router.js'
 import { json } from './index.js'
 import { t } from '../../lib/i18n.js'
+import { getProviderProtocols } from '../../config/types.js'
 
 const API_KEY_PATTERN = /sk-[a-zA-Z0-9-]+/g
 
@@ -32,7 +33,10 @@ export async function handleTestModel(ctx: ServerContext, req: IncomingMessage, 
       const { config } = ctx.store.getConfig()
       const provider = config.providers.find((p) => p.name === providerName)
       if ((apiKey === '***' || !apiKey) && provider?.apiKey) apiKey = provider.apiKey
-      if (!apiBase && provider?.apiBase) apiBase = provider.apiBase
+      if (!apiBase && provider) {
+        const protocol = getProviderProtocols(provider).find((item) => item.type === type) ?? getProviderProtocols(provider)[0]
+        if (protocol?.apiBase) apiBase = protocol.apiBase
+      }
     }
   }
   const model = typeof body.model === 'string' ? body.model : undefined
@@ -228,9 +232,12 @@ export async function handlePullModels(ctx: ServerContext, req: IncomingMessage,
   const { config } = ctx.store.getConfig()
   const provider = config.providers.find((p) => p.name === providerName)
 
-  const type = typeof body.type === 'string' ? body.type : provider?.type
+  const requestedType = typeof body.type === 'string' ? body.type : undefined
+  const providerProtocols = provider ? getProviderProtocols(provider) : []
+  const selectedProtocol = providerProtocols.find((protocol) => protocol.type === requestedType) ?? providerProtocols[0]
+  const type = requestedType ?? selectedProtocol?.type
   const apiKey = (typeof body.api_key === 'string' && body.api_key) ? body.api_key : (provider?.apiKey ?? '')
-  const apiBase = typeof body.api_base === 'string' ? body.api_base : (provider?.apiBase ?? (type ? getDefaultApiBase(type) : ''))
+  const apiBase = typeof body.api_base === 'string' ? body.api_base : (selectedProtocol?.apiBase ?? provider?.apiBase ?? (type ? getDefaultApiBase(type) : ''))
 
   if (!type || !apiKey) {
     json(res, 400, { success: false, error: '缺少 type 或 api_key' })

@@ -1,4 +1,4 @@
-import type { Config, ValidationError } from './types.js'
+import { getModelProtocols, getProviderProtocols, type Config, type ValidationError } from './types.js'
 
 const VALID_PROVIDER_NAMES = /^[a-zA-Z0-9_-]+$/
 const VALID_MODEL_NAMES = /^[a-zA-Z0-9_.\-\/:]+$/
@@ -43,8 +43,23 @@ function validateProviders(config: Config): ValidationError[] {
     }
     providerNames.add(provider.name)
 
-    if (!VALID_PROVIDER_TYPES.includes(provider.type)) {
-      errors.push({ field: `providers.${provider.name}.type`, message: `模型供应商类型 "${provider.type}" 无效，仅支持 anthropic 和 openai` })
+    const protocols = getProviderProtocols(provider)
+    if (protocols.length === 0) {
+      errors.push({ field: `providers.${provider.name}.protocols`, message: '至少需要配置一个供应商协议' })
+    }
+
+    const protocolTypes = new Set<string>()
+    for (const protocol of protocols) {
+      if (!VALID_PROVIDER_TYPES.includes(protocol.type)) {
+        errors.push({ field: `providers.${provider.name}.protocols[].type`, message: `模型供应商协议 "${protocol.type}" 无效，仅支持 anthropic、openai 和 openai-responses` })
+      }
+      if (protocolTypes.has(protocol.type)) {
+        errors.push({ field: `providers.${provider.name}.protocols.${protocol.type}`, message: `供应商协议 "${protocol.type}" 重复` })
+      }
+      protocolTypes.add(protocol.type)
+      if (protocol.apiBase !== undefined && (typeof protocol.apiBase !== 'string' || protocol.apiBase.trim() === '')) {
+        errors.push({ field: `providers.${provider.name}.protocols.${protocol.type}.api_base`, message: 'API Base 不能为空字符串' })
+      }
     }
 
     if (!provider.apiKey || typeof provider.apiKey !== 'string' || provider.apiKey.trim() === '') {
@@ -68,13 +83,23 @@ function validateProviders(config: Config): ValidationError[] {
       }
       modelIds.add(model.id)
 
+      if (model.protocols !== undefined && (!Array.isArray(model.protocols) || model.protocols.length === 0)) {
+        errors.push({ field: `providers.${provider.name}.models.${model.id}.protocols`, message: '模型 protocols 必须是非空数组' })
+      }
+      for (const modelProtocol of getModelProtocols(provider, model)) {
+        if (!protocolTypes.has(modelProtocol)) {
+          errors.push({ field: `providers.${provider.name}.models.${model.id}.protocols`, message: `模型协议 "${modelProtocol}" 未在供应商协议列表中配置` })
+        }
+      }
+      const modelProtocols = getModelProtocols(provider, model)
+
       if (!VALID_MODEL_NAMES.test(model.id)) {
         errors.push({ field: `providers.${provider.name}.models.${model.id}.id`, message: `模型 ID "${model.id}" 包含非法字符，仅支持字母、数字、下划线、点、中划线、斜杠、冒号` })
       }
 
       // 校验 thinking 配置
       if (model.thinking) {
-        if (provider.type === 'anthropic') {
+        if (modelProtocols.includes('anthropic')) {
           if (!model.thinking.budget_tokens && !model.thinking.type && !model.thinking.reasoning_effort) {
             errors.push({ field: `providers.${provider.name}.models.${model.id}.thinking`, message: `Anthropic thinking 模式需要 budget_tokens、reasoning_effort 或 type（如 MiniMax adaptive）` })
           }
@@ -88,7 +113,7 @@ function validateProviders(config: Config): ValidationError[] {
           if (model.thinking.reasoning_effort && !['low', 'medium', 'high', 'xhigh', 'max'].includes(model.thinking.reasoning_effort)) {
             errors.push({ field: `providers.${provider.name}.models.${model.id}.thinking.reasoning_effort`, message: `reasoning_effort 必须是 low、medium、high、xhigh 或 max` })
           }
-        } else if (provider.type === 'openai' || provider.type === 'openai-responses') {
+        } else if (modelProtocols.includes('openai') || modelProtocols.includes('openai-responses')) {
           if (model.thinking.reasoning_effort && !['low', 'medium', 'high', 'xhigh', 'max'].includes(model.thinking.reasoning_effort)) {
             errors.push({ field: `providers.${provider.name}.models.${model.id}.thinking.reasoning_effort`, message: `OpenAI reasoning_effort 必须是 low、medium、high、xhigh 或 max` })
           }

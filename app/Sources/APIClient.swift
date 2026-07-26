@@ -341,23 +341,23 @@ class APIClient {
         throw URLError(.cannotParseResponse)
     }
 
-    func createProvider(name: String, type: String, apiKey: String, apiBase: String, models: [ProviderModelInput]) async throws {
+    func createProvider(name: String, type: String, apiKey: String, apiBase: String, protocols: [ProviderProtocolDetail]? = nil, models: [ProviderModelInput]) async throws {
         let url = URL(string: "\(baseURL)/admin/providers")!
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        let body = CreateProviderBody(name: name, type: type, api_key: apiKey, api_base: apiBase, models: models)
+        let body = CreateProviderBody(name: name, type: type, api_key: apiKey, api_base: apiBase, protocols: protocols, models: models)
         req.httpBody = try JSONEncoder().encode(body)
         let (data, resp) = try await URLSession.shared.data(for: req)
         try Self.validate(data: data, response: resp, context: "createProvider")
     }
 
-    func updateProvider(name: String, type: String, apiKey: String, apiBase: String, models: [ProviderModelInput]) async throws {
+    func updateProvider(name: String, type: String, apiKey: String, apiBase: String, protocols: [ProviderProtocolDetail]? = nil, models: [ProviderModelInput]) async throws {
         let url = URL(string: "\(baseURL)/admin/providers/\(name)")!
         var req = URLRequest(url: url)
         req.httpMethod = "PUT"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        let body = UpdateProviderBody(name: name, type: type, api_key: apiKey, api_base: apiBase, models: models)
+        let body = UpdateProviderBody(name: name, type: type, api_key: apiKey, api_base: apiBase, protocols: protocols, models: models)
         req.httpBody = try JSONEncoder().encode(body)
         let (data, resp) = try await URLSession.shared.data(for: req)
         try Self.validate(data: data, response: resp, context: "updateProvider")

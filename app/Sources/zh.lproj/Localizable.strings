@@ -114,10 +114,14 @@
 "providers.form.apiKey" = "API Key";
 "providers.form.apiKeyPlaceholderEdit" = "（未修改）";
 "providers.form.apiBase" = "API Base URL";
+"providers.form.protocols" = "支持的协议";
+"providers.form.protocolsHint" = "协议可多选；每个已选协议都可以单独设置 Base URL。";
+"providers.form.addProtocol" = "添加协议";
 "providers.form.models" = "模型列表";
 "providers.form.addModel" = "添加模型";
 "providers.form.pullModels" = "拉取模型";
 "providers.form.modelIdPlaceholder" = "模型 ID";
+"providers.form.modelProtocols" = "模型支持协议";
 "providers.form.budgetTokens" = "预算 Token";
 "providers.form.budgetTokensHelp" = "Anthropic 模型思考预算 Token 数";
 "providers.form.reasoningNone" = "无";

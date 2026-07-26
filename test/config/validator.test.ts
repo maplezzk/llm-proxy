@@ -270,4 +270,23 @@ describe('config/validator', () => {
     const errors = validateConfig(config)
     assert.ok(errors.some((e) => e.message.includes('不支持 budget_tokens')))
   })
+
+  it('多协议供应商校验模型支持的协议', () => {
+    const config: Config = {
+      providers: [{
+        name: 'multi',
+        apiKey: 'k1',
+        protocols: [
+          { type: 'openai', apiBase: 'https://example.test/openai' },
+          { type: 'anthropic', apiBase: 'https://example.test/anthropic' },
+        ],
+        models: [{ id: 'chat', protocols: ['openai', 'anthropic'] }, { id: 'messages', protocols: ['anthropic'] }],
+      }],
+    }
+    assert.deepStrictEqual(validateConfig(config), [])
+
+    const missingProtocol = structuredClone(config)
+    missingProtocol.providers[0].models[0].protocols = ['invalid' as any]
+    assert.ok(validateConfig(missingProtocol).some((e) => e.message.includes('未在供应商协议列表中配置')))
+  })
 })

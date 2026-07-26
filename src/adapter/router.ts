@@ -1,6 +1,7 @@
 import type { ConfigStore } from '../config/store.js'
 import type { RouterResult } from '../proxy/types.js'
 import { getDefaultApiBase } from '../lib/http-utils.js'
+import { resolveProviderProtocol } from '../proxy/router.js'
 
 export interface AdapterRouteResult {
   route: RouterResult
@@ -43,7 +44,8 @@ export function resolveAdapterRoute(
     )
   }
 
-  const apiBase = provider.apiBase ?? getDefaultApiBase(provider.type)
+  const protocol = resolveProviderProtocol(provider, model, adapter.type)
+  const apiBase = protocol.apiBase ?? getDefaultApiBase(protocol.type)
 
   // Thinking config: 优先使用适配器映射上的配置，否则使用目标模型的配置
   const thinking = mapping.thinking ?? model.thinking
@@ -51,7 +53,7 @@ export function resolveAdapterRoute(
   return {
     route: {
       providerName: provider.name,
-      providerType: provider.type,
+      providerType: protocol.type,
       apiKey: provider.apiKey,
       apiBase,
       modelId: model.id,
