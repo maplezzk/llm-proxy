@@ -162,48 +162,6 @@ class MenuBarController: NSObject {
         menu.addItem(makeCardItem(statusCard, interactive: true))
         menu.addItem(.separator())
 
-        // ── 适配器区（悬停映射行即展开模型子菜单，零点击切换）──
-        if adapters.isEmpty {
-            let isLoading = serviceState == .starting
-            let hint = isLoading ? loc("status.loading") : loc("status.cannotConnect")
-            menu.addItem(makeCardItem(MenuHintCardView(text: hint, isLoading: isLoading), interactive: false))
-        } else {
-            for card in makeAdapterCardModels(adapters: adapters) {
-                // 适配器头：名称 + 协议类型（不可点击）
-                menu.addItem(makeCardItem(AdapterHeaderCardView(name: card.name, type: card.type), interactive: false))
-                // 每个映射一行：悬停自动展开模型子菜单
-                for mapping in card.mappings {
-                    let row = MappingRowView(sourceModelId: mapping.sourceModelId, currentLabel: mapping.currentLabel)
-                    let item = makeCardItem(row, interactive: true)
-                    if let adapter = adapters.first(where: { $0.name == card.name }) {
-                        let submenu = buildMappingSubMenu(
-                            adapter: adapter,
-                            sourceModelId: mapping.sourceModelId,
-                            currentProvider: mapping.provider,
-                            currentTarget: mapping.targetModelId
-                        )
-                        if submenu.items.isEmpty {
-                            item.isEnabled = false
-                        } else {
-                            item.submenu = submenu
-                            item.target = self
-                            item.action = #selector(menuCardNoOp(_:))
-                        }
-                    } else {
-                        item.isEnabled = false
-                    }
-                    menu.addItem(item)
-                }
-                menu.addItem(.separator())
-            }
-            // 移除最后多余的 separator
-            if menu.items.last?.isSeparatorItem == true {
-                menu.removeItem(at: menu.items.count - 1)
-            }
-        }
-
-        menu.addItem(.separator())
-
         // 控制台入口
         let consoleItem = NSMenuItem(title: loc("console.openConsole"), action: #selector(openConsole), keyEquivalent: "o")
         consoleItem.target = self
@@ -358,6 +316,47 @@ class MenuBarController: NSObject {
             quitItem.image = NSImage(systemSymbolName: "xmark", accessibilityDescription: loc("action.quit"))
         }
         menu.addItem(quitItem)
+
+        // ── 适配器区放最底部（模型列表可能很长，悬停映射行即展开子菜单，零点击切换）──
+        menu.addItem(.separator())
+        if adapters.isEmpty {
+            let isLoading = serviceState == .starting
+            let hint = isLoading ? loc("status.loading") : loc("status.cannotConnect")
+            menu.addItem(makeCardItem(MenuHintCardView(text: hint, isLoading: isLoading), interactive: false))
+        } else {
+            for card in makeAdapterCardModels(adapters: adapters) {
+                // 适配器头：名称 + 协议类型（不可点击）
+                menu.addItem(makeCardItem(AdapterHeaderCardView(name: card.name, type: card.type), interactive: false))
+                // 每个映射一行：悬停自动展开模型子菜单
+                for mapping in card.mappings {
+                    let row = MappingRowView(sourceModelId: mapping.sourceModelId, currentLabel: mapping.currentLabel)
+                    let item = makeCardItem(row, interactive: true)
+                    if let adapter = adapters.first(where: { $0.name == card.name }) {
+                        let submenu = buildMappingSubMenu(
+                            adapter: adapter,
+                            sourceModelId: mapping.sourceModelId,
+                            currentProvider: mapping.provider,
+                            currentTarget: mapping.targetModelId
+                        )
+                        if submenu.items.isEmpty {
+                            item.isEnabled = false
+                        } else {
+                            item.submenu = submenu
+                            item.target = self
+                            item.action = #selector(menuCardNoOp(_:))
+                        }
+                    } else {
+                        item.isEnabled = false
+                    }
+                    menu.addItem(item)
+                }
+                menu.addItem(.separator())
+            }
+            // 移除最后多余的 separator
+            if menu.items.last?.isSeparatorItem == true {
+                menu.removeItem(at: menu.items.count - 1)
+            }
+        }
 
         statusItem.menu = menu
     }
