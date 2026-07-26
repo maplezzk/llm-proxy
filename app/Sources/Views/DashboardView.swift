@@ -391,28 +391,25 @@ struct DashboardView: View {
                     BarMark(
                         x: .value("Input", bucket.input_tokens),
                         y: .value("Key", bucket.key),
-                        height: .fixed(5)
+                        height: .fixed(14)
                     )
                     .foregroundStyle(by: .value("Series", loc("dashboard.usage.seriesInput")))
-                    .position(by: .value("Series", loc("dashboard.usage.seriesInput")))
                     .cornerRadius(2)
 
                     BarMark(
                         x: .value("Output", bucket.output_tokens),
                         y: .value("Key", bucket.key),
-                        height: .fixed(5)
+                        height: .fixed(14)
                     )
                     .foregroundStyle(by: .value("Series", loc("dashboard.usage.seriesOutput")))
-                    .position(by: .value("Series", loc("dashboard.usage.seriesOutput")))
                     .cornerRadius(2)
 
                     BarMark(
                         x: .value("Cache Read", bucket.cache_read_input_tokens),
                         y: .value("Key", bucket.key),
-                        height: .fixed(5)
+                        height: .fixed(14)
                     )
                     .foregroundStyle(by: .value("Series", loc("dashboard.usage.seriesCacheRead")))
-                    .position(by: .value("Series", loc("dashboard.usage.seriesCacheRead")))
                     .cornerRadius(2)
                 }
                 .chartForegroundStyleScale([
@@ -438,8 +435,6 @@ struct DashboardView: View {
                 }
                 .chartYAxis {
                     AxisMarks(position: .leading) { _ in
-                        AxisGridLine(stroke: StrokeStyle(lineWidth: 0.8))
-                            .foregroundStyle(Color.secondary.opacity(0.26))
                         AxisValueLabel()
                             .foregroundStyle(Color.secondary.opacity(0.92))
                     }
