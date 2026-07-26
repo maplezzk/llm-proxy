@@ -303,3 +303,9 @@
 "menu.status.stopped" = "Not Running";
 "menu.todayUsage" = "Today %@ · cache hit %@";
 "dashboard.overviewSummary" = "%d providers · %d models · %d adapters";
+"menu.settings" = "Settings";
+"menu.versionCheck" = "Version %@ · Check for Updates…";
+"menu.btn.stop" = "Stop";
+"menu.btn.restart" = "Restart";
+"menu.btn.reload" = "Reload";
+"menu.btn.start" = "Start";

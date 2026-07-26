@@ -329,3 +329,9 @@
 "menu.status.stopped" = "未运行";
 "menu.todayUsage" = "今日 %@ · 缓存命中 %@";
 "dashboard.overviewSummary" = "%d 个供应商 · %d 个模型 · %d 个适配器";
+"menu.settings" = "设置";
+"menu.versionCheck" = "版本 %@ · 检查更新…";
+"menu.btn.stop" = "停止";
+"menu.btn.restart" = "重启";
+"menu.btn.reload" = "重载";
+"menu.btn.start" = "启动";

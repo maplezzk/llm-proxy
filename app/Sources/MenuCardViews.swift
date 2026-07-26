@@ -45,6 +45,7 @@ struct StatusCardView: View {
     let onStart: () -> Void
     let onStop: () -> Void
     let onRestart: () -> Void
+    let onReload: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -71,10 +72,11 @@ struct StatusCardView: View {
 
             HStack(spacing: 8) {
                 if model.state == .running {
-                    controlButton(loc("action.stop"), systemImage: "stop.fill", action: onStop)
-                    controlButton(loc("action.restart"), systemImage: "arrow.clockwise", action: onRestart)
+                    controlButton(loc("menu.btn.stop"), systemImage: "stop.fill", action: onStop)
+                    controlButton(loc("menu.btn.restart"), systemImage: "arrow.clockwise", action: onRestart)
+                    controlButton(loc("menu.btn.reload"), systemImage: "arrow.triangle.2.circlepath", action: onReload)
                 } else {
-                    controlButton(loc("action.start"), systemImage: "play.fill", action: onStart)
+                    controlButton(loc("menu.btn.start"), systemImage: "play.fill", action: onStart)
                 }
             }
             .frame(maxWidth: .infinity)

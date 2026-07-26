@@ -157,12 +157,13 @@ class MenuBarController: NSObject {
             ),
             onStart: { [weak self] in self?.startService() },
             onStop: { [weak self] in self?.stopService() },
-            onRestart: { [weak self] in self?.restartService() }
+            onRestart: { [weak self] in self?.restartService() },
+            onReload: { [weak self] in self?.reloadConfig() }
         )
         menu.addItem(makeCardItem(statusCard, interactive: true))
         menu.addItem(.separator())
 
-        // 控制台入口
+        // 界面组：控制台 + Web UI
         let consoleItem = NSMenuItem(title: loc("console.openConsole"), action: #selector(openConsole), keyEquivalent: "o")
         consoleItem.target = self
         if #available(macOS 11.0, *) {
@@ -170,17 +171,6 @@ class MenuBarController: NSObject {
         }
         menu.addItem(consoleItem)
 
-        // 重载配置
-        let reloadItem = NSMenuItem(title: loc("action.reloadConfig"), action: #selector(reloadConfig), keyEquivalent: "r")
-        reloadItem.target = self
-        if #available(macOS 11.0, *) {
-            reloadItem.image = NSImage(systemSymbolName: "arrow.triangle.2.circlepath", accessibilityDescription: loc("action.reloadConfig"))
-        }
-        menu.addItem(reloadItem)
-
-        menu.addItem(.separator())
-
-        // 工具区：Admin UI → 日志目录 → 端口 → 日志级别
         let adminItem = NSMenuItem(title: loc("action.openAdmin"), action: #selector(openAdmin), keyEquivalent: "")
         adminItem.target = self
         if #available(macOS 11.0, *) {
@@ -188,12 +178,16 @@ class MenuBarController: NSObject {
         }
         menu.addItem(adminItem)
 
+        menu.addItem(.separator())
+
+        // 设置子菜单：端口 → 日志级别 → 语言 → 日志目录
         let logsItem = NSMenuItem(title: loc("action.openLogs"), action: #selector(openLogs), keyEquivalent: "")
         logsItem.target = self
         if #available(macOS 11.0, *) {
             logsItem.image = NSImage(systemSymbolName: "folder", accessibilityDescription: loc("action.openLogs"))
         }
-        menu.addItem(logsItem)
+
+        let settingsMenu = NSMenu()
 
         // 端口设置（子菜单）
         let portItem = NSMenuItem(title: loc("action.port", String(currentPort)), action: nil, keyEquivalent: "")
@@ -214,7 +208,7 @@ class MenuBarController: NSObject {
         customItem.target = self
         portMenu.addItem(customItem)
         portItem.submenu = portMenu
-        menu.addItem(portItem)
+        settingsMenu.addItem(portItem)
 
         let logLevelItem = NSMenuItem(title: loc("action.logLevel", currentLogLevel), action: nil, keyEquivalent: "")
         if #available(macOS 11.0, *) {
@@ -229,7 +223,7 @@ class MenuBarController: NSObject {
             logLevelMenu.addItem(item)
         }
         logLevelItem.submenu = logLevelMenu
-        menu.addItem(logLevelItem)
+        settingsMenu.addItem(logLevelItem)
 
         // 语言切换（子菜单）
         let currentLang = currentLang()
@@ -247,15 +241,26 @@ class MenuBarController: NSObject {
             langMenu.addItem(item)
         }
         langItem.submenu = langMenu
-        menu.addItem(langItem)
+        settingsMenu.addItem(langItem)
+        settingsMenu.addItem(.separator())
+        settingsMenu.addItem(logsItem)
+
+        let settingsItem = NSMenuItem(title: loc("menu.settings"), action: nil, keyEquivalent: "")
+        if #available(macOS 11.0, *) {
+            settingsItem.image = NSImage(systemSymbolName: "gearshape", accessibilityDescription: loc("menu.settings"))
+        }
+        settingsItem.submenu = settingsMenu
+        menu.addItem(settingsItem)
 
         // ── 更新区 ──
         menu.addItem(.separator())
 
-        let versionItem = NSMenuItem(title: loc("menu.version", currentVersion()), action: nil, keyEquivalent: "")
-        versionItem.isEnabled = false
+        // 版本号与检查更新合并为一行（点击即检查）
+        let versionItem = NSMenuItem(title: loc("menu.versionCheck", currentVersion()), action: #selector(checkForUpdates), keyEquivalent: "")
+        versionItem.target = self
+        versionItem.isEnabled = !isCheckingUpdate && !isDownloadingUpdate
         if #available(macOS 11.0, *) {
-            versionItem.image = NSImage(systemSymbolName: "info.circle", accessibilityDescription: loc("menu.version", currentVersion()))
+            versionItem.image = NSImage(systemSymbolName: "info.circle", accessibilityDescription: loc("menu.versionCheck", currentVersion()))
         }
         menu.addItem(versionItem)
 
@@ -299,14 +304,6 @@ class MenuBarController: NSObject {
                 menu.addItem(updateAvailableItem)
             }
         }
-
-        let checkItem = NSMenuItem(title: loc("action.checkForUpdates"), action: #selector(checkForUpdates), keyEquivalent: "")
-        checkItem.target = self
-        checkItem.isEnabled = !isCheckingUpdate && !isDownloadingUpdate
-        if #available(macOS 11.0, *) {
-            checkItem.image = NSImage(systemSymbolName: "arrow.up.arrow.down.circle", accessibilityDescription: loc("action.checkForUpdates"))
-        }
-        menu.addItem(checkItem)
 
         menu.addItem(.separator())
 

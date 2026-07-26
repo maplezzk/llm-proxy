@@ -39,7 +39,7 @@ final class MenuCardSnapshotTests: XCTestCase {
                 isOperationInProgress: false,
                 transientText: nil
             )
-            let status = StatusCardView(model: statusModel, onStart: {}, onStop: {}, onRestart: {})
+            let status = StatusCardView(model: statusModel, onStart: {}, onStop: {}, onRestart: {}, onReload: {})
 
             let header = AdapterHeaderCardView(name: "my-tool", type: "anthropic")
             let adapter = VStack(spacing: 0) {
@@ -50,7 +50,7 @@ final class MenuCardSnapshotTests: XCTestCase {
 
             let stopped = StatusCardView(
                 model: StatusCardModel(state: .stopped, port: 9000, todayTokensText: nil, hitRateText: nil, isOperationInProgress: false, transientText: nil),
-                onStart: {}, onStop: {}, onRestart: {})
+                onStart: {}, onStop: {}, onRestart: {}, onReload: {})
 
             let hint = MenuHintCardView(text: "无法连接到 llm-proxy", isLoading: false)
 
