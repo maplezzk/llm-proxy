@@ -40,6 +40,8 @@ class MenuBarController: NSObject, NSMenuDelegate {
     private var todayHitRateText: String?
     /// 菜单栏状态卡片上的最近 30 天用量
     private var recentUsage: [MenuUsagePoint] = []
+    /// 当前展开的 NSMenu 可能不会立刻替换为新实例，因此卡片内容使用共享可观察状态更新。
+    private let menuCardState: MenuCardState
     private let usageInteraction = MenuUsageInteraction()
     private var usageDetailCache: [String: [MenuUsageDimension: [UsageBucket]]] = [:]
     private var usageDetailTask: Task<Void, Never>?
@@ -66,6 +68,16 @@ class MenuBarController: NSObject, NSMenuDelegate {
 
     init(statusItem: NSStatusItem) {
         self.statusItem = statusItem
+        self.menuCardState = MenuCardState(
+            model: StatusCardModel(
+                state: .starting,
+                port: APIClient.storedPort(),
+                todayTokensText: nil,
+                hitRateText: nil,
+                isOperationInProgress: false,
+                transientText: nil
+            )
+        )
         super.init()
         NotificationCenter.default.addObserver(forName: .configDidChange, object: nil, queue: .main) { [weak self] _ in
             Task { @MainActor [weak self] in
@@ -206,11 +218,13 @@ class MenuBarController: NSObject, NSMenuDelegate {
             isOperationInProgress: isServiceOperationInProgress,
             transientText: transientStatus
         )
-        menu.addItem(makeCardItem(ServiceStatusCardView(model: statusModel), interactive: false))
+        menuCardState.model = statusModel
+        menuCardState.usagePoints = recentUsage
+        menu.addItem(makeCardItem(LiveServiceStatusCardView(state: menuCardState), interactive: false))
 
         if !recentUsage.isEmpty {
             let usageItem = makeCardItem(
-                MenuUsageChartCardView(points: recentUsage),
+                LiveMenuUsageChartCardView(state: menuCardState),
                 interactive: true
             )
             usageItem.submenu = makeUsageDetailMenu()
@@ -219,8 +233,8 @@ class MenuBarController: NSObject, NSMenuDelegate {
             menu.addItem(usageItem)
         }
 
-        let controlsCard = ServiceControlCardView(
-            model: statusModel,
+        let controlsCard = LiveServiceControlCardView(
+            state: menuCardState,
             onStart: { [weak self] in self?.startService() },
             onStop: { [weak self] in self?.stopService() },
             onRestart: { [weak self] in self?.restartService() },

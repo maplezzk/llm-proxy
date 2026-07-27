@@ -64,6 +64,17 @@ struct MenuUsagePoint: Identifiable {
     var id: String { date }
 }
 
+/// 菜单打开后仍由同一份状态驱动卡片，避免重建 NSMenu 后当前已展开的旧菜单不更新。
+final class MenuCardState: ObservableObject {
+    @Published var model: StatusCardModel
+    @Published var usagePoints: [MenuUsagePoint]
+
+    init(model: StatusCardModel, usagePoints: [MenuUsagePoint] = []) {
+        self.model = model
+        self.usagePoints = usagePoints
+    }
+}
+
 enum MenuUsageDimension: String, CaseIterable, Identifiable {
     case provider
     case adapter
@@ -184,6 +195,42 @@ struct ServiceControlCardView: View {
         .padding(.top, 8)
         .padding(.bottom, 10)
         .frame(width: MenuCardMetrics.width, alignment: .leading)
+    }
+}
+
+/// NSMenu 已打开时，AppKit 可能仍在展示旧的 NSMenu 实例；这些包装器观察共享状态，
+/// 让旧实例中的 SwiftUI 内容也能随服务操作和轮询结果立即更新。
+struct LiveServiceStatusCardView: View {
+    @ObservedObject var state: MenuCardState
+
+    var body: some View {
+        ServiceStatusCardView(model: state.model)
+    }
+}
+
+struct LiveMenuUsageChartCardView: View {
+    @ObservedObject var state: MenuCardState
+
+    var body: some View {
+        MenuUsageChartCardView(points: state.usagePoints)
+    }
+}
+
+struct LiveServiceControlCardView: View {
+    @ObservedObject var state: MenuCardState
+    let onStart: () -> Void
+    let onStop: () -> Void
+    let onRestart: () -> Void
+    let onReload: () -> Void
+
+    var body: some View {
+        ServiceControlCardView(
+            model: state.model,
+            onStart: onStart,
+            onStop: onStop,
+            onRestart: onRestart,
+            onReload: onReload
+        )
     }
 }
 

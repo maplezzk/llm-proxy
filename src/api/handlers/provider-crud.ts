@@ -52,17 +52,23 @@ export async function handleCreateProvider(ctx: ServerContext, req: IncomingMess
     return
   }
 
-  const newProvider: Provider = {
-    name,
-    apiKey: api_key,
-    models,
-    ...(type ? { type } : {}),
-    ...(api_base ? { apiBase: api_base } : {}),
-    ...(Array.isArray(protocols) ? { protocols: protocols.map((p: Record<string, unknown>) => ({
-      type: p.type as ProviderType,
-      apiBase: typeof p.api_base === 'string' ? p.api_base : typeof p.apiBase === 'string' ? p.apiBase : undefined,
-    })) } : {}),
-  }
+  const newProvider: Provider = Array.isArray(protocols)
+    ? {
+        name,
+        apiKey: api_key,
+        protocols: protocols.map((p: Record<string, unknown>) => ({
+          type: p.type as ProviderType,
+          apiBase: typeof p.api_base === 'string' ? p.api_base : typeof p.apiBase === 'string' ? p.apiBase : undefined,
+        })),
+        models,
+      }
+    : {
+        name,
+        apiKey: api_key,
+        ...(type ? { type } : {}),
+        ...(api_base ? { apiBase: api_base } : {}),
+        models,
+      }
 
   const errs = validateConfig(configFromProvider(newProvider))
   if (errs.length > 0) {
@@ -106,18 +112,23 @@ export async function handleUpdateProvider(ctx: ServerContext, req: IncomingMess
     return
   }
 
+  const existing = config.providers[idx]
+  const nextProtocols = Array.isArray(protocols)
+    ? protocols.map((p: Record<string, unknown>) => ({
+      type: p.type as ProviderType,
+      apiBase: typeof p.api_base === 'string' ? p.api_base : typeof p.apiBase === 'string' ? p.apiBase : undefined,
+    }))
+    : existing.protocols
   const updated: Provider = {
     name: finalName,
-    type: type ?? config.providers[idx].type,
-    apiKey: api_key || config.providers[idx].apiKey,
-    apiBase: api_base || config.providers[idx].apiBase,
-    protocols: Array.isArray(protocols)
-      ? protocols.map((p: Record<string, unknown>) => ({
-        type: p.type as ProviderType,
-        apiBase: typeof p.api_base === 'string' ? p.api_base : typeof p.apiBase === 'string' ? p.apiBase : undefined,
-      }))
-      : config.providers[idx].protocols,
-    models: models ?? config.providers[idx].models,
+    apiKey: api_key || existing.apiKey,
+    ...(nextProtocols !== undefined
+      ? { protocols: nextProtocols }
+      : {
+          ...(type ?? existing.type ? { type: type ?? existing.type } : {}),
+          ...(api_base || existing.apiBase ? { apiBase: api_base || existing.apiBase } : {}),
+        }),
+    models: models ?? existing.models,
   }
 
   const errs = validateConfig(configFromProvider(updated))

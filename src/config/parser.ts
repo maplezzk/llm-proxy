@@ -91,14 +91,16 @@ export function serializeConfigToYaml(config: Config): string {
   const file: ConfigFile = {
     providers: config.providers.map((p) => ({
       name: p.name,
-      type: p.type,
       api_key: p.apiKey,
-      api_base: p.apiBase,
-      ...(p.protocols !== undefined ? { protocols: p.protocols.map((protocol) => ({ type: protocol.type, api_base: protocol.apiBase })) } : {}),
+      ...(p.protocols !== undefined
+        ? { protocols: p.protocols.map((protocol) => ({ type: protocol.type, api_base: protocol.apiBase })) }
+        : {
+            ...(p.type ? { type: p.type } : {}),
+            ...(p.apiBase !== undefined ? { api_base: p.apiBase } : {}),
+          }),
       models: p.models.map((m) => ({
         id: m.id,
-        ...(m.protocols?.length ? { protocols: m.protocols } : {}),
-        ...(m.protocol ? { protocol: m.protocol } : {}),
+        ...(m.protocols?.length ? { protocols: m.protocols } : m.protocol ? { protocol: m.protocol } : {}),
         ...(m.thinking?.budget_tokens ? { thinking: { budget_tokens: m.thinking.budget_tokens } } : {}),
         ...(m.thinking?.type && !m.thinking.budget_tokens ? { thinking: { type: m.thinking.type } } : {}),
         ...(m.thinking?.type && m.thinking.budget_tokens ? { thinking: { budget_tokens: m.thinking.budget_tokens, type: m.thinking.type } } : {}),

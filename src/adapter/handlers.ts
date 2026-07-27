@@ -61,7 +61,7 @@ export async function handleAdapterRequest(
 
   let adapterResult
   try {
-    adapterResult = resolveAdapterRoute(ctx.store, adapterName, pre.modelName)
+    adapterResult = resolveAdapterRoute(ctx.store, adapterName, pre.modelName, inboundType)
   } catch (err) {
     const status = err instanceof AdapterError
       ? (err.code === 'ADAPTER_NOT_FOUND' || err.code === 'MODEL_MAPPING_NOT_FOUND' ? 404 : 502)

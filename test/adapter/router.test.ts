@@ -58,6 +58,32 @@ describe('adapter/router', () => {
     assert.strictEqual(result.inboundType, 'anthropic')  // 适配器格式不变
   })
 
+  it('实际请求协议优先于适配器默认协议', () => {
+    const config: Config = {
+      providers: [{
+        name: 'multi-protocol',
+        apiKey: 'sk-test',
+        protocols: [
+          { type: 'openai-responses', apiBase: 'https://responses.example' },
+          { type: 'anthropic', apiBase: 'https://anthropic.example' },
+        ],
+        models: [{ id: 'shared-model', protocols: ['openai-responses', 'anthropic'] }],
+      }],
+      adapters: [{
+        name: 'pi',
+        type: 'openai-responses',
+        models: [{ sourceModelId: 'HIGH', provider: 'multi-protocol', targetModelId: 'shared-model' }],
+      }],
+    }
+    const store = new ConfigStore('/fake', config)
+
+    const result = resolveAdapterRoute(store, 'pi', 'HIGH', 'anthropic')
+
+    assert.strictEqual(result.inboundType, 'anthropic')
+    assert.strictEqual(result.route.providerType, 'anthropic')
+    assert.strictEqual(result.route.apiBase, 'https://anthropic.example')
+  })
+
   it('适配器名称不存在时抛错', () => {
     const store = createStore()
     assert.throws(
