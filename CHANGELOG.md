@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.25.0](https://github.com/maplezzk/llm-proxy/compare/v0.24.0...v0.25.0) (2026-07-27)
+
+
+### Features
+
+* support multi-protocol providers and protocol-aware routing ([bab93d3](https://github.com/maplezzk/llm-proxy/commit/bab93d380b0c9fd0203f79899a63dcfaf53b276b))
+
+
+### Bug Fixes
+
+* refresh macOS menu cards while open ([a6f9e73](https://github.com/maplezzk/llm-proxy/commit/a6f9e73ab35ed1fd23c7f7b6516f30ed741921de))
+* 保存多协议配置时清理旧格式字段 ([4e8899b](https://github.com/maplezzk/llm-proxy/commit/4e8899bc5ca37938b34bc9fc0086db825b3e4c5a))
+* 按适配器实际请求协议选择上游 ([813a494](https://github.com/maplezzk/llm-proxy/commit/813a494da04d099fb02c34f929907f4bc353965d))
+
 ## [0.24.0](https://github.com/maplezzk/llm-proxy/compare/v0.23.2...v0.24.0) (2026-07-26)
 
 
