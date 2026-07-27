@@ -40,13 +40,15 @@ export const openAiChatOutbound: OutboundAdapter={name:'openai',encode(request: 
   else if (request.system) messages.push({role:'system',content:request.system.map(block=>block.kind==='text' ? {type:'text',text:block.text} : {type:'text',text:'[image]'})});
   messages.push(...request.messages.filter(message=>message.role!=='system').map(message));
   const body: WireBody={model:request.resolvedModel?.modelId ?? request.logicalModel,messages};
-  if (request.generation.maxTokens!==undefined) body.max_tokens=request.generation.maxTokens;
+  const maxTokens=request.generation.maxTokens ?? route.maxTokensOverride;
+  if (maxTokens!==undefined) body.max_tokens=maxTokens;
   if (request.generation.temperature!==undefined) body.temperature=request.generation.temperature;
   if (request.generation.topP!==undefined) body.top_p=request.generation.topP;
   if (request.generation.stopSequences) body.stop=request.generation.stopSequences;
   if (request.generation.stream) body.stream=true;
-  const reasoning=request.reasoning ?? route.thinking;
-  if (reasoning.effort) body.reasoning_effort=reasoning.effort;
+  // 字段级优先级：route.effort 优先于 client.effort（legacy injectThinkingConfig）
+  const effort=route.thinking.effort ?? request.reasoning?.effort;
+  if (effort) body.reasoning_effort=effort;
   const toolList=openAiTools(request.tools); if(toolList) body.tools=toolList;
   if(request.toolChoice) body.tool_choice=request.toolChoice.kind==='tool' ? {type:'function',function:{name:request.toolChoice.name}} : request.toolChoice.kind==='required' ? 'required' : request.toolChoice.kind;
   return body;

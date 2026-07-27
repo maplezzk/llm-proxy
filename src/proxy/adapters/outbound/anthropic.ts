@@ -27,8 +27,10 @@ const system = (s: CanonicalRequest['system']) => typeof s === 'string' ? s : s?
 const msg = (m: CanonicalMessage) => ({ role:m.role === 'developer' ? 'user' : m.role, content: anthropicBlocks(m.blocks) });
 
 export const anthropicOutbound: OutboundAdapter = { name:'anthropic', encode(req, route): WireBody {
-  const reasoning = req.reasoning ?? route.thinking;
-  const budget = reasoning.budgetTokens ?? (reasoning.effort ? effortBudget[reasoning.effort] : undefined);
+  // 字段级优先级（legacy injectThinkingConfig）：route.budget > route.effort 查表 > client.effort 查表 > client.budget
+  const client = req.reasoning;
+  const cfg = route.thinking;
+  const budget = cfg.budgetTokens ?? (cfg.effort ? effortBudget[cfg.effort] : undefined) ?? (client?.effort ? effortBudget[client.effort] : undefined) ?? client?.budgetTokens;
   const max = Math.max(req.generation.maxTokens ?? route.maxTokensOverride ?? 16384, budget ?? 0);
   const body: WireBody = { model:req.resolvedModel?.modelId ?? req.logicalModel, max_tokens:max, messages:req.messages.filter(m => m.role !== 'system').map(msg) };
   const s = system(req.system); if (s !== undefined) body.system = s;
@@ -36,7 +38,7 @@ export const anthropicOutbound: OutboundAdapter = { name:'anthropic', encode(req
   if (req.generation.topP !== undefined) body.top_p=req.generation.topP;
   if (req.generation.stopSequences) body.stop_sequences=req.generation.stopSequences;
   if (req.generation.stream) body.stream=true;
-  if (budget) body.thinking={type:'enabled',budget_tokens:budget}; else if (reasoning.type) body.thinking={type:reasoning.type};
+  if (budget) body.thinking={type:'enabled',budget_tokens:budget}; else if (cfg.type) body.thinking={type:cfg.type};
   const ts=tools(req.tools); if(ts) body.tools=ts; const tc=choice(req.toolChoice); if(tc) body.tool_choice=tc;
   return body;
 } };

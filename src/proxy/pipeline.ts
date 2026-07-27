@@ -190,8 +190,8 @@ export const parseAndAuth = (
  * - resolvedModel：路由解析结果（不覆盖 logicalModel）；
  * - generation.stream：按 streamPolicy + 客户端原值解析（设计 §7.3 不变量 10）；
  * - generation.maxTokens：0/负数 → 不传（legacy sanitizeMaxTokens）；
- * - reasoning：路由有显式 thinking 配置时优先（legacy injectThinkingConfig 用户配置优先），
- *   否则保留客户端 reasoning（出站适配器 `req.reasoning ?? route.thinking` 兜底）。
+ * - reasoning：保留客户端 reasoning 原样透传；字段级优先级（route > client）由各出站适配器
+ *   按目标协议解析（legacy injectThinkingConfig 字段级合并）。
  */
 export const applyRouteDecision = (
   req: CanonicalRequest,
@@ -220,7 +220,7 @@ export const applyRouteDecision = (
         : { maxTokens: undefined }),
       stream: resolveStreamPolicy(route.streamPolicy, clientStream),
     },
-    reasoning: hasExplicitThinking(route.thinking) ? route.thinking : req.reasoning,
+    reasoning: req.reasoning,
   };
 };
 
