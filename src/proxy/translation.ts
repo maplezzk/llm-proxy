@@ -16,6 +16,28 @@ const REASONING_EFFORT_TO_BUDGET: Record<string, number> = {
   max: 65536,
 }
 
+// 反向映射：budget_tokens → reasoning_effort
+// 接受区间：low (<2048), medium (<8192), high (<24576), xhigh (<49152), max (>=49152)
+function budgetToReasoningEffort(budget: number): string | undefined {
+  if (budget < 2048) return 'low'
+  if (budget < 8192) return 'medium'
+  if (budget < 24576) return 'high'
+  if (budget < 49152) return 'xhigh'
+  return 'max'
+}
+
+/**
+ * 将 tool_use 的 input 序列化为 Responses/Chat 都接受的 JSON 字符串 arguments。
+ * - input 是 string/array 时直接使用（避免双重 stringify 导致上游解析失败）
+ * - input 是对象/undefined 时 JSON.stringify 为 '{}' 或对应 JSON 串
+ */
+function stringifyArguments(input: unknown): string {
+  if (typeof input === 'string') return input
+  if (input === undefined || input === null) return ''
+  // 数组在 Responses 里不合法，强制以 JSON 字符串传入
+  return JSON.stringify(input)
+}
+
 // --- CodexToolContext (CCX-style lookup table for namespace/custom tool remapping) ---
 
 interface CodexToolFunctionSpec {
@@ -368,6 +390,8 @@ function convertResponsesInputToMessages(input: unknown[]): unknown[] {
     const it = item as Record<string, unknown>
     if (it.type === 'message') {
       // { type: "message", role: "user"|"assistant"|"system"|"developer", content: string | array }
+      // system role 应被提取到 body.instructions（在 extractFullOpenAIResponses 处理），这里跳过避免重复
+      if (it.role === 'system') continue
       const content = it.content
       let normalizedContent: unknown = content
       // Convert Responses content blocks to Chat/Anthropic-compatible format
@@ -379,11 +403,19 @@ function convertResponsesInputToMessages(input: unknown[]): unknown[] {
           }
           // reasoning → thinking (Anthropic-style thinking block)
           if (block.type === 'reasoning') {
-            // reasoning can have summary (array of summary_text) or reasoning_text (plain string)
+            // OpenAI Responses 规范的 reasoning item 用 summary 字段（summary_text 数组）。
+            // 某些实现用 reasoning_text（字符串 或 字符串数组）作为 fallback。
             const summary = block.summary as Array<Record<string, unknown>> | undefined
-            const reasoningText = summary
-              ? summary.map((s) => s.text ?? '').join('')
-              : (block.reasoning_text as string) ?? ''
+            let reasoningText = ''
+            if (summary && summary.length > 0) {
+              reasoningText = summary.map((s) => s.text ?? '').join('')
+            } else if (typeof block.reasoning_text === 'string') {
+              reasoningText = block.reasoning_text
+            } else if (Array.isArray(block.reasoning_text)) {
+              reasoningText = (block.reasoning_text as Array<Record<string, unknown>>)
+                .map((s) => (typeof s === 'string' ? s : (s.text as string) ?? ''))
+                .join('')
+            }
             return { type: 'thinking', thinking: reasoningText, signature: '' }
           }
           // input_image → image (Anthropic-style)
@@ -518,7 +550,13 @@ function convertResponsesInputToMessages(input: unknown[]): unknown[] {
         content,
       })
     } else if (it.type === 'item_reference') {
-      // Skip item references (they reference previous response items, not applicable to stateless chat)
+      // item_reference 引用上一轮 response item（如加密 reasoning）；Chat/Anthropic 无原生对应物
+      // 为避免上下文断链，转为 user 消息占位（多轮 reasoning 场景仍会因 stateful session 丢一些信息，
+      // 但至少上游知道有引用）
+      messages.push({
+        role: 'user',
+        content: `[item_reference:${(it.id as string) ?? ''}]`,
+      })
     } else {
       // Unknown item type, pass through as-is
       messages.push(it)
@@ -560,26 +598,91 @@ function convertOpenAIChatImageUrlToResponsesInputImage(block: Record<string, un
 }
 
 /**
+ * 把一个 Chat 风格 image_url / Anthropic image 块转成 Responses input_image 块。
+ * Chat: { type: "image_url", image_url: { url, detail? } | url }
+ * Anthropic: { type: "image", source: { type: "url", url } | { type: "base64", media_type, data } }
+ * Responses: { type: "input_image", image_url: string, detail? }
+ */
+function convertAnyImageBlockToResponsesInputImage(block: Record<string, unknown>): Record<string, unknown> {
+  if (block.type === 'image' && (block as Record<string, unknown>).source) {
+    const source = block.source as Record<string, unknown>
+    if (source.type === 'url' && source.url) {
+      return { type: 'input_image', image_url: source.url as string }
+    }
+    if (source.type === 'base64' && source.data) {
+      const mediaType = (source.media_type as string) || 'image/png'
+      return { type: 'input_image', image_url: `data:${mediaType};base64,${source.data}` }
+    }
+    return { type: 'input_text', text: '[image]' }
+  }
+  return convertOpenAIChatImageUrlToResponsesInputImage(block)
+}
+
+/**
  * Convert Chat Completions messages to OpenAI Responses input format.
+ *
+ * Responses API 规范：
+ * - user/system 消息的 text 块必须使用 `input_text`（不是 `text`）
+ * - assistant 消息的 text 块必须使用 `output_text`（不是 `text`）
+ * - assistant 消息的 `thinking` 块提升为顶层 reasoning item
+ * - assistant 消息的 `tool_use` 块提升为顶层 function_call item
+ * - tool role 消息 → function_call_output item
  */
 function convertMessagesToResponsesInput(messages: unknown[]): unknown[] {
   const input: unknown[] = []
   for (const msg of messages) {
     const m = msg as Record<string, unknown>
+
     if (m.role === 'tool') {
       input.push({
         type: 'function_call_output',
         call_id: m.tool_call_id,
         output: typeof m.content === 'string' ? m.content : JSON.stringify(m.content),
       })
-    } else if (m.role === 'assistant') {
-      // Add message item for text content (if any)
-      const text = typeof m.content === 'string' ? m.content : ''
-      if (text) {
-        input.push({ type: 'message', role: 'assistant', content: text })
-      }
-      // Add function_call items for tool_calls
+      continue
+    }
+
+    if (m.role === 'assistant') {
+      // assistant 消息：字符串 content → message (string content)
+      // 数组 content → 多个 item（output_text + reasoning + function_call）
       const toolCalls = m.tool_calls as Array<Record<string, unknown>> | undefined
+
+      if (typeof m.content === 'string') {
+        if (m.content) {
+          input.push({ type: 'message', role: 'assistant', content: m.content })
+        }
+      } else if (Array.isArray(m.content)) {
+        // Anthropic assistant content blocks: text → output_text, thinking → reasoning, tool_use → function_call
+        for (const block of m.content as Array<Record<string, unknown>>) {
+          if (block.type === 'text') {
+            input.push({ type: 'message', role: 'assistant', content: [{ type: 'output_text', text: block.text ?? '' }] })
+          } else if (block.type === 'thinking') {
+            // thinking block → reasoning item（Responses 端要求 reasoning 后必须有 message/function_call 跟随）
+            const reasoningText = (block.thinking as string) ?? ''
+            const signature = (block.signature as string) ?? ''
+            if (reasoningText || signature) {
+              input.push({
+                type: 'reasoning',
+                summary: [{ type: 'summary_text', text: reasoningText }],
+                ...(signature ? { encrypted_content: signature } : {}),
+              })
+            }
+          } else if (block.type === 'tool_use') {
+            const args = block.input
+            input.push({
+              type: 'function_call',
+              call_id: block.id,
+              name: block.name ?? '',
+              arguments: typeof args === 'string' ? args : JSON.stringify(args ?? {}),
+            })
+          }
+          // 忽略其他块类型（image_url / redacted_thinking 等）
+        }
+      } else if (toolCalls && toolCalls.length > 0) {
+        // content 是 null/未定义但有 tool_calls：保持现有行为（不推 message，只推 function_call）
+      }
+
+      // 推完 content 块后再推 tool_calls（Chat 风格）
       if (toolCalls) {
         for (const tc of toolCalls) {
           const fn = tc.function as Record<string, unknown> | undefined
@@ -591,103 +694,122 @@ function convertMessagesToResponsesInput(messages: unknown[]): unknown[] {
           })
         }
       }
-    } else if (m.role === 'system') {
-      // system is handled via instructions field, but if it appears in messages we include it
+      continue
+    }
+
+    if (m.role === 'system') {
+      // system 在 extractSystemFromOpenAI 里已被提升为 instructions；这里兜底处理（次要 system 消息）
       input.push({ type: 'message', role: 'system', content: m.content })
-    } else {
-      // Check for Anthropic tool_result blocks in user message content array
-      const content = m.content
-      if (m.role === 'user' && Array.isArray(content)) {
-        const blocks = content as Array<Record<string, unknown>>
-        const toolResults = blocks.filter((b) => b.type === 'tool_result')
-        const otherBlocks = blocks.filter((b) => b.type !== 'tool_result')
+      continue
+    }
 
-        // Emit computer_call_output for tool_results with image content
-        for (const tr of toolResults) {
-          const trContent = tr.content
-          let imageUrl: string | undefined
-          let fileId: string | undefined
-          if (Array.isArray(trContent)) {
-            const imgBlock = (trContent as Array<Record<string, unknown>>).find(
-              (b) => b.type === 'image'
-            )
-            if (imgBlock) {
-              const src = imgBlock.source as Record<string, unknown> | undefined
-              if (src?.type === 'url') {
-                imageUrl = src.url as string
-              } else {
-                fileId = imgBlock.file_id as string | undefined
-              }
+    if (m.role === 'developer') {
+      // developer 角色：Responses 没有对应项，转为 system message item
+      input.push({ type: 'message', role: 'system', content: m.content })
+      continue
+    }
+
+    // user (or other) 消息
+    const content = m.content
+    if (m.role === 'user' && Array.isArray(content)) {
+      const blocks = content as Array<Record<string, unknown>>
+      const toolResults = blocks.filter((b) => b.type === 'tool_result')
+      const otherBlocks = blocks.filter((b) => b.type !== 'tool_result')
+
+      // tool_results 提升为 function_call_output / computer_call_output
+      for (const tr of toolResults) {
+        const trContent = tr.content
+        let imageUrl: string | undefined
+        let fileId: string | undefined
+        if (Array.isArray(trContent)) {
+          const imgBlock = (trContent as Array<Record<string, unknown>>).find(
+            (b) => b.type === 'image'
+          )
+          if (imgBlock) {
+            const src = imgBlock.source as Record<string, unknown> | undefined
+            if (src?.type === 'url') {
+              imageUrl = src.url as string
+            } else {
+              fileId = imgBlock.file_id as string | undefined
             }
-          }
-          if (imageUrl) {
-            input.push({
-              type: 'computer_call_output',
-              call_id: tr.tool_use_id as string,
-              output: { type: 'computer_screenshot', image_url: imageUrl },
-            })
-          } else if (fileId) {
-            input.push({
-              type: 'computer_call_output',
-              call_id: tr.tool_use_id as string,
-              output: { type: 'computer_screenshot', file_id: fileId },
-            })
-          } else {
-            // tool_result without image → function_call_output
-            input.push({
-              type: 'function_call_output',
-              call_id: tr.tool_use_id as string,
-              output: typeof trContent === 'string' ? trContent : JSON.stringify(trContent),
-            })
           }
         }
-
-        // Emit remaining non-tool_result blocks as message items
-        if (otherBlocks.length > 0) {
-          // 转换 Anthropic image 块 和 OpenAI Chat image_url 块 → Responses input_image 块
-          const blocks = (otherBlocks as Array<Record<string, unknown>>).map((b) => {
-            // Anthropic 风格的 image 块
-            if (b.type === 'image' && (b as Record<string, unknown>).source) {
-              const source = (b as Record<string, unknown>).source as Record<string, unknown>
-              if (source.type === 'url' && source.url) {
-                return { type: 'input_image', image_url: source.url as string }
-              }
-              if (source.type === 'base64' && source.data) {
-                const mediaType = (source.media_type as string) || 'image/png'
-                return { type: 'input_image', image_url: `data:${mediaType};base64,${source.data}` }
-              }
-              return { type: 'input_text', text: '[image]' }
-            }
-            // OpenAI Chat 风格的 image_url 块
-            return convertOpenAIChatImageUrlToResponsesInputImage(b)
+        if (imageUrl) {
+          input.push({
+            type: 'computer_call_output',
+            call_id: tr.tool_use_id as string,
+            output: { type: 'computer_screenshot', image_url: imageUrl },
           })
-          const textBlocks = blocks.filter((b) => b.type === 'text' || b.type === 'input_text')
-          const text = textBlocks.map((b) => (b.text as string) ?? '').join('')
-          if (text || blocks.length !== textBlocks.length) {
-            input.push({
-              type: 'message',
-              role: m.role ?? 'user',
-              content: blocks,
-            })
-          }
-        }
-      } else {
-        // user, developer, etc. (non-Anthropic format)
-        // content 数组中可能有 OpenAI Chat 风格的 image_url 块，需转成 Responses 的 input_image
-        if (Array.isArray(m.content)) {
-          const blocks = (m.content as Array<Record<string, unknown>>).map(convertOpenAIChatImageUrlToResponsesInputImage)
-          const textBlocks = blocks.filter((b) => b.type === 'text' || b.type === 'input_text')
-          const allText = blocks.every((b) => b.type === 'text' || b.type === 'input_text')
-          if (allText) {
-            // 全部文本 → 用 Responses 的 input_text 块 (更规范)
-            input.push({ type: 'message', role: m.role ?? 'user', content: blocks })
-          } else if (textBlocks.length > 0 || blocks.length > 0) {
-            input.push({ type: 'message', role: m.role ?? 'user', content: blocks })
-          }
+        } else if (fileId) {
+          input.push({
+            type: 'computer_call_output',
+            call_id: tr.tool_use_id as string,
+            output: { type: 'computer_screenshot', file_id: fileId },
+          })
         } else {
-          input.push({ type: 'message', role: m.role ?? 'user', content: m.content })
+          input.push({
+            type: 'function_call_output',
+            call_id: tr.tool_use_id as string,
+            output: typeof trContent === 'string' ? trContent : JSON.stringify(trContent),
+          })
         }
       }
+
+      // 剩余块（text/image/image_url/document/tool_use）转为 Responses content 块
+      if (otherBlocks.length > 0) {
+        const converted = otherBlocks.map((b) => {
+          // text 块必须转 input_text（user 角色）
+          if (b.type === 'text') {
+            return { type: 'input_text', text: b.text ?? '' }
+          }
+          // Anthropic image 块 / Chat image_url 块 → input_image
+          if (b.type === 'image' || b.type === 'image_url') {
+            return convertAnyImageBlockToResponsesInputImage(b)
+          }
+          // 未知块：保留 input_text 形态或原样透传
+          return b
+        })
+        // 全部 input_text 时可以压平为字符串（Responses 接受 string content）
+        const allInputText = converted.every((b) => b.type === 'input_text')
+        if (allInputText) {
+          input.push({
+            type: 'message',
+            role: 'user',
+            content: converted.map((b) => b.text ?? '').join(''),
+          })
+        } else {
+          input.push({
+            type: 'message',
+            role: 'user',
+            content: converted,
+          })
+        }
+      }
+      continue
+    }
+
+    // 其他情况：user/其他角色的非 Anthropic 形式
+    if (Array.isArray(m.content)) {
+      const blocks = (m.content as Array<Record<string, unknown>>).map((b) => {
+        if (b.type === 'text') return { type: 'input_text', text: b.text ?? '' }
+        return convertAnyImageBlockToResponsesInputImage(b)
+      })
+      const allInputText = blocks.every((b) => b.type === 'input_text')
+      if (allInputText) {
+        input.push({
+          type: 'message',
+          role: m.role ?? 'user',
+          content: blocks.map((b) => b.text ?? '').join(''),
+        })
+      } else {
+        input.push({
+          type: 'message',
+          role: m.role ?? 'user',
+          content: blocks,
+        })
+      }
+    } else {
+      input.push({ type: 'message', role: m.role ?? 'user', content: m.content })
     }
   }
   return input
@@ -746,6 +868,20 @@ interface FullParams {
   stop?: unknown
   tools?: unknown[]
   tool_choice?: unknown
+  /** Responses 协议字段：上游是否持久化响应（默认 true，Codex OAuth 必为 false） */
+  store?: boolean
+  /** Responses 协议字段：响应中额外包含的项（如 reasoning.encrypted_content） */
+  include?: string[]
+  /** Responses 协议字段：与请求关联的元数据（≤16 个 key，value 为 string/number/boolean） */
+  metadata?: Record<string, unknown>
+  /** Responses 协议字段：是否允许多个 function_call 并行（默认 true） */
+  parallel_tool_calls?: boolean
+  /** Responses 协议字段：上一轮 response id（多轮对话载体） */
+  previous_response_id?: string
+  /** Responses 协议字段：截断策略 auto|disabled */
+  truncation?: 'auto' | 'disabled'
+  /** Anthropic 思考签名（跨协议 Responses/Anthropic 时保留） */
+  reasoning_encrypted_content?: string
 }
 
 function extractFullOpenAI(body: Record<string, unknown>): FullParams {
@@ -763,6 +899,9 @@ function extractFullOpenAI(body: Record<string, unknown>): FullParams {
     stop: body.stop,
     tools: body.tools as unknown[] | undefined,
     tool_choice: body.tool_choice,
+    store: body.store as boolean | undefined,
+    metadata: body.metadata as Record<string, unknown> | undefined,
+    parallel_tool_calls: body.parallel_tool_calls as boolean | undefined,
   }
 }
 
@@ -1163,17 +1302,40 @@ function buildOpenAIFromAnthropic(params: FullParams): Record<string, unknown> {
 function extractFullOpenAIResponses(body: Record<string, unknown>): FullParams {
   const rawInput = body.input
   let messages: unknown[]
+  let inputSystem: string | undefined
   if (typeof rawInput === 'string') {
     messages = [{ role: 'user', content: rawInput }]
   } else if (Array.isArray(rawInput)) {
+    // 从 input 数组中提取 system message 到 instructions（避免出现在 messages 里）
+    for (const item of rawInput) {
+      const it = item as Record<string, unknown>
+      if (it.type === 'message' && it.role === 'system') {
+        const c = it.content
+        if (typeof c === 'string') inputSystem = c
+        else if (Array.isArray(c)) {
+          inputSystem = (c as Array<Record<string, unknown>>)
+            .filter((b) => b.type === 'input_text')
+            .map((b) => b.text ?? '')
+            .join('\n\n')
+        }
+        break
+      }
+    }
     messages = convertResponsesInputToMessages(rawInput)
+    // 空 input 数组：上游 Chat Completions 会拒空 messages，以占位 user message 代替
+    // （仅在跨协议路由到 Chat/Anthropic 时需要；同 Responses 协议透传由 builder 处理）
+    if (messages.length === 0) {
+      messages = [{ role: 'user', content: '' }]
+    }
   } else {
-    messages = []
+    messages = [{ role: 'user', content: '' }]
   }
+  // instructions 优先；input 数组里 system 次之
+  const system = body.instructions ?? inputSystem
   return {
     model: body.model as string,
     messages,
-    system: body.instructions,
+    system,
     reasoning: resolveReasoning(body),
     temperature: body.temperature as number | undefined,
     max_tokens: (body.max_output_tokens ?? body.max_tokens) as number | undefined,
@@ -1182,6 +1344,12 @@ function extractFullOpenAIResponses(body: Record<string, unknown>): FullParams {
     stop: body.stop,
     tools: body.tools as unknown[] | undefined,
     tool_choice: body.tool_choice,
+    store: body.store as boolean | undefined,
+    include: body.include as string[] | undefined,
+    metadata: body.metadata as Record<string, unknown> | undefined,
+    parallel_tool_calls: body.parallel_tool_calls as boolean | undefined,
+    previous_response_id: body.previous_response_id as string | undefined,
+    truncation: body.truncation as 'auto' | 'disabled' | undefined,
   }
 }
 
@@ -1224,6 +1392,13 @@ function buildOpenAIResponsesFromFullParams(params: FullParams): Record<string, 
   if (params.stop) body.stop = params.stop
   if (params.tools) body.tools = convertToolsToOpenAIResponses(params.tools)
   if (params.tool_choice !== undefined) body.tool_choice = convertToolChoiceToOpenAIResponses(params.tool_choice)
+  // Responses 协议专有字段透传
+  if (params.store !== undefined) body.store = params.store
+  if (params.include !== undefined) body.include = params.include
+  if (params.metadata !== undefined) body.metadata = params.metadata
+  if (params.parallel_tool_calls !== undefined) body.parallel_tool_calls = params.parallel_tool_calls
+  if (params.previous_response_id !== undefined) body.previous_response_id = params.previous_response_id
+  if (params.truncation !== undefined) body.truncation = params.truncation
   return body
 }
 
@@ -1336,6 +1511,15 @@ export async function transformInboundRequest(
 
   // max_tokens 二次兜底，处理 builder 中可能遗留的 0
   sanitizeMaxTokens(upstreamBody, route)
+  // 跨协议：Anthropic 客户端传 thinking.budget_tokens → Responses/OpenAI 的 reasoning.effort
+  // （响应式的 builder 不消费 thinking 字段，需要在这里反向映射）
+  if (!params.reasoning && (route.providerType === 'openai' || route.providerType === 'openai-responses')) {
+    const anthropicThinking = body.thinking as Record<string, unknown> | undefined
+    if (anthropicThinking?.type === 'enabled' && typeof anthropicThinking.budget_tokens === 'number') {
+      const effort = budgetToReasoningEffort(anthropicThinking.budget_tokens)
+      if (effort) params.reasoning = { effort }
+    }
+  }
   // 注入 thinking 配置到转换后的请求体（跨协议场景下携带客户端的 reasoning_effort）
   const clientReasoningEffort = extractClientReasoningEffort(params.reasoning)
   injectThinkingConfig(upstreamBody, route, clientReasoningEffort)
@@ -1474,6 +1658,24 @@ function injectThinkingConfig(
   route: RouterResult,
   clientReasoningEffort?: string
 ): void {
+  // 跨协议：Anthropic 客户端传 thinking.budget_tokens → Responses 上游的 reasoning.effort
+  // （Responses 不认识 Anthropic thinking 块格式）
+  if ((route.providerType === 'openai' || route.providerType === 'openai-responses')
+      && !upstreamBody.reasoning && !upstreamBody.reasoning_effort) {
+    // 客户端的 thinking.budget_tokens（Anthropic 风格）
+    const anthropicThinking = upstreamBody.thinking as Record<string, unknown> | undefined
+    if (anthropicThinking?.type === 'enabled' && typeof anthropicThinking.budget_tokens === 'number') {
+      const effort = budgetToReasoningEffort(anthropicThinking.budget_tokens)
+      if (effort) {
+        if (route.providerType === 'openai-responses') {
+          upstreamBody.reasoning = { effort }
+        } else {
+          upstreamBody.reasoning_effort = effort
+        }
+      }
+    }
+  }
+
   if (route.providerType === 'anthropic') {
     // 解析 budget_tokens 来源：用户配的 budget_tokens > 用户配的 reasoning_effort > 客户端的 reasoning_effort
     let budget: number | undefined
@@ -1518,6 +1720,15 @@ function injectThinkingConfig(
       if (t.type && !t.budget_tokens) {
         delete upstreamBody.thinking
       }
+    }
+  } else if ((route.providerType === 'openai' || route.providerType === 'openai-responses')
+             && clientReasoningEffort
+             && !upstreamBody.reasoning && !upstreamBody.reasoning_effort) {
+    // 跨协议场景：客户端传了 reasoning（从 Anthropic thinking.budget_tokens 反向映射而来）
+    if (route.providerType === 'openai-responses') {
+      upstreamBody.reasoning = { effort: clientReasoningEffort }
+    } else {
+      upstreamBody.reasoning_effort = clientReasoningEffort
     }
   }
 }
@@ -1620,8 +1831,13 @@ export function convertActionToOpenAI(input: Record<string, unknown>): Record<st
 
 // --- OpenAI Responses ↔ Anthropic response conversion ---
 
-function mapResponsesStopReason(stop: string, hasToolCalls: boolean): string {
+function mapResponsesStopReason(stop: string, hasToolCalls: boolean, incompleteReason?: string): string {
   if (hasToolCalls) return 'tool_use'
+  // 优先根据 incomplete_details.reason 推断（如 max_output_tokens → max_tokens）
+  if (stop === 'incomplete') {
+    if (incompleteReason === 'max_output_tokens' || incompleteReason === 'max_tokens') return 'max_tokens'
+    if (incompleteReason === 'content_filter') return 'end_turn'
+  }
   const stopMap: Record<string, string> = { completed: 'end_turn', incomplete: 'max_tokens', max_output_tokens: 'max_tokens' }
   return stopMap[stop] ?? 'end_turn'
 }
@@ -1629,17 +1845,22 @@ function mapResponsesStopReason(stop: string, hasToolCalls: boolean): string {
 export function convertOpenAIResponsesToAnthropic(responsesBody: Record<string, unknown>): Record<string, unknown> {
   const output = responsesBody.output as Array<Record<string, unknown>> | undefined
   const usage = responsesBody.usage as Record<string, unknown> | undefined
+  const respStatus = (responsesBody.status as string) ?? 'completed'
+  const incompleteDetails = responsesBody.incomplete_details as Record<string, unknown> | undefined
+  const incompleteReason = incompleteDetails?.reason as string | undefined
 
   const content: unknown[] = []
-  let stopReason = 'end_turn'
+  let stopReason = respStatus
 
   // 提取顶层 reasoning.summary → Anthropic thinking 块（作为首个 content block）
+  // encrypted_content 作为 signature 透传给下一轮（多轮 reasoning 必依赖）
   const topReasoning = responsesBody.reasoning as Record<string, unknown> | undefined
   if (topReasoning?.summary) {
     const summaryItems = topReasoning.summary as Array<Record<string, unknown>>
     const summaryText = summaryItems.map((s) => s.text ?? '').join('')
-    if (summaryText) {
-      content.push({ type: 'thinking', thinking: summaryText, signature: '' })
+    const encrypted = (topReasoning.encrypted_content as string | undefined) ?? ''
+    if (summaryText || encrypted) {
+      content.push({ type: 'thinking', thinking: summaryText, signature: encrypted })
     }
   }
 
@@ -1651,18 +1872,31 @@ export function convertOpenAIResponsesToAnthropic(responsesBody: Record<string, 
           for (const block of msgContent) {
             if (block.type === 'output_text') {
               content.push({ type: 'text', text: block.text ?? '' })
+            } else if (block.type === 'refusal') {
+              // refusal → Anthropic 普通 text 块（Anthropic 没有显式 refusal 概念）
+              const refusalText = (block.refusal as string) ?? ''
+              if (refusalText) {
+                content.push({ type: 'text', text: refusalText })
+              }
             } else if (block.type === 'reasoning') {
               content.push({ type: 'thinking', thinking: block.summary ? (block.summary as Array<Record<string, unknown>>).map((s) => s.text ?? '').join('') : (block.reasoning_text ?? ''), signature: '' })
             } else if (block.type === 'web_search_call') {
-              // web_search is Responses-specific, map to text note or skip
-              // For now, skip as Anthropic doesn't have direct equivalent
+              // web_search is Responses-specific, skip (Anthropic doesn't have direct equivalent)
             }
           }
         }
-        if (item.status) stopReason = item.status as string
       } else if (item.type === 'function_call') {
         let input: unknown = {}
-        try { input = typeof item.arguments === 'string' ? JSON.parse(item.arguments as string) : (item.arguments ?? {}) } catch { input = item.arguments }
+        const rawArgs = item.arguments
+        if (typeof rawArgs === 'string') {
+          if (rawArgs.trim() === '') {
+            input = {}
+          } else {
+            try { input = JSON.parse(rawArgs) } catch { input = rawArgs }
+          }
+        } else if (rawArgs && typeof rawArgs === 'object') {
+          input = rawArgs
+        }
         content.push({
           type: 'tool_use',
           id: item.call_id ?? item.id,
@@ -1684,20 +1918,19 @@ export function convertOpenAIResponsesToAnthropic(responsesBody: Record<string, 
         // 忽略无 Anthropic 对应物的内置工具输出
         continue
       } else if (item.type === 'reasoning') {
-        // Standalone reasoning output item → thinking block
+        // Standalone reasoning output item → thinking block（encrypted_content 作为 signature 透传）
         const summary = item.summary as Array<Record<string, unknown>> | undefined
-        if (summary) {
-          const reasonText = summary.map((s) => s.text ?? '').join('')
-          if (reasonText) {
-            content.push({ type: 'thinking', thinking: reasonText, signature: '' })
-          }
+        const reasonText = summary ? summary.map((s) => s.text ?? '').join('') : ''
+        const encrypted = (item.encrypted_content as string | undefined) ?? ''
+        if (reasonText || encrypted) {
+          content.push({ type: 'thinking', thinking: reasonText, signature: encrypted })
         }
       }
     }
   }
 
   const hasToolCalls = content.some((b) => (b as Record<string, unknown>).type === 'tool_use')
-  const anthropicStop = mapResponsesStopReason(stopReason, hasToolCalls)
+  const anthropicStop = mapResponsesStopReason(stopReason, hasToolCalls, incompleteReason)
 
   return {
     id: `msg_${Date.now()}`,
@@ -1725,6 +1958,7 @@ export function convertAnthropicResponseToOpenAIResponses(anthropicBody: Record<
   const outputMessageContent: unknown[] = []
   const output: unknown[] = []
   let thinkingText = ''
+  let thinkingSignatures: string[] = []
 
   if (content) {
     for (const block of content) {
@@ -1733,6 +1967,8 @@ export function convertAnthropicResponseToOpenAIResponses(anthropicBody: Record<
       } else if (block.type === 'thinking') {
         // 收集 thinking 文本，稍后放到顶层的 reasoning.summary
         thinkingText += (block.thinking as string) ?? ''
+        // 收集 signature 作为 encrypted_content 透传（多轮 reasoning 依赖）
+        if (block.signature) thinkingSignatures.push(block.signature as string)
       } else if (block.type === 'tool_use') {
         const name = block.name as string ?? ''
         if (name === 'computer') {
@@ -1754,7 +1990,8 @@ export function convertAnthropicResponseToOpenAIResponses(anthropicBody: Record<
             id: `fc_${Date.now().toString(36)}_${(block.id as string) ?? ''}`,
             call_id: block.id as string,
             name,
-            arguments: JSON.stringify(block.input ?? {}),
+            // arguments 必须是合法 JSON 字符串。input 已是 string/array 时不再 stringify
+            arguments: stringifyArguments(block.input),
             status: 'completed',
           })
         }
@@ -1781,8 +2018,13 @@ export function convertAnthropicResponseToOpenAIResponses(anthropicBody: Record<
     status: stopReason === 'end_turn' ? 'completed' : 'incomplete',
     model: anthropicBody.model as string ?? '',
     output,
-    // Anthropic thinking → 顶层 reasoning.summary（非完整推理文本）
-    ...(thinkingText ? { reasoning: { summary: [{ type: 'summary_text', text: thinkingText, index: 0 }] } } : {}),
+    // Anthropic thinking → 顶层 reasoning.summary（非完整推理文本）+ encrypted_content 透传 signature
+    ...(thinkingText || thinkingSignatures.length > 0
+      ? { reasoning: {
+          summary: [{ type: 'summary_text', text: thinkingText, index: 0 }],
+          ...(thinkingSignatures.length > 0 ? { encrypted_content: thinkingSignatures.join('|') } : {}),
+        } }
+      : {}),
     usage: (() => {
       const ai = (usage?.input_tokens as number) ?? 0
       const cr = (usage?.cache_read_input_tokens as number) ?? 0
@@ -1898,7 +2140,7 @@ export function convertAnthropicResponseToOpenAI(anthropicBody: Record<string, u
           type: 'function',
           function: {
             name: block.name,
-            arguments: JSON.stringify(block.input ?? {}),
+            arguments: stringifyArguments(block.input),
           },
         })
       }
@@ -2039,10 +2281,17 @@ export function convertOpenAIResponsesResponseToOpenAI(responsesBody: Record<str
               textContent += (block.text as string) ?? ''
             } else if (block.type === 'reasoning') {
               // 消息内嵌 reasoning（兼容格式），优先级低于顶层 summary
+              // summary 是首选；reasoning_text 接受 string 或 string 数组两种形态
               if (!reasoningContent) {
-                reasoningContent += (block.summary
-                  ? (block.summary as Array<Record<string, unknown>>).map((s) => s.text ?? '').join('')
-                  : (block.reasoning_text as string) ?? '')
+                if (block.summary) {
+                  reasoningContent += (block.summary as Array<Record<string, unknown>>).map((s) => s.text ?? '').join('')
+                } else if (typeof block.reasoning_text === 'string') {
+                  reasoningContent += block.reasoning_text
+                } else if (Array.isArray(block.reasoning_text)) {
+                  reasoningContent += (block.reasoning_text as Array<Record<string, unknown>>)
+                    .map((s) => (typeof s === 'string' ? s : (s.text as string) ?? ''))
+                    .join('')
+                }
               }
             }
           }

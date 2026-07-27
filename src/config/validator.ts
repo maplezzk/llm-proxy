@@ -216,7 +216,7 @@ function validateAdapters(config: Config): ValidationError[] {
     }
 
     if (!VALID_PROVIDER_TYPES.includes(adapter.type)) {
-      errors.push({ field: `adapters.${adapter.name}.type`, message: `适配器类型 "${adapter.type}" 无效，仅支持 anthropic 和 openai` })
+      errors.push({ field: `adapters.${adapter.name}.type`, message: `适配器类型 "${adapter.type}" 无效，仅支持 anthropic、openai、openai-responses` })
     }
 
     if (!adapter.models || !Array.isArray(adapter.models) || adapter.models.length === 0) {
