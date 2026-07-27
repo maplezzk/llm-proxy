@@ -45,11 +45,12 @@ const buildFileIdSource = (fileId: string, detail: unknown): ImageSource =>
 
 /**
  * 判断工具是否为 Codex Responses 入口的 MCP 探测工具（应被剥离）。
- * 匹配规则：工具名（顶层 name 或 nested function.name）以 MCP_PROBE_PREFIXES 任一前缀开头。
+ * 匹配规则：工具名（顶层 name 或 nested function.name）以 MCP_PROBE_PREFIXES 任一前缀开头（大小写无关，
+ * 兼容 Codex 偶发的大写工具名如 READ_MCP_RESOURCE）。
  */
 export const isMcpProbeTool = (tool: Record<string, unknown>): boolean => {
   const fn = tool.function as Record<string, unknown> | undefined;
-  const name = String(tool.name ?? fn?.name ?? '');
+  const name = String(tool.name ?? fn?.name ?? '').toLowerCase();
   return MCP_PROBE_PREFIXES.some((prefix) => name.startsWith(prefix));
 };
 

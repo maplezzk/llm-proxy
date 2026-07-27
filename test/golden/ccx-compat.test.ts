@@ -83,7 +83,8 @@ describe('golden/ccx-compat', () => {
   });
   it('probe 前缀匹配大小写无关且用户工具保留', () => {
     const req = openaiResponsesInboundAdapter.decode({ model: 'gpt-5', input: 'hi', tools: [{ type: 'function', name: 'READ_MCP_RESOURCE' }, { type: 'function', name: 'exec_command', parameters: {} }] }, inputContext);
-    expect(req.tools?.map((tool) => tool.name)).toEqual(['READ_MCP_RESOURCE', 'exec_command']);
+    // READ_MCP_RESOURCE 命中 read_mcp_ 前缀（大小写无关）被剥离，仅保留用户工具 exec_command
+    expect(req.tools?.map((tool) => tool.name)).toEqual(['exec_command']);
   });
   it('namespace remap 只处理 function_call', () => {
     const output = [{ type: 'message', name: 'mcp__x__a' }, { type: 'function_call_output', name: 'mcp__x__a' }];

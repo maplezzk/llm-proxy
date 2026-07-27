@@ -486,7 +486,8 @@ export const forwardPipeline = async (
   const tappedIn =
     pairId !== undefined ? tapStream(response.body, (t) => rawInChunks.push(t)) : response.body;
 
-  const events = STREAM_INBOUND_ADAPTERS[route.providerProtocol].decode(tappedIn);
+  // 透传客户端断连信号：abort 时提前终止上游 SSE 迭代，且不补发收尾事件（见 StreamInboundAdapter.decode 契约）
+  const events = STREAM_INBOUND_ADAPTERS[route.providerProtocol].decode(tappedIn, params.signal);
 
   // 事件旁路：收集 usage，迭代结束（正常/中断）时落 usage + capture
   let streamUsage: UsageRecord | undefined;
