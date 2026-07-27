@@ -4,7 +4,7 @@ import { ConfigStore } from '../../src/config/store.js'
 import { StatusTracker } from '../../src/status/tracker.js'
 import { Logger } from '../../src/log/logger.js'
 import type { Config } from '../../src/config/types.js'
-import { handleGetConfig, handleReload, handleHealth, handleStatus, handleGetLocale, handleSetLocale, handleCreateProvider } from '../../src/api/handlers/index.js'
+import { handleGetConfig, handleReload, handleHealth, handleStatus, handleGetLocale, handleSetLocale, handleCreateProvider, handleUpdateProvider } from '../../src/api/handlers/index.js'
 import type { OutgoingHttpHeaders } from 'node:http'
 
 function createConfig(): Config {
@@ -71,6 +71,47 @@ describe('api/handlers', () => {
     const provider = store.getConfig().config.providers[0]
     assert.deepStrictEqual(provider.protocols?.map((p) => p.type), ['openai', 'anthropic'])
     assert.deepStrictEqual(provider.models[0].protocols, ['openai', 'anthropic'])
+  })
+
+  it('保存多协议供应商时清除旧版 type 和 api_base', async () => {
+    const tmpDir = (await import('node:fs')).mkdtempSync((await import('node:os')).tmpdir() + '/llm-proxy-test-')
+    const store = new ConfigStore(`${tmpDir}/config.yaml`, {
+      providers: [{
+        name: 'multi',
+        type: 'openai',
+        apiKey: 'k1',
+        apiBase: 'https://legacy.example',
+        models: [{ id: 'chat', protocol: 'openai' }],
+      }],
+    })
+    const ctx = { store, tracker: new StatusTracker(), logger: new Logger() }
+    const req = new(await import('stream')).Readable()
+    req.push(JSON.stringify({
+      name: 'multi',
+      api_key: 'k1',
+      type: 'openai',
+      api_base: 'https://legacy.example',
+      protocols: [
+        { type: 'openai', api_base: 'https://example.test/openai' },
+        { type: 'anthropic', api_base: 'https://example.test/anthropic' },
+      ],
+      models: [{ id: 'chat', protocols: ['openai', 'anthropic'], protocol: 'openai' }],
+    }))
+    req.push(null)
+    Object.assign(req, { url: '/admin/providers/multi' })
+    const res = mockRes()
+    await handleUpdateProvider(ctx, req as never, res as never)
+    assert.strictEqual(res.getStatus(), 200)
+    const provider = store.getConfig().config.providers[0]
+    assert.strictEqual(provider.type, undefined)
+    assert.strictEqual(provider.apiBase, undefined)
+    assert.deepStrictEqual(provider.protocols?.map((p) => p.type), ['openai', 'anthropic'])
+    assert.strictEqual(provider.models[0].protocols?.length, 2)
+    assert.strictEqual(provider.models[0].protocol, 'openai')
+    const savedYaml = (await import('node:fs')).readFileSync(`${tmpDir}/config.yaml`, 'utf-8')
+    assert.doesNotMatch(savedYaml, /  type: openai\n    api_key:/)
+    assert.doesNotMatch(savedYaml, /api_base: https:\/\/legacy\.example/)
+    assert.doesNotMatch(savedYaml, /\n\s+protocol: openai\n/)
   })
 
   it('GET /admin/health 返回 ok', () => {

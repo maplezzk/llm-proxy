@@ -195,15 +195,20 @@ providers:
       providers: [{
         name: 'multi',
         apiKey: 'k1',
+        type: 'openai',
+        apiBase: 'https://legacy.example',
         protocols: [
           { type: 'openai', apiBase: 'https://example.test/openai' },
           { type: 'anthropic', apiBase: 'https://example.test/anthropic' },
         ],
-        models: [{ id: 'chat', protocols: ['openai', 'anthropic'] }, { id: 'messages', protocols: ['anthropic'] }],
+        models: [{ id: 'chat', protocols: ['openai', 'anthropic'], protocol: 'openai' }, { id: 'messages', protocols: ['anthropic'] }],
       }],
     })
     assert.match(yaml, /protocols:/)
     assert.match(yaml, /api_base: https:\/\/example\.test\/anthropic/)
     assert.match(yaml, /models:[\s\S]*protocols:\n\s+- openai\n\s+- anthropic/)
+    assert.doesNotMatch(yaml, /  type: openai\n    api_key:/)
+    assert.doesNotMatch(yaml, /api_base: https:\/\/legacy\.example/)
+    assert.doesNotMatch(yaml, /\n\s+protocol: openai\n/)
   })
 })
