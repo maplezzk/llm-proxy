@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { dirname, join } from 'node:path';
 /**
  * llm-proxy CLI entry (citty skeleton).
  *
@@ -15,12 +18,14 @@
  * - SIGTERM uses process.exit(0) because SSE long-poll blocks server.close().
  */
 import { defineCommand, runMain } from 'citty';
-import { readFileSync, writeFileSync, existsSync, unlinkSync, mkdirSync } from 'node:fs';
-import { dirname } from 'node:path';
 import { loadEnv } from './config/env.js';
-import { log } from './lib/logger.js';
-import { startServer } from './server.js';
+import { ConfigStore } from './config/store.ts';
 import { runMigrations } from './db/migrate.js';
+import { log } from './lib/logger.js';
+import { CaptureBuffer } from './proxy/capture-store.ts';
+import type { PipelineDeps } from './proxy/pipeline.ts';
+import { startServer } from './server.js';
+import { UsageStore } from './status/usage-store.ts';
 
 const DEFAULT_PID_PATH = '/tmp/llm-proxy.pid';
 const DEFAULT_HOST = '127.0.0.1';
@@ -110,18 +115,45 @@ const runStartupMigration = async (): Promise<void> => {
 
 const blockForever = (): Promise<never> => new Promise<never>(() => {});
 
+/** 默认配置路径：$LLM_PROXY_CONFIG 或 ~/.llm-proxy/config.yaml。 */
+const resolveConfigPath = (): string =>
+  process.env.LLM_PROXY_CONFIG || join(homedir(), '.llm-proxy', 'config.yaml');
+
+/**
+ * 装配管线依赖：YAML ConfigStore（缺失时回退空配置）+ 内存 UsageStore + CaptureBuffer。
+ * PG 持久化配置是 P1.16，用量持久化是 P4/P5。
+ */
+const buildPipelineDeps = async (configPath: string): Promise<PipelineDeps> => {
+  let store: ConfigStore;
+  if (existsSync(configPath)) {
+    store = await ConfigStore.create(configPath);
+    log.info({ configPath }, 'config loaded');
+  } else {
+    store = ConfigStore.fromMemory({ providers: [] }, configPath);
+    log.warn({ configPath }, 'config file not found; starting with empty config (all models 404)');
+  }
+  const { config } = store.getConfig();
+  const capture = new CaptureBuffer(config.captureMaxSize ?? 100);
+  return { store, logger: log, usage: new UsageStore(), capture };
+};
+
 export const executeStart = async (opts: {
   host: string;
   port: number;
   pidPath: string;
   skipMigrate: boolean;
+  configPath: string;
 }): Promise<void> => {
   if (!opts.skipMigrate) {
     await runStartupMigration();
   }
-  const { server } = startServer({ port: opts.port, host: opts.host });
+  const pipeline = await buildPipelineDeps(opts.configPath);
+  const { server } = startServer({ port: opts.port, host: opts.host, pipeline });
   writeState(opts.pidPath, { pid: process.pid, port: opts.port, startedAt: Date.now() });
-  log.info({ pid: process.pid, port: opts.port, host: opts.host, pidPath: opts.pidPath }, 'llm-proxy started');
+  log.info(
+    { pid: process.pid, port: opts.port, host: opts.host, pidPath: opts.pidPath },
+    'llm-proxy started',
+  );
   registerShutdownHandlers(opts.pidPath);
   void server;
   await blockForever();
@@ -159,10 +191,18 @@ const startCommand = defineCommand({
     port: { type: 'string', default: String(DEFAULT_PORT) },
     'pid-path': { type: 'string', default: DEFAULT_PID_PATH },
     'skip-migrate': { type: 'boolean', default: false },
+    config: { type: 'string', default: '' },
   },
   async run({ args }) {
     const { host, port } = parseListenAddress(args.host, args.port);
-    await executeStart({ host, port, pidPath: args['pid-path'], skipMigrate: args['skip-migrate'] });
+    const configPath = args.config || resolveConfigPath();
+    await executeStart({
+      host,
+      port,
+      pidPath: args['pid-path'],
+      skipMigrate: args['skip-migrate'],
+      configPath,
+    });
   },
 });
 
@@ -180,12 +220,14 @@ const restartCommand = defineCommand({
     host: { type: 'string', default: DEFAULT_HOST },
     port: { type: 'string', default: String(DEFAULT_PORT) },
     'pid-path': { type: 'string', default: DEFAULT_PID_PATH },
+    config: { type: 'string', default: '' },
   },
   async run({ args }) {
     executeStop(args['pid-path']);
     await new Promise((r) => setTimeout(r, PID_RESTART_GRACE_MS));
     const { host, port } = parseListenAddress(args.host, args.port);
-    await executeStart({ host, port, pidPath: args['pid-path'], skipMigrate: false });
+    const configPath = args.config || resolveConfigPath();
+    await executeStart({ host, port, pidPath: args['pid-path'], skipMigrate: false, configPath });
   },
 });
 
