@@ -193,7 +193,9 @@ export function encodeOpenAIChatStream(
             continue;
           }
         }
-        writeFinish();
+        // 收尾契约：正常 EOF 时流式入站适配器保证发出 message_stop（openai-chat inbound 的 finish()，
+        // 其他 inbound 转发上游终态），writeFinish 已在 message_stop 分支写出 [DONE]。
+        // 到 EOF 仍无 message_stop 即表示解码层被截断（如客户端 abort），不兜底写 [DONE]。
         controller.close();
       } catch (error) {
         const detail = error instanceof Error ? error.message : String(error);

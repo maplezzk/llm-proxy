@@ -1,6 +1,7 @@
 import type { StreamInboundAdapter } from '../../adapters/index.ts';
 import type { CanonicalBlock, CanonicalMessage, ToolInput, UsageRecord } from '../../ir/types.ts';
 import type { BlockDelta, CanonicalStreamEvent } from '../../ir/stream-events.ts';
+import { abortableIterator } from '../abort.ts';
 
 /** Anthropic SSE 的单个事件帧。 */
 type SseFrame =
@@ -150,13 +151,15 @@ const finishReason = (reason: string): 'completed' | 'incomplete' | 'failed' => 
 /** Anthropic wire SSE → canonical 流式事件。 */
 export async function* decodeAnthropicStream(
   stream: ReadableStream<Uint8Array>,
+  signal?: AbortSignal,
 ): AsyncGenerator<CanonicalStreamEvent> {
   let currentStopReason = 'end_turn';
   const openBlocks = new Set<string>();
 
   let malformedFrames = 0;
 
-  for await (const frame of readSse(stream)) {
+  // abort 时 abortableIterator 提前结束迭代，本函数随之返回，不发出任何残留事件。
+  for await (const frame of abortableIterator(readSse(stream), stream, signal)) {
     if (frame.kind === 'parse_error') {
       malformedFrames += 1;
       yield {

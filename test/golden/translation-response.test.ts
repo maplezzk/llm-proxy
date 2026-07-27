@@ -193,10 +193,9 @@ describe('golden/response-conversion/OpenAI Responses ↔ Anthropic', () => {
     expect(usage.cache_read_input_tokens).toBe(7);
   });
 
-  it('OpenAI Responses function_call → Anthropic tool_use（gap：stop_reason 未从 output 推断）', () => {
-    // gap: legacy 期望 Responses 有 function_call 时 stop_reason='tool_use'；
-    // 新架构 Responses decoder 仅根据 status 推断 stopReason（status='completed' → 'end_turn'），
-    // 不从 output 项推断；故 Responses → Anthropic 跳 stop_reason 推导
+  it('OpenAI Responses function_call → Anthropic tool_use（stop_reason 从 output 推断）', () => {
+    // Responses API 不暴露 stop_reason，从 output 含 function_call 块推断 stopReason='tool_use'；
+    // 转换到 Anthropic 时 stop_reason 正确写为 'tool_use'。
     const responses = {
       output: [
         {
@@ -213,8 +212,7 @@ describe('golden/response-conversion/OpenAI Responses ↔ Anthropic', () => {
     expect(content[0].type).toBe('tool_use');
     expect(content[0].name).toBe('get_weather');
     expect(content[0].input).toEqual({ loc: 'NYC' });
-    // stop_reason 实际为 'end_turn'，记录为已知 gap
-    expect(result.stop_reason).toBe('end_turn');
+    expect(result.stop_reason).toBe('tool_use');
   });
 
   it('OpenAI Responses computer_call → Anthropic tool_use (computer)', () => {
@@ -403,10 +401,9 @@ describe('golden/response-conversion/OpenAI Responses ↔ OpenAI Chat', () => {
     expect(args.type).toBe('click');
   });
 
-  it('OpenAI Responses function_call → Chat tool_calls finish_reason（gap：未推断）与缓存用量', () => {
-    // gap: legacy 期望 Responses 有 function_call → finish_reason='tool_calls'；
-    // 新架构 Responses decoder 不从 output 推断 stopReason → Chat converter 输出 'stop'（end_turn）
-    // 缓存用量部分仍可验证
+  it('OpenAI Responses function_call → Chat tool_calls finish_reason（从 output 推断）与缓存用量', () => {
+    // Responses decoder 从 output 含 function_call 块推断 stopReason='tool_use'；
+    // Chat converter 映射到 finish_reason='tool_calls'，同时透传 cache_read 字段。
     const responses = {
       model: 'gpt-5',
       status: 'completed',
@@ -428,15 +425,15 @@ describe('golden/response-conversion/OpenAI Responses ↔ OpenAI Chat', () => {
     const result = convertOpenAIResponsesResponseToOpenAI(canonical);
     const choices = result.choices as Array<Record<string, unknown>>;
     const message = choices[0].message as Record<string, unknown>;
-    // gap: finish_reason 实际是 'stop'，记录为已知差异
-    expect(choices[0].finish_reason).toBe('stop');
+    expect(choices[0].finish_reason).toBe('tool_calls');
     expect(message.content === null || message.content === '').toBe(true);
     const usage = result.usage as Record<string, unknown>;
-    // 新架构：prompt_tokens = input_tokens(20) + cache_read(80) = 100
+    // prompt_tokens = input_tokens(20) + cache_read(80) = 100
     expect(usage.prompt_tokens).toBe(100);
     expect(usage.total_tokens).toBe(105);
-    // gap: Responses → Chat 不写 prompt_tokens_details
-    expect(usage.prompt_tokens_details).toBeUndefined();
+    // cache_read 透传到 prompt_tokens_details.cached_tokens（>0 才输出）
+    const tpd = (usage as Record<string, unknown>).prompt_tokens_details as Record<string, unknown>;
+    expect(tpd.cached_tokens).toBe(80);
   });
 
   it('OpenAI Chat → Responses function_call 格式', () => {
@@ -472,7 +469,7 @@ describe('golden/response-conversion/OpenAI Responses ↔ OpenAI Chat', () => {
 });
 
 describe('golden/response-conversion/usage 计费字段', () => {
-  it('跨协议 usage 保持计费输入与缓存字段独立（部分 gap）', () => {
+  it('跨协议 usage 保持计费输入与缓存字段独立', () => {
     const chatUsage = {
       prompt_tokens: 105,
       completion_tokens: 5,
@@ -493,7 +490,7 @@ describe('golden/response-conversion/usage 计费字段', () => {
       cache_creation_input_tokens: 5,
     });
 
-    // Chat → Responses：gap，新架构 Chat→Responses converter 未透传 cache_creation / cached_tokens
+    // Chat → Responses：透传 cache_creation 到顶层，cache_read 通过 input_tokens_details.cached_tokens 暴露
     const toResponses = convertOpenAIResponseToOpenAIResponses(
       fromUpstream('openai', {
         model: 'gpt-5',
@@ -501,13 +498,16 @@ describe('golden/response-conversion/usage 计费字段', () => {
         usage: chatUsage,
       }),
     );
-    // 新架构：Chat→Responses 只写入 input_tokens + output_tokens
     expect(toResponses.usage).toMatchObject({
       input_tokens: 20,
       output_tokens: 5,
+      cache_creation_input_tokens: 5,
     });
+    expect(
+      (toResponses.usage as Record<string, unknown>).input_tokens_details,
+    ).toMatchObject({ cached_tokens: 80 });
 
-    // Anthropic → Chat：保留完整
+    // Anthropic → Chat：cache_read 计入 prompt_tokens 并通过 prompt_tokens_details.cached_tokens 暴露
     const anthropicUsage = {
       input_tokens: 20,
       output_tokens: 5,
@@ -524,11 +524,14 @@ describe('golden/response-conversion/usage 计费字段', () => {
       prompt_tokens: 105,
       completion_tokens: 5,
     });
-    // gap: 新架构 Anthropic→Chat converter 不写 prompt_tokens_details（不暴露 cached_tokens / cache_creation）
-    const tpd = (toOpenAI.usage as Record<string, unknown>).prompt_tokens_details;
-    expect(tpd).toBeUndefined();
+    const tpd = (toOpenAI.usage as Record<string, unknown>).prompt_tokens_details as Record<
+      string,
+      unknown
+    >;
+    expect(tpd.cached_tokens).toBe(80);
+    expect(tpd.cache_creation_input_tokens).toBe(5);
 
-    // Anthropic → Responses：gap，新架构 Responses converter 不写 input_tokens_details.cached_tokens
+    // Anthropic → Responses：cache_read 通过 input_tokens_details.cached_tokens 暴露，cache_creation 写顶层
     const anthropicToResponses = convertAnthropicResponseToOpenAIResponses(
       fromUpstream('anthropic', {
         content: [{ type: 'text', text: 'hi' }],
@@ -538,9 +541,13 @@ describe('golden/response-conversion/usage 计费字段', () => {
     expect(anthropicToResponses.usage).toMatchObject({
       input_tokens: 20,
       output_tokens: 5,
+      cache_creation_input_tokens: 5,
     });
-    const itd = (anthropicToResponses.usage as Record<string, unknown>).input_tokens_details;
-    expect(itd).toBeUndefined();
+    const itd = (anthropicToResponses.usage as Record<string, unknown>).input_tokens_details as Record<
+      string,
+      unknown
+    >;
+    expect(itd.cached_tokens).toBe(80);
   });
 });
 

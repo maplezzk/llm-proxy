@@ -104,7 +104,14 @@ export interface OutboundAdapter {
 /** 流式入站适配器：上游 SSE 字节流 → CanonicalStreamEvent 异步迭代。 */
 export interface StreamInboundAdapter {
   readonly name: ClientProtocol;
-  decode(stream: ReadableStream<Uint8Array>): AsyncIterable<CanonicalStreamEvent>;
+  /**
+   * 解码上游 SSE。signal 可选：传入后客户端 abort 会提前终止迭代，
+   * 且不补发收尾事件（message_stop），供上层区分「正常 EOF」与「被截断」。
+   */
+  decode(
+    stream: ReadableStream<Uint8Array>,
+    signal?: AbortSignal,
+  ): AsyncIterable<CanonicalStreamEvent>;
 }
 
 /** 流式出站适配器：CanonicalStreamEvent → 目标协议 SSE 字节流。 */

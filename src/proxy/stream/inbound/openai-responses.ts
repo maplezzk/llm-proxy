@@ -1,6 +1,7 @@
 import type { StreamInboundAdapter } from '../../adapters/index.ts';
 import type { BlockDelta, CanonicalStreamEvent } from '../../ir/stream-events.ts';
 import type { UsageRecord } from '../../ir/types.ts';
+import { abortableIterator } from '../abort.ts';
 
 type JsonObject = Record<string, unknown>;
 type SseFrame =
@@ -114,6 +115,7 @@ async function* readSse(stream: ReadableStream<Uint8Array>): AsyncGenerator<SseF
 /** OpenAI Responses SSE → canonical 流式事件。 */
 export async function* decodeOpenAIResponsesStream(
   stream: ReadableStream<Uint8Array>,
+  signal?: AbortSignal,
 ): AsyncGenerator<CanonicalStreamEvent> {
   let messageStarted = false;
   let currentStopReason = 'end_turn';
@@ -212,7 +214,7 @@ export async function* decodeOpenAIResponsesStream(
     };
   };
 
-  for await (const frame of readSse(stream)) {
+  for await (const frame of abortableIterator(readSse(stream), stream, signal)) {
     if (frame.kind === 'parse_error') {
       malformedFrames += 1;
       yield {
@@ -359,7 +361,8 @@ export async function* decodeOpenAIResponsesStream(
     }
   }
 
-  yield* finalize();
+  // 客户端 abort 后不发收尾事件；正常 EOF（含上游 response.completed 已 finalize）才补齐。
+  if (!signal?.aborted) yield* finalize();
 }
 
 export const openAIResponsesStreamInboundAdapter: StreamInboundAdapter = {

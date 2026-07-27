@@ -54,7 +54,24 @@ describe('golden/ccx-compat', () => {
     expect(decodeNs('mcp__a', mapping)).toEqual({ namespace: 'mcp', name: 'a' });
     expect(decodeNs('mcp__b', mapping)).toEqual({ namespace: 'mcp', name: 'b' });
   });
-  it.skip('无效 namespace 定义不会污染上下文（当前实现未防御 null child）', () => expect(buildNamespaceToolContext([{ type: 'function', name: 'x' }, null, 'bad'])).toEqual(new Map()));
+  it('无效 namespace 定义不会污染上下文（防御 null/非对象元素）', () => {
+    // 故意传入畸形输入（非 namespace 对象 / null / 字符串）：验证被测函数防御路径不读 .type 抛错，并返回空 Map。
+    const inputs: unknown[] = [
+      { type: 'function', name: 'x' },
+      null,
+      'bad',
+    ];
+    const context = buildNamespaceToolContext(inputs);
+    expect(context).toEqual(new Map());
+  });
+  it('namespace 内嵌 null/string child 被防御跳过', () => {
+    // 故意传入畸形 child（null / 字符串）：验证被测函数防御路径不读 null.type 抛错，仅 type='function'+name 非空的 child 进入映射。
+    const inputs: unknown[] = [
+      { type: 'namespace', name: 'mcp__x__', tools: [null, 'bad', { type: 'function', name: 'a' }] },
+    ];
+    const context = buildNamespaceToolContext(inputs);
+    expect([...context.entries()]).toEqual([['mcp__x__a', { namespace: 'mcp__x__', name: 'a' }]]);
+  });
   it('非 function child 不参与扁平化', () => expect(buildNamespaceToolContext([{ type: 'namespace', name: 'm', tools: [{ type: 'custom', name: 'x' }] }]).size).toBe(0));
   it('Responses function_call namespace 会进入 Canonical tool_use', () => {
     const req = openaiResponsesInboundAdapter.decode({ model: 'gpt-5', input: [{ type: 'function_call', call_id: 'c1', name: 'exec', namespace: 'mcp__vscode__', arguments: '{"command":"ls"}' }] }, inputContext);

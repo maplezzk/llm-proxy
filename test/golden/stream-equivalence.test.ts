@@ -32,6 +32,7 @@ import {
   parseSseEvents,
   sseToReadableStream,
 } from '../helpers/stream.ts';
+import type { ParsedSseEvent } from '../helpers/stream.ts';
 import type { CanonicalStreamEvent } from '../../src/proxy/ir/stream-events.ts';
 import type { RouteDecision } from '../../src/proxy/adapters/index.ts';
 
@@ -47,6 +48,108 @@ const openaiResponsesRoute: RouteDecision = makeRoute({
   providerType: 'openai-responses',
   modelId: 'gpt-4o',
 });
+
+type MessageDeltaPayload = {
+  stopReason: string | undefined;
+  usage: Record<string, number>;
+};
+
+const isJsonObject = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
+/** 解析 JSON 并在失败时保留用例上下文与原始错误链。 */
+function parseJsonObject(raw: string, caseName: string): Record<string, unknown> {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    throw new Error(`message_delta 不是合法 JSON（${caseName}）：${detail}`, { cause: error });
+  }
+  if (!isJsonObject(parsed)) {
+    throw new Error(`message_delta 不是对象（${caseName}）`);
+  }
+  return parsed;
+}
+
+/** 从黄金输出中解析 message_delta，失败时保留用例上下文。 */
+function parseMessageDelta(output: string, caseName: string): MessageDeltaPayload {
+  const match = output.match(/event: message_delta\ndata: (\{[^\n]*\})/);
+  const raw = match?.[1];
+  if (!raw) throw new Error(`未匹配到 message_delta（${caseName}）`);
+
+  const parsed = parseJsonObject(raw, caseName);
+  const rawUsage = parsed.usage;
+  if (!isJsonObject(rawUsage)) {
+    throw new Error(`message_delta 缺少 usage 对象（${caseName}）`);
+  }
+  const usage: Record<string, number> = {};
+  for (const [key, value] of Object.entries(rawUsage)) {
+    if (typeof value !== 'number') {
+      throw new Error(`message_delta usage.${key} 不是数字（${caseName}）`);
+    }
+    usage[key] = value;
+  }
+
+  const rawDelta = parsed.delta;
+  if (rawDelta !== undefined && !isJsonObject(rawDelta)) {
+    throw new Error(`message_delta 的 delta 不是对象（${caseName}）`);
+  }
+  const stopReason = isJsonObject(rawDelta) ? rawDelta.stop_reason : undefined;
+  if (stopReason !== undefined && typeof stopReason !== 'string') {
+    throw new Error(`message_delta 的 stop_reason 不是字符串（${caseName}）`);
+  }
+  return {
+    usage,
+    stopReason: typeof stopReason === 'string' ? stopReason : undefined,
+  };
+}
+
+/** 从解析后的 SSE 事件中提取 content block index。 */
+function parseBlockIndex(
+  event: ParsedSseEvent,
+  eventType: string,
+  caseName: string,
+): number {
+  if (!isJsonObject(event.data)) {
+    throw new Error(`${eventType} 的 data 不是对象（${caseName}）`);
+  }
+  const index = event.data.index;
+  if (typeof index !== 'number') {
+    throw new Error(`${eventType} 事件缺少数字 index（${caseName}）`);
+  }
+  return index;
+}
+
+/** 统计指定 SSE 事件中的 content block index。 */
+function countBlockIndexes(
+  events: ParsedSseEvent[],
+  eventType: string,
+  caseName: string,
+): Map<number, number> {
+  const counts = new Map<number, number>();
+  for (const event of events) {
+    const index = parseBlockIndex(event, eventType, caseName);
+    counts.set(index, (counts.get(index) ?? 0) + 1);
+  }
+  return counts;
+}
+
+/**
+ * 收集带 abort 信号的 OpenAI Chat 流式事件，供中途断连用例复用。
+ * test/helpers/stream.ts 的 collectStreamEvents 不传 signal，这里本地完成多步收集；
+ * 非 abort 异常会原样向上抛给用例，避免静默吞掉 rejection。
+ */
+async function collectOpenAIChatEvents(
+  stream: ReadableStream<Uint8Array>,
+  signal: AbortSignal,
+): Promise<CanonicalStreamEvent[]> {
+  const events: CanonicalStreamEvent[] = [];
+  for await (const event of openAIChatStreamInboundAdapter.decode(stream, signal)) {
+    events.push(event);
+  }
+  return events;
+}
 
 /** 直接把 CanonicalStreamEvent 数组喂给 stream outbound 适配器（不经 inbound 解码）。 */
 async function outboundSse(
@@ -283,17 +386,12 @@ describe('golden/stream-equivalence', () => {
         'data: [DONE]\n\n',
       ].join('');
       const out = await openaiToAnthropic(sse);
-      const messageDeltaMatch = out.match(/event: message_delta\ndata: (\{[^\n]*\})/);
-      expect(messageDeltaMatch).not.toBeNull();
-      const delta = JSON.parse(messageDeltaMatch![1]) as {
-        delta: { stop_reason: string };
-        usage: Record<string, number>;
-      };
+      const delta = parseMessageDelta(out, 'usage-only chunk 补发 usage');
       // prompt_tokens=133667 - cached_tokens=100000 = 33667
       expect(delta.usage.input_tokens).toBe(33667);
       expect(delta.usage.output_tokens).toBe(1963);
       expect(delta.usage.cache_read_input_tokens).toBe(100000);
-      expect(delta.delta.stop_reason).toBe('tool_use');
+      expect(delta.stopReason).toBe('tool_use');
       const messageDeltaIdx = out.indexOf('event: message_delta');
       const messageStopIdx = out.indexOf('event: message_stop');
       expect(messageDeltaIdx).toBeGreaterThan(-1);
@@ -310,16 +408,14 @@ describe('golden/stream-equivalence', () => {
         'data: [DONE]\n\n',
       ].join('');
       const out = await openaiToAnthropic(sse);
-      const messageDeltaMatch = out.match(/event: message_delta\ndata: (\{[^\n]*\})/);
-      expect(messageDeltaMatch).not.toBeNull();
-      const delta = JSON.parse(messageDeltaMatch![1]) as { usage: Record<string, number> };
+      const delta = parseMessageDelta(out, 'finish_reason 后 usage-only chunk');
       // prompt_tokens=154541 - cached_tokens=153984 = 557
       expect(delta.usage.input_tokens).toBe(557);
       expect(delta.usage.cache_read_input_tokens).toBe(153984);
       expect(delta.usage.output_tokens).toBe(64);
     });
 
-    it.skip('cached_tokens=0 时 message_delta 不含 cache_read_input_tokens 字段（新 chat inbound 在 cached_tokens=0 时仍输出字段）', async () => {
+    it('cached_tokens=0 时 message_delta 不含 cache_read_input_tokens 字段', async () => {
       const sse = [
         'data: {"choices":[{"delta":{"role":"assistant"},"index":0}]}\n\n',
         'data: {"choices":[{"delta":{"content":"ok"},"index":0}]}\n\n',
@@ -328,15 +424,13 @@ describe('golden/stream-equivalence', () => {
         'data: [DONE]\n\n',
       ].join('');
       const out = await openaiToAnthropic(sse);
-      const messageDeltaMatch = out.match(/event: message_delta\ndata: (\{[^\n]*\})/);
-      expect(messageDeltaMatch).not.toBeNull();
-      const delta = JSON.parse(messageDeltaMatch![1]) as { usage: Record<string, number> };
+      const delta = parseMessageDelta(out, 'cached_tokens=0');
       expect(delta.usage.input_tokens).toBe(100);
       expect(delta.usage.output_tokens).toBe(10);
       expect('cache_read_input_tokens' in delta.usage).toBe(false);
     });
 
-    it.skip('usage 嵌在 choices[0] 内（Kimi k3）也能正确提取（新 chat inbound 不读取 choices[0].usage）', async () => {
+    it('usage 嵌在 choices[0] 内（Kimi k3）也能正确提取', async () => {
       const sse = [
         'data: {"choices":[{"delta":{"role":"assistant"},"index":0}]}\n\n',
         'data: {"choices":[{"delta":{"content":"Hi"},"index":0}]}\n\n',
@@ -344,9 +438,7 @@ describe('golden/stream-equivalence', () => {
         'data: [DONE]\n\n',
       ].join('');
       const out = await openaiToAnthropic(sse);
-      const messageDeltaMatch = out.match(/event: message_delta\ndata: (\{[^\n]*\})/);
-      expect(messageDeltaMatch).not.toBeNull();
-      const delta = JSON.parse(messageDeltaMatch![1]) as { usage: Record<string, number> };
+      const delta = parseMessageDelta(out, 'choices[0].usage');
       expect(delta.usage.input_tokens).toBe(1016);
       expect(delta.usage.output_tokens).toBe(309);
       expect(delta.usage.cache_read_input_tokens).toBe(16896);
@@ -383,16 +475,8 @@ describe('golden/stream-equivalence', () => {
       const events = parseSseEvents(out);
       const starts = events.filter((e) => e.data.type === 'content_block_start');
       const stops = events.filter((e) => e.data.type === 'content_block_stop');
-      const startCounts = new Map<number, number>();
-      const stopCounts = new Map<number, number>();
-      for (const e of starts) {
-        const idx = e.data.index as number;
-        startCounts.set(idx, (startCounts.get(idx) ?? 0) + 1);
-      }
-      for (const e of stops) {
-        const idx = e.data.index as number;
-        stopCounts.set(idx, (stopCounts.get(idx) ?? 0) + 1);
-      }
+      const startCounts = countBlockIndexes(starts, 'content_block_start', 'Responses completed 补齐');
+      const stopCounts = countBlockIndexes(stops, 'content_block_stop', 'Responses completed 补齐');
       expect(stopCounts).toEqual(startCounts);
     });
 
@@ -482,7 +566,7 @@ describe('golden/stream-equivalence', () => {
       expect(out).toContain('event: response.completed');
     });
 
-    it.skip('thinking_delta → reasoning_text.delta（含顶层 reasoning.summary）—— new openai-responses outbound 发 reasoning_summary_text.delta 而非 reasoning_text.delta', async () => {
+    it('thinking_delta → reasoning_text.delta（含顶层 reasoning.summary）', async () => {
       const sse = [
         'event: message_start\ndata: {"type":"message_start","message":{}}\n\n',
         'event: content_block_start\ndata: {"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":"","signature":""}}\n\n',
@@ -537,7 +621,7 @@ describe('golden/stream-equivalence', () => {
       expect(events).toEqual([]);
     });
 
-    it.skip('signal 在中途 abort 时下游提前退出循环（new chat inbound 的 finish() 在流结束后仍会发出全部残留事件）', async () => {
+    it('signal 在中途 abort 时下游提前退出循环', async () => {
       const controller = new AbortController();
       // 30ms 后中断
       setTimeout(() => controller.abort(), 30);
@@ -551,13 +635,13 @@ describe('golden/stream-equivalence', () => {
         controller.signal,
         20,
       );
-      const events = await collectStreamEvents(stream, openAIChatStreamInboundAdapter);
+      const events = await collectOpenAIChatEvents(stream, controller.signal);
       // abort 后流应提前关闭，事件数应小于 4（不会读到所有 chunk + DONE）
       // 至少应有一些（读完 1-2 个 chunk），但 [DONE] 后的 finish() 不会到达
       expect(events.length).toBeLessThan(4);
     });
 
-    it.skip('signal abort 后下游不再发出 [DONE] 哨兵——new openai-chat outbound 在没有 message_stop 时会兜底写出 [DONE]', async () => {
+    it('signal abort 后下游不再发出 [DONE] 哨兵', async () => {
       // 模拟：上游中途 abort，inbound 提前退出；把截断后的事件喂给 outbound，
       // 由于缺 message_stop 出站不会发 [DONE]。
       const controller = new AbortController();
@@ -572,7 +656,7 @@ describe('golden/stream-equivalence', () => {
         controller.signal,
         20,
       );
-      const events = await collectStreamEvents(stream, openAIChatStreamInboundAdapter);
+      const events = await collectOpenAIChatEvents(stream, controller.signal);
       // 用截断后的事件编码，缺 message_stop → 不出 [DONE] / message_stop
       const out = await outboundSse(events, openAIChatStreamOutboundAdapter, openaiRoute);
       // 截断后没有 [DONE] 哨兵

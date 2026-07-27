@@ -101,6 +101,9 @@ export function encodeOpenAIResponsesStream(
       const messageId = `msg_${Date.now().toString(36)}`;
       const tools = new Map<string, ToolState>();
       const outputItems: JsonObject[] = [];
+      // 追踪处于打开状态的 reasoning/thinking 块，block_stop 或收尾时补发 reasoning_text.done。
+      const reasoningBlocks = new Set<string>();
+      let reasoningDoneWritten = false;
 
       const writeEvent = (event: string, data: JsonObject): void => {
         const payload = JSON.stringify(data);
@@ -210,9 +213,28 @@ export function encodeOpenAIResponsesStream(
         outputItems.push(item);
       };
 
+      // 三类输出（text / tool / reasoning）的统一收尾子步骤：
+      // 正常路径由各 block_stop 逐个关闭，这里负责“上游未发 *.done”时的兜底补齐。
       const closeAll = (): void => {
         writeTextDone();
         for (const state of tools.values()) closeTool(state);
+        if (reasoningBlocks.size > 0) {
+          reasoningBlocks.clear();
+          writeReasoningDone();
+        }
+      };
+
+      // legacy 行为：thinking/reasoning 增量用 response.reasoning_text.delta 表达，
+      // 全部 reasoning 块关闭后补发一次 response.reasoning_text.done；
+      // 聚合 summary 仍放在 completed 顶层 reasoning.summary。
+      const writeReasoningDone = (): void => {
+        if (reasoningDoneWritten) return;
+        reasoningDoneWritten = true;
+        writeEvent('response.reasoning_text.done', {
+          type: 'response.reasoning_text.done',
+          output_index: 0,
+          text: reasoningSummary,
+        });
       };
 
       const finishResponse = (): void => {
@@ -265,6 +287,8 @@ export function encodeOpenAIResponsesStream(
             const block = event.block;
             if (block.kind === 'text') {
               ensureMessageItem();
+            } else if (block.kind === 'thinking' || block.kind === 'reasoning') {
+              reasoningBlocks.add(event.blockId);
             } else if (block.kind === 'tool_use') {
               const isComputer = block.name === 'computer' || block.computer !== undefined;
               const state: ToolState = {
@@ -320,8 +344,8 @@ export function encodeOpenAIResponsesStream(
               });
             } else if (event.delta.kind === 'thinking' || event.delta.kind === 'reasoning_summary') {
               reasoningSummary += event.delta.text;
-              writeEvent('response.reasoning_summary_text.delta', {
-                type: 'response.reasoning_summary_text.delta',
+              writeEvent('response.reasoning_text.delta', {
+                type: 'response.reasoning_text.delta',
                 output_index: 0,
                 delta: event.delta.text,
               });
@@ -352,6 +376,10 @@ export function encodeOpenAIResponsesStream(
           if (event.type === 'block_stop') {
             const state = tools.get(event.blockId);
             if (state) closeTool(state);
+            // reasoning 块全部关闭后补发一次 reasoning_text.done。
+            if (reasoningBlocks.delete(event.blockId) && reasoningBlocks.size === 0) {
+              writeReasoningDone();
+            }
             continue;
           }
           if (event.type === 'block_signature') continue;

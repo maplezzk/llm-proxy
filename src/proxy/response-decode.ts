@@ -39,6 +39,10 @@ const parseArguments = (raw: unknown): Record<string, unknown> => {
   }
 };
 
+/** 内容块是否含工具调用（tool_use），用于从 output 推断 stop_reason。 */
+const hasToolUseBlock = (blocks: CanonicalBlock[]): boolean =>
+  blocks.some((b) => b.kind === 'tool_use');
+
 /** Anthropic stop_reason → IR StopReason。 */
 const mapAnthropicStop = (raw: unknown): StopReason => {
   const known: StopReason[] = [
@@ -112,7 +116,10 @@ const decodeAnthropic = (wire: Wire): CanonicalResponse => {
     }
   }
   const message: CanonicalMessage = { role: 'assistant', blocks };
-  const stopReason = mapAnthropicStop(wire.stop_reason);
+  // 优先信任上游 stop_reason；若上游误标 end_turn 但 content 含 tool_use 块，按内容纠正为 tool_use。
+  const upstreamStop = mapAnthropicStop(wire.stop_reason);
+  const stopReason: StopReason =
+    upstreamStop === 'end_turn' && hasToolUseBlock(blocks) ? 'tool_use' : upstreamStop;
 
   const usageWire = asObject(wire.usage);
   const inputTokens = asNumber(usageWire.input_tokens) ?? 0;
@@ -166,6 +173,8 @@ const decodeChat = (wire: Wire): CanonicalResponse => {
     });
   }
 
+  // Chat 上游 finish_reason 已含 'tool_calls'/'function_call' 分支（mapChatStop 映射为 tool_use），
+  // 无需像 Anthropic/Responses 那样从 output 内容推断。
   const stopReason = mapChatStop(choice.finish_reason);
   const message: CanonicalMessage = { role: 'assistant', blocks };
 
@@ -238,9 +247,13 @@ const decodeResponses = (wire: Wire): CanonicalResponse => {
     }
   }
 
+  // Responses API 不暴露 stop_reason，只给 status；需从 output 内容推断结束原因：
+  // 含 function_call / computer_call → tool_use（覆盖默认 end_turn）。
   const status = asString(wire.status);
-  const stopReason: StopReason =
+  const hasToolCall = hasToolUseBlock(blocks);
+  const baseStop: StopReason =
     status === 'incomplete' ? 'max_tokens' : status === 'failed' ? 'error' : 'end_turn';
+  const stopReason: StopReason = hasToolCall && baseStop === 'end_turn' ? 'tool_use' : baseStop;
   const finishReason: FinishReason =
     status === 'incomplete' ? 'incomplete' : status === 'failed' ? 'failed' : 'completed';
   const message: CanonicalMessage = { role: 'assistant', blocks };
