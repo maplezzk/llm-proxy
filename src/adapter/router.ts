@@ -1,4 +1,5 @@
 import type { ConfigStore } from '../config/store.js'
+import type { ProviderType } from '../config/types.js'
 import type { RouterResult } from '../proxy/types.js'
 import { getDefaultApiBase } from '../lib/http-utils.js'
 import { resolveProviderProtocol } from '../proxy/router.js'
@@ -11,7 +12,8 @@ export interface AdapterRouteResult {
 export function resolveAdapterRoute(
   store: ConfigStore,
   adapterName: string,
-  toolModelName: string
+  toolModelName: string,
+  preferredProtocol?: ProviderType
 ): AdapterRouteResult {
   const { config } = store.getConfig()
 
@@ -44,7 +46,10 @@ export function resolveAdapterRoute(
     )
   }
 
-  const protocol = resolveProviderProtocol(provider, model, adapter.type)
+  // 适配器配置中的 type 是默认入口协议；实际请求路径可能使用另一种协议，
+  // 此时应优先按请求路径选择同协议上游，避免无意义的格式转换。
+  const inboundType = preferredProtocol ?? adapter.type
+  const protocol = resolveProviderProtocol(provider, model, inboundType)
   const apiBase = protocol.apiBase ?? getDefaultApiBase(protocol.type)
 
   // Thinking config: 优先使用适配器映射上的配置，否则使用目标模型的配置
@@ -62,7 +67,7 @@ export function resolveAdapterRoute(
       max_tokens: adapter.max_tokens,
       stream: adapter.stream ?? null,  // 未配置时为 null（跟随/不注入）
     },
-    inboundType: adapter.type,
+    inboundType,
   }
 }
 

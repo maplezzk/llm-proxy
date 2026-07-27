@@ -147,6 +147,47 @@ describe('adapter/handlers', { timeout: 10000 }, () => {
     }
   })
 
+  it('按实际请求协议选择多协议供应商的同协议上游', async () => {
+    const config: Config = {
+      providers: [{
+        name: 'multi-protocol',
+        apiKey: 'sk-test',
+        protocols: [
+          { type: 'openai-responses', apiBase: `http://127.0.0.1:${PORT}` },
+          { type: 'anthropic', apiBase: `http://127.0.0.1:${PORT}` },
+        ],
+        models: [{ id: 'shared-model', protocols: ['openai-responses', 'anthropic'] }],
+      }],
+      adapters: [{
+        name: 'pi',
+        type: 'openai-responses',
+        models: [{ sourceModelId: 'HIGH', provider: 'multi-protocol', targetModelId: 'shared-model' }],
+      }],
+    }
+    const store = new ConfigStore('/fake', config)
+    const tracker = new StatusTracker()
+    const logger = new Logger()
+    const s = createProxyServer({
+      adminHost: '127.0.0.1', adminPort: PORT + 4,
+      proxyHost: '127.0.0.1', proxyPort: PORT + 4,
+      store, tracker, logger,
+    })
+    await new Promise<void>((resolve) => s.listen(PORT + 4, '127.0.0.1', resolve))
+
+    try {
+      mockRequests.length = 0
+      const resp = await fetch(`http://127.0.0.1:${PORT + 4}/pi/v1/messages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model: 'HIGH', messages: [{ role: 'user', content: 'hi' }] }),
+      })
+      assert.strictEqual(resp.status, 200)
+      assert.strictEqual(mockRequests.at(-1)?.url, '/v1/messages')
+    } finally {
+      s.close()
+    }
+  })
+
   it('请求体缺少 model 字段返回 400', async () => {
     const resp = await fetch(`http://127.0.0.1:${PORT + 1}/my-tool/v1/chat/completions`, {
       method: 'POST',
