@@ -15,5 +15,5 @@
     "types": ["node"]
   },
   "include": ["src/**/*.ts", "src/**/*.tsx", "test/**/*.ts", "e2e/**/*.ts", "drizzle.config.ts", "tsup.config.ts", "vitest.config.ts", "playwright.config.ts"],
-  "exclude": ["node_modules", "dist", "legacy-src", "legacy-test", "test/legacy", "admin-ui", "playwright-report", "test-results"]
+  "exclude": ["node_modules", "dist", "admin-ui", "playwright-report", "test-results"]
 }

@@ -1,10 +1,10 @@
 // P1.12 阶段 A：从 legacy-test/config/parser.test.ts 机械迁移（node:test → vitest）
-// 断言语义保持不变，仅替换测试栈与断言 API。
+// P1.15 切流：被测对象改指 src 新模块（src/config/parser.ts），断言语义不变。
 import { describe, it, expect, beforeAll } from 'vitest'
 import { writeFileSync, mkdtempSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { loadConfigFromYaml } from '../../../legacy-src/config/parser.js'
+import { loadConfigFromYaml } from '../../../src/config/parser.ts'
 
 let tmpDir: string
 

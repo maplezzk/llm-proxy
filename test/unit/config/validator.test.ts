@@ -1,7 +1,8 @@
-import { describe, it } from 'node:test'
-import assert from 'node:assert'
-import { validateConfig } from '../../src/config/validator.js'
-import type { Config } from '../../src/config/types.js'
+// P1.12 阶段 A：从 legacy-test/config/validator.test.ts 机械迁移（node:test → vitest）
+// P1.15 切流：被测对象改指 src 新模块（src/config/validator.ts），断言语义不变。
+import { describe, it, expect } from 'vitest'
+import { validateConfig } from '../../../src/config/validator.ts'
+import type { Config } from '../../../src/config/types.ts'
 
 function validConfig(): Config {
   return {
@@ -25,7 +26,7 @@ function validConfig(): Config {
 describe('config/validator', () => {
   it('有效配置通过校验', () => {
     const errors = validateConfig(validConfig())
-    assert.strictEqual(errors.length, 0)
+    expect(errors.length).toBe(0)
   })
 
   it('重复 Provider name 报错', () => {
@@ -36,7 +37,7 @@ describe('config/validator', () => {
       ],
     }
     const errors = validateConfig(config)
-    assert.ok(errors.some((e) => e.message.includes('重复')))
+    expect(errors.some((e) => e.message.includes('重复'))).toBeTruthy()
   })
 
   it('重复 Model name 报错', () => {
@@ -54,7 +55,7 @@ describe('config/validator', () => {
       ],
     }
     const errors = validateConfig(config)
-    assert.ok(errors.some((e) => e.message.includes('重复')))
+    expect(errors.some((e) => e.message.includes('重复'))).toBeTruthy()
   })
 
   it('空 API Key 报错', () => {
@@ -64,7 +65,7 @@ describe('config/validator', () => {
       ],
     }
     const errors = validateConfig(config)
-    assert.ok(errors.some((e) => e.message.includes('不能为空')))
+    expect(errors.some((e) => e.message.includes('不能为空'))).toBeTruthy()
   })
 
   it('无效 Provider type 报错', () => {
@@ -75,7 +76,7 @@ describe('config/validator', () => {
       ],
     }
     const errors = validateConfig(config)
-    assert.ok(errors.some((e) => e.message.includes('无效')))
+    expect(errors.some((e) => e.message.includes('无效'))).toBeTruthy()
   })
 
   it('同时多个错误返回所有错误', () => {
@@ -86,7 +87,7 @@ describe('config/validator', () => {
       ],
     }
     const errors = validateConfig(config as Config)
-    assert.ok(errors.length >= 2, `预期至少 2 个错误，实际 ${errors.length}: ${JSON.stringify(errors)}`)
+    expect(errors.length >= 2, `预期至少 2 个错误，实际 ${errors.length}: ${JSON.stringify(errors)}`).toBeTruthy()
   })
 
   it('Provider name 非法字符报错', () => {
@@ -96,7 +97,7 @@ describe('config/validator', () => {
       ],
     }
     const errors = validateConfig(config)
-    assert.ok(errors.some((e) => e.message.includes('非法字符')))
+    expect(errors.some((e) => e.message.includes('非法字符'))).toBeTruthy()
   })
 
   it('Model name 含冒号（微调模型）应通过', () => {
@@ -111,17 +112,17 @@ describe('config/validator', () => {
       ],
     }
     const errors = validateConfig(config)
-    assert.strictEqual(errors.length, 0)
+    expect(errors.length).toBe(0)
   })
 
   it('空 providers 数组应报错', () => {
     const errors = validateConfig({ providers: [] })
-    assert.strictEqual(errors.length, 0) // 空数组不报错，是有效配置
+    expect(errors.length).toBe(0) // 空数组不报错，是有效配置
   })
 
   it('providers 非数组应报错', () => {
     const errors = validateConfig({ providers: 'not-an-array' as unknown as [] })
-    assert.ok(errors.some((e) => e.message.includes('数组')))
+    expect(errors.some((e) => e.message.includes('数组'))).toBeTruthy()
   })
 
   it('Model 对象缺失 id 字段应报错', () => {
@@ -131,7 +132,7 @@ describe('config/validator', () => {
       ],
     }
     const errors = validateConfig(config)
-    assert.ok(errors.some((e) => e.message.includes('不能为空')), '空 id 字段应报错')
+    expect(errors.some((e) => e.message.includes('不能为空')), '空 id 字段应报错').toBeTruthy()
   })
 
   it('Anthropic 模型 valid thinking 配置通过', () => {
@@ -146,7 +147,7 @@ describe('config/validator', () => {
       ],
     }
     const errors = validateConfig(config)
-    assert.strictEqual(errors.length, 0)
+    expect(errors.length).toBe(0)
   })
 
   it('Anthropic 模型 budget_tokens 为 0 报错', () => {
@@ -161,7 +162,7 @@ describe('config/validator', () => {
       ],
     }
     const errors = validateConfig(config)
-    assert.ok(errors.some((e) => e.message.includes('budget_tokens、reasoning_effort 或 type')))
+    expect(errors.some((e) => e.message.includes('budget_tokens、reasoning_effort 或 type'))).toBeTruthy()
   })
 
   it('Anthropic 模型仅 type 配置通过', () => {
@@ -176,7 +177,7 @@ describe('config/validator', () => {
       ],
     }
     const errors = validateConfig(config)
-    assert.strictEqual(errors.length, 0)
+    expect(errors.length).toBe(0)
   })
 
   it('Anthropic 模型无效 type 报错', () => {
@@ -191,7 +192,7 @@ describe('config/validator', () => {
       ],
     }
     const errors = validateConfig(config)
-    assert.ok(errors.some((e) => e.message.includes('thinking.type')))
+    expect(errors.some((e) => e.message.includes('thinking.type'))).toBeTruthy()
   })
 
   it('Anthropic 模型设置 reasoning_effort 通过', () => {
@@ -206,7 +207,7 @@ describe('config/validator', () => {
       ],
     }
     const errors = validateConfig(config)
-    assert.strictEqual(errors.length, 0)
+    expect(errors.length).toBe(0)
   })
 
   it('OpenAI 模型 valid reasoning_effort 通过', () => {
@@ -221,7 +222,7 @@ describe('config/validator', () => {
       ],
     }
     const errors = validateConfig(config)
-    assert.strictEqual(errors.length, 0)
+    expect(errors.length).toBe(0)
   })
 
   it('reasoning_effort 支持 xhigh 和 max', () => {
@@ -237,7 +238,7 @@ describe('config/validator', () => {
         ],
       }
       const errors = validateConfig(config)
-      assert.strictEqual(errors.length, 0, `${value} should be valid`)
+      expect(errors.length, `${value} should be valid`).toBe(0)
     }
   })
 
@@ -253,7 +254,7 @@ describe('config/validator', () => {
       ],
     }
     const errors = validateConfig(config)
-    assert.ok(errors.some((e) => e.message.includes('reasoning_effort 必须是 low、medium、high、xhigh 或 max')))
+    expect(errors.some((e) => e.message.includes('reasoning_effort 必须是 low、medium、high、xhigh 或 max'))).toBeTruthy()
   })
 
   it('OpenAI 模型不能设置 budget_tokens', () => {
@@ -268,6 +269,6 @@ describe('config/validator', () => {
       ],
     }
     const errors = validateConfig(config)
-    assert.ok(errors.some((e) => e.message.includes('不支持 budget_tokens')))
+    expect(errors.some((e) => e.message.includes('不支持 budget_tokens'))).toBeTruthy()
   })
 })

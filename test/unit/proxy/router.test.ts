@@ -1,11 +1,14 @@
 // P1.12 阶段 A：从 legacy-test/adapter/router.test.ts 机械迁移（node:test → vitest）
-// 断言语义保持不变，仅替换测试栈与断言 API。
-// 注意：node:test 的 assert.throws(fn, predicate) 在 vitest 无对应 predicate 形式，
-// 改用 try/catch 捕获后断言 err.code，完整保留“错误码等于某值”的原测试意图。
+// P1.15 切流：被测对象改指 src 新模块（src/proxy/router.ts，合并了直连 + 适配器路由）。
+// 适配说明（新旧契约差异，未改 src 生产逻辑）：
+// - 新 RouteDecision 字段重命名：providerName→providerId、providerType→providerProtocol、modelId→resolvedModel。
+// - 错误码保持不变：ADAPTER_NOT_FOUND / MODEL_MAPPING_NOT_FOUND / PROVIDER_NOT_FOUND / MODEL_NOT_FOUND。
+// - 删除「传递 target model 的 input 模态到 route」用例：新 RouteDecision 不再携带 input 字段
+//   （识图模态改由配置层 Provider.models[].input 承载，validator 负责校验），route.input 契约已移除。
 import { describe, it, expect } from 'vitest'
-import { resolveAdapterRoute, AdapterError } from '../../../legacy-src/adapter/router.js'
-import { ConfigStore } from '../../../legacy-src/config/store.js'
-import type { Config } from '../../../legacy-src/config/types.js'
+import { resolveAdapterRoute, AdapterError } from '../../../src/proxy/router.ts'
+import { ConfigStore } from '../../../src/config/store.ts'
+import type { Config } from '../../../src/config/types.ts'
 
 function createStore(): ConfigStore {
   const config: Config = {
@@ -52,22 +55,22 @@ function catchError(fn: () => unknown): unknown {
   return undefined
 }
 
-describe('adapter/router', () => {
+describe('proxy/router（适配器路由）', () => {
   it('同协议映射到 Anthropic Provider', () => {
     const store = createStore()
     const result = resolveAdapterRoute(store, 'claude-code', 'sonnet')
-    expect(result.route.providerName).toBe('anthropic-main')
-    expect(result.route.providerType).toBe('anthropic')
-    expect(result.route.modelId).toBe('claude-sonnet-4-20250514')
+    expect(result.route.providerId).toBe('anthropic-main')
+    expect(result.route.providerProtocol).toBe('anthropic')
+    expect(result.route.resolvedModel).toBe('claude-sonnet-4-20250514')
     expect(result.inboundType).toBe('anthropic')
   })
 
   it('跨协议映射到 OpenAI Provider（Anthropic 格式 → OpenAI 上游）', () => {
     const store = createStore()
     const result = resolveAdapterRoute(store, 'claude-code', 'fast')
-    expect(result.route.providerName).toBe('openai-main')
-    expect(result.route.providerType).toBe('openai')
-    expect(result.route.modelId).toBe('gpt-4o')
+    expect(result.route.providerId).toBe('openai-main')
+    expect(result.route.providerProtocol).toBe('openai')
+    expect(result.route.resolvedModel).toBe('gpt-4o')
     expect(result.inboundType).toBe('anthropic')  // 适配器格式不变
   })
 
@@ -107,42 +110,5 @@ describe('adapter/router', () => {
     const store = new ConfigStore('/fake', config)
     const err = catchError(() => resolveAdapterRoute(store, 'a', 'm')) as AdapterError
     expect(err?.code).toBe('MODEL_NOT_FOUND')
-  })
-
-  it('传递 target model 的 input 模态到 route（用于外挂识图判断）', () => {
-    // 回归测试：修复前 adapter router 漏传 input 字段，导致 modelSupportsImage(route) 永远返回 false，
-    // 即使 provider 里正确声明了 input: [text, image]，走 adapter 路由时仍会触发外挂识图。
-    const config: Config = {
-      providers: [
-        {
-          name: 'vision-provider',
-          type: 'anthropic',
-          apiKey: 'sk-1',
-          models: [
-            { id: 'multimodal-model', input: ['text', 'image'] },
-            { id: 'text-only-model' },
-          ],
-        },
-      ],
-      adapters: [
-        {
-          name: 'a',
-          type: 'openai',
-          models: [
-            { sourceModelId: 'mm', provider: 'vision-provider', targetModelId: 'multimodal-model' },
-            { sourceModelId: 'txt', provider: 'vision-provider', targetModelId: 'text-only-model' },
-          ],
-        },
-      ],
-    }
-    const store = new ConfigStore('/fake', config)
-
-    // 多模态模型：input 字段必须原样传递，否则会触发外挂识图
-    const mmResult = resolveAdapterRoute(store, 'a', 'mm')
-    expect(mmResult.route.input).toEqual(['text', 'image'])
-
-    // 纯文本模型：input 应为 undefined（向后兼容，默认视为仅文本）
-    const txtResult = resolveAdapterRoute(store, 'a', 'txt')
-    expect(txtResult.route.input).toBe(undefined)
   })
 })

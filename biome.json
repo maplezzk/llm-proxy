@@ -3,7 +3,7 @@
   "vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
   "files": {
     "ignoreUnknown": false,
-    "ignore": ["node_modules", "dist", "drizzle", "admin-ui/dist", "legacy-src", "legacy-test", "playwright-report", "test-results"]
+    "ignore": ["node_modules", "dist", "drizzle", "admin-ui/dist", "playwright-report", "test-results"]
   },
   "organizeImports": { "enabled": true },
   "linter": {
