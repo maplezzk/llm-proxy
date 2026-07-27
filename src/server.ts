@@ -1,26 +1,29 @@
+import { randomUUID } from 'node:crypto';
 /**
- * P0 Hono 服务装配：
- *   middleware chain: req-id → auth（可选 PROXY_KEY）→ request log → 路由
+ * Hono 服务装配（P1.11）：
+ *   middleware chain: req-id → request log → 路由
  *
  * Endpoints:
- *   GET  /health      JSON 状态
- *   GET  /sse         server-sent events（zod 校验 count / intervalMs）
- *   POST /proxy-sse   上游 SSE 透传（fetch + zero-copy pipe）
- *   GET  /db/insert   Drizzle 探针插入（需要 DATABASE_URL）
+ *   GET  /health                 JSON 状态
+ *   GET  /db/insert              Drizzle 探针插入（需要 DATABASE_URL）
+ *   POST /v1/messages            Anthropic 代理入站
+ *   POST /v1/chat/completions    OpenAI Chat 代理入站
+ *   POST /v1/responses           OpenAI Responses 代理入站
+ *   POST /{name}/v1/*            适配器虚拟端点
+ *
+ * 代理认证在管线 parseAndAuth 中执行（config.proxyKey 优先，env PROXY_KEY 回退）；
+ * P0 的 /sse、/proxy-sse 占位路由已移除。
  */
 import { serve } from '@hono/node-server';
-import { Hono, type Context, type Next } from 'hono';
-import { randomUUID } from 'node:crypto';
-import { log } from './lib/logger.js';
-import { loadEnv } from './config/env.js';
-import { handleHealth } from './routes/health.js';
-import { handleSse } from './routes/sse.js';
-import { handleProxySse } from './routes/proxy-sse.js';
+import { type Context, Hono, type Next } from 'hono';
+import { ConfigStore } from './config/store.ts';
+import { log } from './lib/logger.ts';
+import type { PipelineDeps } from './proxy/pipeline.ts';
+import { createProxyRoutes } from './proxy/routes.ts';
 import { handleDbInsert } from './routes/db-insert.js';
+import { handleHealth } from './routes/health.js';
 
 const HEADER_REQ_ID = 'x-request-id';
-const HEADER_AUTH = 'authorization';
-const HEADER_API_KEY = 'x-api-key';
 
 const reqIdMiddleware = async (c: Context, next: Next): Promise<void> => {
   const incoming = c.req.header(HEADER_REQ_ID);
@@ -45,48 +48,43 @@ const requestLogMiddleware = async (c: Context, next: Next): Promise<void> => {
   );
 };
 
-const proxyKeyAuthMiddleware = async (c: Context, next: Next): Promise<Response | undefined> => {
-  const env = loadEnv();
-  if (!env.PROXY_KEY) {
-    await next();
-    return undefined;
-  }
-  const auth = c.req.header(HEADER_AUTH);
-  const provided =
-    auth && auth.startsWith('Bearer ') ? auth.slice(7) : (c.req.header(HEADER_API_KEY) ?? '');
-  if (provided !== env.PROXY_KEY) {
-    return c.json({ error: 'invalid proxy key' }, 401);
-  }
-  await next();
-  return undefined;
-};
+export interface BuildAppOptions {
+  /** 管线依赖（store/usage/capture/logger）；不传则用空配置 store（所有模型 404）。 */
+  pipeline?: PipelineDeps;
+}
 
-export const buildApp = (): Hono => {
+export const buildApp = (opts: BuildAppOptions = {}): Hono => {
   const app = new Hono();
   app.use('*', reqIdMiddleware);
   app.use('*', requestLogMiddleware);
-  app.use('/proxy-sse', proxyKeyAuthMiddleware);
 
   app.get('/health', handleHealth);
-  app.get('/sse', handleSse);
-  app.post('/proxy-sse', handleProxySse);
   app.get('/db/insert', handleDbInsert);
+
+  // 代理管线端点（直连 + 适配器）
+  const deps: PipelineDeps = opts.pipeline ?? {
+    store: emptyStore(),
+    logger: log,
+  };
+  app.route('/', createProxyRoutes({ logger: log, ...deps }));
+
   return app;
 };
+
+/** 无配置文件回退：空配置 store（所有模型路由 404）。 */
+const emptyStore = (): ConfigStore => ConfigStore.fromMemory({ providers: [] });
 
 export interface StartServerOptions {
   port: number;
   host: string;
+  pipeline?: PipelineDeps;
 }
 
 export const startServer = (opts: StartServerOptions): { server: ReturnType<typeof serve> } => {
-  const app = buildApp();
-  const server = serve(
-    { fetch: app.fetch, port: opts.port, hostname: opts.host },
-    (info) => {
-      log.info({ port: info.port, host: info.address, pid: process.pid }, 'server listening');
-    },
-  );
+  const app = buildApp({ pipeline: opts.pipeline });
+  const server = serve({ fetch: app.fetch, port: opts.port, hostname: opts.host }, (info) => {
+    log.info({ port: info.port, host: info.address, pid: process.pid }, 'server listening');
+  });
   return { server };
 };
 
