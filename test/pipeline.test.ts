@@ -601,7 +601,10 @@ describe('router（RouteDecision 解析）', () => {
       },
     ];
     const s = ConfigStore.fromMemory(config);
-    const { route, inboundType } = resolveAdapterRoute(s, 'mytool', 'GPT');
+    const { routes, inboundType } = resolveAdapterRoute(s, 'mytool', 'GPT');
+    expect(routes).toHaveLength(1);
+    const route = routes[0];
+    if (!route) throw new Error('test setup: expected at least one route');
     expect(route.resolvedModel).toBe('gpt-target');
     expect(route.thinking).toMatchObject({ effort: 'low', source: 'route' });
     expect(route.maxTokensOverride).toBe(1234);
