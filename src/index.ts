@@ -29,7 +29,6 @@ import { UsageStore } from './status/usage-store.ts';
 
 const DEFAULT_PID_PATH = '/tmp/llm-proxy.pid';
 const DEFAULT_HOST = '127.0.0.1';
-const DEFAULT_PORT = 9000;
 const PID_RESTART_GRACE_MS = 300;
 const VALID_PORT_MIN = 1;
 const VALID_PORT_MAX = 65535;
@@ -84,9 +83,13 @@ const isAlive = (pid: number): boolean => {
   }
 };
 
-const parseListenAddress = (host: string, portRaw: string): { host: string; port: number } => {
+const parseListenAddress = (host: string, portRaw?: string): { host: string; port?: number } => {
   if (!host || host.trim().length === 0) {
     throw new Error('host must not be empty');
+  }
+  // 未传 --port 时返回 undefined，由 executeStart 按 config.port → PORT env → 9000 兜底
+  if (portRaw === undefined || portRaw === '') {
+    return { host, port: undefined };
   }
   const port = Number(portRaw);
   if (Number.isNaN(port) || port < VALID_PORT_MIN || port > VALID_PORT_MAX) {
@@ -139,7 +142,7 @@ const buildPipelineDeps = async (configPath: string): Promise<PipelineDeps> => {
 
 export const executeStart = async (opts: {
   host: string;
-  port: number;
+  port?: number;
   pidPath: string;
   skipMigrate: boolean;
   configPath: string;
@@ -148,12 +151,15 @@ export const executeStart = async (opts: {
     await runStartupMigration();
   }
   const pipeline = await buildPipelineDeps(opts.configPath);
-  const { server } = startServer({ port: opts.port, host: opts.host, pipeline });
-  writeState(opts.pidPath, { pid: process.pid, port: opts.port, startedAt: Date.now() });
-  log.info(
-    { pid: process.pid, port: opts.port, host: opts.host, pidPath: opts.pidPath },
-    'llm-proxy started',
-  );
+  // 端口优先级：--port 显式参数 > config.yaml port > PORT 环境变量 > 默认 9000（loadEnv 兜底）
+  const { config } = pipeline.store.getConfig();
+  const port = opts.port ?? config.port ?? loadEnv().PORT;
+  if (!Number.isInteger(port) || port < VALID_PORT_MIN || port > VALID_PORT_MAX) {
+    throw new Error(`invalid port: ${port}`);
+  }
+  const { server } = startServer({ port, host: opts.host, pipeline });
+  writeState(opts.pidPath, { pid: process.pid, port, startedAt: Date.now() });
+  log.info({ pid: process.pid, port, host: opts.host, pidPath: opts.pidPath }, 'llm-proxy started');
   registerShutdownHandlers(opts.pidPath);
   void server;
   await blockForever();
@@ -188,7 +194,10 @@ const startCommand = defineCommand({
   meta: { name: 'start', description: '启动 llm-proxy HTTP 服务' },
   args: {
     host: { type: 'string', default: DEFAULT_HOST },
-    port: { type: 'string', default: String(DEFAULT_PORT) },
+    port: {
+      type: 'string',
+      description: '监听端口（缺省依次取 config.yaml port、PORT 环境变量，最后 9000）',
+    },
     'pid-path': { type: 'string', default: DEFAULT_PID_PATH },
     'skip-migrate': { type: 'boolean', default: false },
     config: { type: 'string', default: '' },
@@ -218,7 +227,10 @@ const restartCommand = defineCommand({
   meta: { name: 'restart', description: '重启 llm-proxy' },
   args: {
     host: { type: 'string', default: DEFAULT_HOST },
-    port: { type: 'string', default: String(DEFAULT_PORT) },
+    port: {
+      type: 'string',
+      description: '监听端口（缺省依次取 config.yaml port、PORT 环境变量，最后 9000）',
+    },
     'pid-path': { type: 'string', default: DEFAULT_PID_PATH },
     config: { type: 'string', default: '' },
   },

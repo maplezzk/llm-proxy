@@ -148,7 +148,7 @@ YAML 为 snake_case，运行时为 camelCase（`config/parser.ts` 互转）。
 
 ```yaml
 log_level: debug            # debug|info|warn|error
-port: 9000                  # 可选，默认 9000
+port: 9000                  # 可选；监听端口优先级：--port 参数 > 本字段 > PORT 环境变量 > 默认 9000
 proxy_key: sk-xxx           # 可选，设置后 /v1/* 与适配器端点需认证
 capture_max_size: 100       # 可选，抓包缓冲条数
 providers:
