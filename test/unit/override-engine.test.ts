@@ -418,14 +418,17 @@ describe('unit/override-engine: applyOverrides', () => {
     expect(result.body.hit).toBe(true);
   });
 
-// =====================================================================
-// A1 回归测试：原型链污染防护（__proto__ / constructor / prototype）
-// =====================================================================
+  // =====================================================================
+  // A1 回归测试：原型链污染防护（__proto__ / constructor / prototype）
+  // =====================================================================
 
   it('A1: set __proto__.polluted 拒绝（原型链污染防护）', () => {
     const body: WireBody = { model: 'x' };
     const rules: OverrideRule[] = [
-      { scope: 'adapter-alias', body: [{ op: 'set', path: '__proto__.polluted', value: 'hacked' }] },
+      {
+        scope: 'adapter-alias',
+        body: [{ op: 'set', path: '__proto__.polluted', value: 'hacked' }],
+      },
     ];
     const result = applyOverrides(body, {}, rules, baseCtx, silentLogger);
     // A1: Object.prototype 不应被污染（跨请求）
@@ -469,6 +472,7 @@ describe('unit/override-engine: applyOverrides', () => {
     const body: WireBody = Object.create(null) as WireBody;
     (body as Record<string, unknown>).ownProp = 'mine';
     // __proto__ 作为自有键（Object.create(null) 无原型）
+    // biome-ignore lint/complexity/useLiteralKeys: __proto__ 必须用括号访问（字面量 .__proto__ 会设置原型而非自有键）
     (body as Record<string, unknown>)['__proto__'] = 'should_not_be_seen';
     const rules: OverrideRule[] = [
       { scope: 'adapter-alias', body: [{ op: 'set', path: 'ownProp', value: 'overwritten' }] },
@@ -477,6 +481,7 @@ describe('unit/override-engine: applyOverrides', () => {
     expect((result.body as Record<string, unknown>).ownProp).toBe('overwritten');
     // A1：__proto__ 保留为自有键（set ownProp 不应改 __proto__）
     expect(Object.hasOwn(result.body, '__proto__')).toBe(true);
+    // biome-ignore lint/complexity/useLiteralKeys: __proto__ 必须用括号访问
     expect((result.body as Record<string, unknown>)['__proto__']).toBe('should_not_be_seen');
   });
 
@@ -564,7 +569,10 @@ describe('unit/override-engine: applyOverrides', () => {
     const body: WireBody = { model: 'x' };
     const ctx = { ...baseCtx, reasoningDisabled: true };
     const rules: OverrideRule[] = [
-      { scope: 'adapter-alias', body: [{ op: 'set', path: 'reasoning', value: { effort: 'high' } }] },
+      {
+        scope: 'adapter-alias',
+        body: [{ op: 'set', path: 'reasoning', value: { effort: 'high' } }],
+      },
     ];
     const result = applyOverrides(body, {}, rules, ctx, silentLogger);
     expect((result.body as Record<string, unknown>).reasoning).toBeUndefined();
@@ -629,7 +637,13 @@ describe('unit/override-engine: applyOverrides', () => {
         headers: [{ op: 'set', name: 'X-Block-Also', value: 'blocked' }],
       },
     ];
-    const result = applyOverrides({ model: 'x', stream: true }, headers, rules, baseCtx, silentLogger);
+    const result = applyOverrides(
+      { model: 'x', stream: true },
+      headers,
+      rules,
+      baseCtx,
+      silentLogger,
+    );
     expect(result.headers['X-Block-Also']).toBeUndefined();
   });
 
@@ -668,7 +682,7 @@ describe('unit/override-engine: applyOverrides', () => {
     expect(result.error).toContain('unclosed string literal');
   });
 
-  it('A5: 未闭合单引号 \'world 报错（matched: false）', () => {
+  it("A5: 未闭合单引号 'world 报错（matched: false）", () => {
     const result = evaluateCondition("'world", baseCtx);
     expect(result.matched).toBe(false);
     expect(result.error).toContain('unclosed string literal');
@@ -749,7 +763,7 @@ describe('unit/override-engine: applyOverrides', () => {
 
   it('A8: when 括号深度超过 MAX_BRACKET_DEPTH（32）被拒绝', () => {
     const depth = 35;
-    const expr = '('.repeat(depth) + 'true' + ')'.repeat(depth);
+    const expr = `${'('.repeat(depth)}true${')'.repeat(depth)}`;
     const result = evaluateCondition(expr, baseCtx);
     expect(result.matched).toBe(false);
     expect(result.error).toContain('bracket depth');

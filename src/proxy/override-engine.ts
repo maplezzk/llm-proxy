@@ -361,10 +361,11 @@ type ExprToken =
 const tokenizeExpression = (input: string): ExprToken[] => {
   // A8: 字节长度限制
   if (new TextEncoder().encode(input).length > MAX_WHEN_BYTES) {
-    throw new OverrideSkipError(
-      `when expression exceeds ${MAX_WHEN_BYTES} bytes`,
-      { kind: 'body', name: 'tokenize', target: input.slice(0, 64) },
-    );
+    throw new OverrideSkipError(`when expression exceeds ${MAX_WHEN_BYTES} bytes`, {
+      kind: 'body',
+      name: 'tokenize',
+      target: input.slice(0, 64),
+    });
   }
 
   const tokens: ExprToken[] = [];
@@ -395,10 +396,11 @@ const tokenizeExpression = (input: string): ExprToken[] => {
       }
       // A5: 引号必须闭合
       if (j >= input.length || input[j] !== quote) {
-        throw new OverrideSkipError(
-          `unclosed string literal: "${input.slice(i, j + 1)}"`,
-          { kind: 'body', name: 'tokenize', target: input.slice(i, i + 32) },
-        );
+        throw new OverrideSkipError(`unclosed string literal: "${input.slice(i, j + 1)}"`, {
+          kind: 'body',
+          name: 'tokenize',
+          target: input.slice(i, i + 32),
+        });
       }
       tokens.push({ kind: 'string', value: input.slice(i + 1, j) });
       i = j + 1;
@@ -574,12 +576,18 @@ const evaluateExpression = (rendered: string): boolean => {
   const result = parser.parseOr();
   // A5: 检查是否消费了所有 token（EOF）
   if (parser.pos !== tokens.length) {
-    const remaining = tokens.slice(parser.pos).map((t) => (t as { kind: string }).kind).join(' ');
-    throw new OverrideSkipError(`trailing tokens after valid expression: ${remaining || 'unknown'}`, {
-      kind: 'body',
-      name: 'evaluate',
-      target: rendered.slice(0, 64),
-    });
+    const remaining = tokens
+      .slice(parser.pos)
+      .map((t) => (t as { kind: string }).kind)
+      .join(' ');
+    throw new OverrideSkipError(
+      `trailing tokens after valid expression: ${remaining || 'unknown'}`,
+      {
+        kind: 'body',
+        name: 'evaluate',
+        target: rendered.slice(0, 64),
+      },
+    );
   }
   return result;
 };
@@ -621,21 +629,22 @@ export interface EvaluateConditionResult {
  * A5: 尾随 token / 未闭合引号 / 括号不匹配抛 OverrideSkipError → error。
  * A7: 条件求值失败返回 { matched: false, error }，由 applyOverrides 统一记 warn。
  */
-export const evaluateCondition = (template: string, ctx: OverrideContext): EvaluateConditionResult => {
+export const evaluateCondition = (
+  template: string,
+  ctx: OverrideContext,
+): EvaluateConditionResult => {
   let rendered: string;
   try {
     rendered = renderTemplate(template, ctx);
   } catch (err) {
-    const reason =
-      err instanceof Error ? err.message : String(err);
+    const reason = err instanceof Error ? err.message : String(err);
     return { matched: false, error: `template render failed: ${reason}` };
   }
   try {
     const result = evaluateExpression(rendered);
     return { matched: result };
   } catch (err) {
-    const reason =
-      err instanceof Error ? err.message : String(err);
+    const reason = err instanceof Error ? err.message : String(err);
     return { matched: false, error: `expression evaluation failed: ${reason}` };
   }
 };
