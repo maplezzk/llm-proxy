@@ -1,7 +1,6 @@
 import type { CanonicalBlock, CanonicalMessage, CanonicalRequest, CanonicalTool, SystemBlock } from '../../ir/types.ts';
-import type { OutboundAdapter, RouteDecision, WireBody } from '../index.ts';
+import type { OutboundAdapter, WireBody } from '../index.ts';
 
-const effortBudget: Record<string, number> = { low: 1024, medium: 4096, high: 16384, xhigh: 32768, max: 65536 };
 const textOf = (blocks: CanonicalBlock[]) => blocks.filter((b): b is Extract<CanonicalBlock, {kind:'text'}> => b.kind === 'text').map(b => b.text).join('');
 const image = (b: Extract<CanonicalBlock,{kind:'image'}>) => ({ type: 'image', source: b.source.kind === 'url' ? { type:'url', url:b.source.url } : b.source.kind === 'base64' ? { type:'base64', media_type:b.source.mediaType, data:b.source.data } : { type:'file', file_id:b.source.fileId } });
 const anthropicBlocks = (blocks: CanonicalBlock[]): unknown[] => blocks.map(b => {
@@ -26,19 +25,17 @@ const choice = (c: CanonicalRequest['toolChoice']) => !c ? undefined : c.kind ==
 const system = (s: CanonicalRequest['system']) => typeof s === 'string' ? s : s?.map((b: SystemBlock) => b.kind === 'text' ? {type:'text',text:b.text,...(b.cacheControl ? {cache_control:b.cacheControl} : {})} : image(b as Extract<CanonicalBlock,{kind:'image'}>));
 const msg = (m: CanonicalMessage) => ({ role:m.role === 'developer' ? 'user' : m.role, content: anthropicBlocks(m.blocks) });
 
-export const anthropicOutbound: OutboundAdapter = { name:'anthropic', encode(req, route): WireBody {
-  // 字段级优先级（legacy injectThinkingConfig）：route.budget > route.effort 查表 > client.effort 查表 > client.budget
-  const client = req.reasoning;
-  const cfg = route.thinking;
-  const budget = cfg.budgetTokens ?? (cfg.effort ? effortBudget[cfg.effort] : undefined) ?? (client?.effort ? effortBudget[client.effort] : undefined) ?? client?.budgetTokens;
-  const max = Math.max(req.generation.maxTokens ?? route.maxTokensOverride ?? 16384, budget ?? 0);
+export const anthropicOutbound: OutboundAdapter = { name:'anthropic', encode(req): WireBody {
+  const reasoning = req.reasoning;
+  const max = req.generation.maxTokens ?? 16384;
   const body: WireBody = { model:req.resolvedModel?.modelId ?? req.logicalModel, max_tokens:max, messages:req.messages.filter(m => m.role !== 'system').map(msg) };
   const s = system(req.system); if (s !== undefined) body.system = s;
   if (req.generation.temperature !== undefined) body.temperature=req.generation.temperature;
   if (req.generation.topP !== undefined) body.top_p=req.generation.topP;
   if (req.generation.stopSequences) body.stop_sequences=req.generation.stopSequences;
   if (req.generation.stream) body.stream=true;
-  if (budget) body.thinking={type:'enabled',budget_tokens:budget}; else if (cfg.type) body.thinking={type:cfg.type};
+  if (reasoning?.enabled !== false && reasoning?.budgetTokens !== undefined) body.thinking={type:reasoning.type ?? 'enabled',budget_tokens:reasoning.budgetTokens};
+  else if (reasoning?.enabled !== false && reasoning?.type && reasoning.type !== 'disabled') body.thinking={type:reasoning.type};
   const ts=tools(req.tools); if(ts) body.tools=ts; const tc=choice(req.toolChoice); if(tc) body.tool_choice=tc;
   return body;
 } };

@@ -52,6 +52,7 @@ import type {
   ClientProtocol,
   UsageRecord,
 } from './ir/types.ts';
+import { resolveReasoning } from './reasoning-resolver.ts';
 import { decodeUpstreamResponse, extractWireUsage } from './response-decode.ts';
 import { hasExplicitThinking, resolveStreamPolicy } from './router.ts';
 import { anthropicStreamInboundAdapter } from './stream/inbound/anthropic.ts';
@@ -60,6 +61,8 @@ import { openAIResponsesStreamInboundAdapter } from './stream/inbound/openai-res
 import { anthropicStreamOutboundAdapter } from './stream/outbound/anthropic.ts';
 import { openAIChatStreamOutboundAdapter } from './stream/outbound/openai-chat.ts';
 import { openAIResponsesStreamOutboundAdapter } from './stream/outbound/openai-responses.ts';
+
+const ANTHROPIC_DEFAULT_MAX_TOKENS = 16384;
 
 // --- 适配器注册表（按协议索引；基线适配器只读消费） ---
 
@@ -195,8 +198,7 @@ export const parseAndAuth = (
  * - resolvedModel：路由解析结果（不覆盖 logicalModel）；
  * - generation.stream：按 streamPolicy + 客户端原值解析（设计 §7.3 不变量 10）；
  * - generation.maxTokens：0/负数 → 不传（legacy sanitizeMaxTokens）；
- * - reasoning：保留客户端 reasoning 原样透传；字段级优先级（route > client）由各出站适配器
- *   按目标协议解析（legacy injectThinkingConfig 字段级合并）。
+ * - reasoning：由 resolver 统一完成 client / route 字段仲裁、effort→budget 映射与预算钳制。
  */
 export const applyRouteDecision = (
   req: CanonicalRequest,
@@ -210,6 +212,9 @@ export const applyRouteDecision = (
   // 路由级 max_tokens 覆盖：仅 client 未传（或传 0 被规整掉）时生效（legacy sanitizeMaxTokens）。
   // 在此层兜底是因为 chat/responses 出站适配器不读 route.maxTokensOverride（anthropic 出站自带同语义兜底，结果一致）。
   const resolvedMaxTokens = maxTokens ?? route.maxTokensOverride;
+  const reasoningMaxTokens =
+    resolvedMaxTokens ??
+    (route.providerProtocol === 'anthropic' ? ANTHROPIC_DEFAULT_MAX_TOKENS : undefined);
   return {
     ...req,
     resolvedModel: {
@@ -225,7 +230,7 @@ export const applyRouteDecision = (
         : { maxTokens: undefined }),
       stream: resolveStreamPolicy(route.streamPolicy, clientStream),
     },
-    reasoning: req.reasoning,
+    reasoning: resolveReasoning(req.reasoning, route.thinking, undefined, reasoningMaxTokens),
   };
 };
 

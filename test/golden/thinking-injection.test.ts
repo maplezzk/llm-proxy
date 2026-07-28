@@ -3,7 +3,7 @@
  * 用例移植自 legacy-test/proxy/translation.test.ts「thinking 配置注入」describe，
  * 改写为新架构接口（test/helpers/translate.ts），断言保持 legacy 行为规格。
  *
- * 验收 gap5（reasoning 字段级合并）：route.budget > route.effort 查表 > client.effort 查表。
+ * 验收 R13-R15：resolver 统一仲裁，并保证 Anthropic budget_tokens < max_tokens。
  */
 import { describe, expect, it } from 'vitest';
 import { makeRoute, type LegacyRouteLike } from '../helpers/route.ts';
@@ -36,14 +36,15 @@ describe('golden/thinking 配置注入（行为等价）', () => {
     expect(body.max_tokens).toBe(10000);
   });
 
-  it('同协议 Anthropic 客户端 max_tokens < budget 被覆盖', () => {
+  it('同协议 Anthropic 客户端 max_tokens < budget 时钳制 budget', () => {
     const route = makeRoute({ ...anthropicRoute, thinking: { budget_tokens: 8192 } });
     const { body } = translate('anthropic', route, {
       model: 'claude-sonnet',
       messages: [{ role: 'user', content: 'hi' }],
       max_tokens: 100,
     });
-    expect(body.max_tokens).toBe(8192);
+    expect(body.thinking).toEqual({ type: 'enabled', budget_tokens: 99 });
+    expect(body.max_tokens).toBe(100);
   });
 
   it('同协议 OpenAI 注入 reasoning_effort', () => {
@@ -65,24 +66,24 @@ describe('golden/thinking 配置注入（行为等价）', () => {
     expect(body.max_tokens).toBe(16384);
   });
 
-  it('跨协议 OpenAI→Anthropic 客户端 max_tokens < budget 被覆盖', () => {
+  it('跨协议 OpenAI→Anthropic 客户端 max_tokens < budget 时钳制 budget', () => {
     const route = makeRoute({ ...anthropicRoute, thinking: { budget_tokens: 8192 } });
     const { body } = translate('openai', route, {
       model: 'claude-sonnet',
       messages: [{ role: 'user', content: 'hi' }],
       max_tokens: 100,
     });
-    expect(body.thinking).toEqual({ type: 'enabled', budget_tokens: 8192 });
-    expect(body.max_tokens).toBe(8192);
+    expect(body.thinking).toEqual({ type: 'enabled', budget_tokens: 99 });
+    expect(body.max_tokens).toBe(100);
   });
 
-  it('跨协议 route reasoning_effort 查表转 budget（high→16384）', () => {
+  it('跨协议 route reasoning_effort 查表并钳制（high→16383）', () => {
     const route = makeRoute({ ...anthropicRoute, thinking: { reasoning_effort: 'high' } });
     const { body } = translate('openai', route, {
       model: 'claude-sonnet',
       messages: [{ role: 'user', content: 'hi' }],
     });
-    expect(body.thinking).toEqual({ type: 'enabled', budget_tokens: 16384 });
+    expect(body.thinking).toEqual({ type: 'enabled', budget_tokens: 16383 });
     expect(body.max_tokens).toBe(16384);
   });
 
@@ -94,8 +95,8 @@ describe('golden/thinking 配置注入（行为等价）', () => {
       messages: [{ role: 'user', content: 'hi' }],
       reasoning_effort: 'xhigh',
     });
-    expect(body.thinking).toEqual({ type: 'enabled', budget_tokens: 32768 });
-    expect(body.max_tokens).toBe(32768);
+    expect(body.thinking).toEqual({ type: 'enabled', budget_tokens: 16383 });
+    expect(body.max_tokens).toBe(16384);
   });
 
   it('同协议 Anthropic reasoning_effort 查表（max→65536）', () => {
@@ -104,8 +105,8 @@ describe('golden/thinking 配置注入（行为等价）', () => {
       model: 'claude-sonnet',
       messages: [{ role: 'user', content: 'hi' }],
     });
-    expect(body.thinking).toEqual({ type: 'enabled', budget_tokens: 65536 });
-    expect(body.max_tokens).toBe(65536);
+    expect(body.thinking).toEqual({ type: 'enabled', budget_tokens: 16383 });
+    expect(body.max_tokens).toBe(16384);
   });
 
   it('跨协议 Anthropic→OpenAI 注入 reasoning_effort', () => {
@@ -116,6 +117,25 @@ describe('golden/thinking 配置注入（行为等价）', () => {
       max_tokens: 1000,
     });
     expect(body.reasoning_effort).toBe('high');
+  });
+
+  it.each([
+    ['anthropic', anthropicRoute],
+    ['openai', openaiRoute],
+    ['openai-responses', { ...openaiRoute, providerType: 'openai-responses' as const }],
+  ])('客户端 explicit-off 时 %s 不注入 reasoning', (providerType, routeConfig) => {
+    const route = makeRoute({ ...routeConfig, thinking: { reasoning_effort: 'high' } });
+    const { body } = translate('anthropic', route, {
+      model: 'claude-sonnet',
+      messages: [{ role: 'user', content: 'hi' }],
+      max_tokens: 1000,
+      thinking: { type: 'disabled' },
+    });
+
+    expect(body.thinking).toBeUndefined();
+    expect(body.reasoning_effort).toBeUndefined();
+    expect(body.reasoning).toBeUndefined();
+    expect(providerType).toBe(route.providerProtocol);
   });
 
   it('无 thinking 配置时不注入任何参数', () => {

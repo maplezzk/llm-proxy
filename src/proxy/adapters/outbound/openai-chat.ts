@@ -1,7 +1,6 @@
 import type { CanonicalBlock, CanonicalMessage, CanonicalRequest, CanonicalTool } from '../../ir/types.ts';
-import type { OutboundAdapter, RouteDecision, WireBody } from '../index.ts';
+import type { OutboundAdapter, WireBody } from '../index.ts';
 
-const budgetByEffort: Record<string, number> = { low: 1024, medium: 4096, high: 16384, xhigh: 32768, max: 65536 };
 function content(blocks: CanonicalBlock[]): unknown {
   const parts: Record<string, unknown>[] = [];
   for (const block of blocks) {
@@ -34,20 +33,19 @@ function openAiTools(tools: CanonicalTool[]|undefined): unknown[]|undefined {
   }
   return output.length ? output : undefined;
 }
-export const openAiChatOutbound: OutboundAdapter={name:'openai',encode(request: CanonicalRequest, route: RouteDecision): WireBody {
+export const openAiChatOutbound: OutboundAdapter={name:'openai',encode(request: CanonicalRequest): WireBody {
   const messages: Record<string, unknown>[]=[];
   if (typeof request.system==='string') messages.push({role:'system',content:request.system});
   else if (request.system) messages.push({role:'system',content:request.system.map(block=>block.kind==='text' ? {type:'text',text:block.text} : {type:'text',text:'[image]'})});
   messages.push(...request.messages.filter(message=>message.role!=='system').map(message));
   const body: WireBody={model:request.resolvedModel?.modelId ?? request.logicalModel,messages};
-  const maxTokens=request.generation.maxTokens ?? route.maxTokensOverride;
+  const maxTokens=request.generation.maxTokens;
   if (maxTokens!==undefined) body.max_tokens=maxTokens;
   if (request.generation.temperature!==undefined) body.temperature=request.generation.temperature;
   if (request.generation.topP!==undefined) body.top_p=request.generation.topP;
   if (request.generation.stopSequences) body.stop=request.generation.stopSequences;
   if (request.generation.stream) body.stream=true;
-  // 字段级优先级：route.effort 优先于 client.effort（legacy injectThinkingConfig）
-  const effort=route.thinking.effort ?? request.reasoning?.effort;
+  const effort=request.reasoning?.enabled === false ? undefined : request.reasoning?.effort;
   if (effort) body.reasoning_effort=effort;
   const toolList=openAiTools(request.tools); if(toolList) body.tools=toolList;
   if(request.toolChoice) body.tool_choice=request.toolChoice.kind==='tool' ? {type:'function',function:{name:request.toolChoice.name}} : request.toolChoice.kind==='required' ? 'required' : request.toolChoice.kind;

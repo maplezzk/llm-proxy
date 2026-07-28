@@ -1,5 +1,5 @@
 import type { CanonicalBlock, CanonicalRequest, CanonicalTool } from '../../ir/types.ts';
-import type { OutboundAdapter, RouteDecision, WireBody } from '../index.ts';
+import type { OutboundAdapter, WireBody } from '../index.ts';
 
 function responseContent(blocks: CanonicalBlock[]): unknown {
   return blocks.map(block => {
@@ -21,19 +21,18 @@ function responseTools(tools: CanonicalTool[]|undefined): unknown[]|undefined {
   }
   return result.length ? result : undefined;
 }
-export const openAiResponsesOutbound: OutboundAdapter={name:'openai-responses',encode(request: CanonicalRequest, route: RouteDecision): WireBody {
+export const openAiResponsesOutbound: OutboundAdapter={name:'openai-responses',encode(request: CanonicalRequest): WireBody {
   const body: WireBody={model:request.resolvedModel?.modelId ?? request.logicalModel,input:request.messages.filter(m=>m.role!=='system').flatMap(m=>{ const item: Record<string,unknown>={type:'message',role:m.role==='developer'?'developer':m.role,content:responseContent(m.blocks)}; return [item]; })};
   if(typeof request.system==='string') body.instructions=request.system;
   else if(request.system) body.instructions=request.system.map(block=>block.kind==='text'?block.text:'[image]').join('');
-  const maxTokens=request.generation.maxTokens ?? route.maxTokensOverride;
+  const maxTokens=request.generation.maxTokens;
   if(maxTokens!==undefined) body.max_output_tokens=maxTokens;
   if(request.generation.temperature!==undefined) body.temperature=request.generation.temperature;
   if(request.generation.topP!==undefined) body.top_p=request.generation.topP;
   if(request.generation.stopSequences) body.stop=request.generation.stopSequences;
   if(request.generation.stream) body.stream=true;
-  // 字段级优先级：route.effort/summary 优先于 client（legacy injectThinkingConfig）
-  const effort=route.thinking.effort ?? request.reasoning?.effort;
-  const summary=route.thinking.summary ?? request.reasoning?.summary;
+  const effort=request.reasoning?.enabled === false ? undefined : request.reasoning?.effort;
+  const summary=request.reasoning?.enabled === false ? undefined : request.reasoning?.summary;
   if(effort || summary) body.reasoning={...(effort?{effort}:{}),...(summary?{summary}:{})};
   const toolList=responseTools(request.tools); if(toolList) body.tools=toolList;
   if(request.toolChoice) body.tool_choice=request.toolChoice.kind==='tool'?{type:'function',name:request.toolChoice.name}:request.toolChoice.kind;
