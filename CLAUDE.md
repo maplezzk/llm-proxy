@@ -364,6 +364,15 @@ npm install -g @mutallip/llm-proxy
 llm-proxy start
 ```
 
+## 已知限制（P2 残留，审查记录）
+
+P2 编排核心经 4-persona 代码审查（correctness/reliability/security/data-migration），P0/P1/P2 可修项均已修（见提交历史）；以下为非阻塞已知项，留待后续：
+
+- **配置导入清旧插新**：`importConfigToPg` 事务先删 adapter_model_mappings/adapters/model_groups/providers 再重建；若 `usage_records` 已引用旧 provider/model/adapter ID（ON DELETE NO ACTION），清旧触发外键违规、事务回滚。P1.16 已知限制，P2 新表（model_group_channels 级联清理）未加重。后续改 upsert-by-name（保留被引用旧行）。
+- **PG round-trip 语义归一**：`rowsToConfig` 把 `Provider.priority=0`/`enabled=true` 归一为 undefined（默认值不保留显式形式），语义等价但非结构无损。
+- **组/渠道 enabled 暂未暴露**：`model_groups`/`model_group_channels` 有 `enabled` 列（schema 预留），但 Config 类型与运行时暂未暴露——PG 中禁用的组/渠道 loadConfigFromPg 后会恢复启用。启用/禁用管理属后续管理 UI 范畴（KD7 排除）。
+- **pinned 成员关系无 DB 约束**：`adapter_model_mappings` 的 `model_group_id` 与 `provider_model_id` 只有独立 FK，理论上可落库「pinned provider_model 不在该 group 渠道集」的无效行；应用层（validator/router）已拦截，单用户部署足够，DB 复合约束延后。
+
 ## 常见问题
 
 - **跨协议 thinking/reasoning 丢失**：检查 inbound 解码是否产出 `thinking` 块、`normalizeRequest` 的签名来源

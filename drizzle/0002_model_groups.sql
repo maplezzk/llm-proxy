@@ -28,7 +28,7 @@ CREATE TABLE IF NOT EXISTS "model_groups" (
 );
 --> statement-breakpoint
 ALTER TABLE "adapter_model_mappings" ALTER COLUMN "provider_model_id" DROP NOT NULL;--> statement-breakpoint
-ALTER TABLE "adapter_model_mappings" ADD COLUMN "model_group_id" bigint;--> statement-breakpoint
+ALTER TABLE "adapter_model_mappings" ADD COLUMN IF NOT EXISTS "model_group_id" bigint;--> statement-breakpoint
 DO $$ BEGIN
  ALTER TABLE "model_group_channels" ADD CONSTRAINT "model_group_channels_model_group_id_model_groups_id_fk" FOREIGN KEY ("model_group_id") REFERENCES "public"."model_groups"("id") ON DELETE cascade ON UPDATE no action;
 EXCEPTION
@@ -48,4 +48,8 @@ EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
 --> statement-breakpoint
-ALTER TABLE "adapter_model_mappings" ADD CONSTRAINT "adapter_model_mappings_target_check" CHECK ("adapter_model_mappings"."provider_model_id" IS NOT NULL OR "adapter_model_mappings"."model_group_id" IS NOT NULL);
+DO $$ BEGIN
+ ALTER TABLE "adapter_model_mappings" ADD CONSTRAINT "adapter_model_mappings_target_check" CHECK ("adapter_model_mappings"."provider_model_id" IS NOT NULL OR "adapter_model_mappings"."model_group_id" IS NOT NULL);
+EXCEPTION
+ WHEN duplicate_object THEN null;
+END $$;
