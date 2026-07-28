@@ -565,3 +565,202 @@ describe('proxy/router（U3 resolveAdapterRoute model-centric）', () => {
     expect(result.onFailure).toBe('fallback');
   });
 });
+
+// ===================== Batch B: 路由修复回归 =====================
+// 覆盖 findings B1（钉死路径绕过 disabled provider）/ B2（钉死/fallback 漏 group 默认上限）/
+// B3（全部低档 + pin 控制流矛盾）/ B4（pinned 被 priority 选择器改掉）。
+
+describe('proxy/router（B1: 钉死路径校验 disabled provider）', () => {
+  it('钉死到被禁用的 provider：抛错（CHANNEL_NOT_FOUND 类），不返回 routes', () => {
+    // pin 到 enabled=false 的 provider，pinned 路径必须显式拦截，
+    // 否则禁用 provider 仍被 pinned adapter 调用（C-P1-2）。
+    const config: Config = {
+      providers: [
+        { name: 'live', type: 'openai', apiKey: 'k', models: [{ id: 'live-m' }] },
+        { name: 'dead', type: 'openai', apiKey: 'k', enabled: false, models: [{ id: 'dead-m' }] },
+      ],
+      modelGroups: [
+        {
+          id: 'g',
+          channels: [
+            { provider: 'live', model: 'live-m', priority: 1 },
+            { provider: 'dead', model: 'dead-m', priority: 2 },
+          ],
+        },
+      ],
+      adapters: [
+        {
+          name: 'a',
+          type: 'openai',
+          models: [{ sourceModelId: 'm', model: 'g', channel: 'dead/dead-m' }],
+        },
+      ],
+    };
+    const store = new ConfigStore('/fake', config);
+    const err = catchError(() => resolveAdapterRoute(store, 'a', 'm')) as AdapterError;
+    expect(err?.code).toBe('CHANNEL_NOT_FOUND');
+  });
+});
+
+describe('proxy/router（B2: 钉死/fallback 漏 group 默认上限）', () => {
+  it('钉死路径：channel 未配 maxOutputTokens 时回退到 group.maxOutputTokens', () => {
+    // 验证 group 级 maxOutputTokens 默认上限能被钉死渠道继承。
+    const config: Config = {
+      providers: [{ name: 'p', type: 'openai', apiKey: 'k', models: [{ id: 'm' }] }],
+      modelGroups: [
+        {
+          id: 'g',
+          maxOutputTokens: 4096,
+          // channel 未声明 maxOutputTokens → 应回退到 group 的 4096。
+          channels: [{ provider: 'p', model: 'm', priority: 1 }],
+        },
+      ],
+      adapters: [
+        {
+          name: 'a',
+          type: 'openai',
+          models: [{ sourceModelId: 'm', model: 'g', channel: 'p/m' }],
+        },
+      ],
+    };
+    const store = new ConfigStore('/fake', config);
+    const result = resolveAdapterRoute(store, 'a', 'm');
+    expect(result.routes).toHaveLength(1);
+    expect(result.routes[0]?.maxOutputTokens).toBe(4096);
+  });
+
+  it('钉死 + fallback：fallback 渠道未配 maxOutputTokens 时回退到 group 默认', () => {
+    const config: Config = {
+      providers: [
+        { name: 'p1', type: 'openai', apiKey: 'k', models: [{ id: 'm1' }] },
+        { name: 'p2', type: 'openai', apiKey: 'k', models: [{ id: 'm2' }] },
+      ],
+      modelGroups: [
+        {
+          id: 'g',
+          maxOutputTokens: 2048,
+          channels: [
+            { provider: 'p1', model: 'm1', priority: 1 }, // 无 maxOutputTokens
+            { provider: 'p2', model: 'm2', priority: 2 },
+          ],
+        },
+      ],
+      adapters: [
+        {
+          name: 'a',
+          type: 'openai',
+          onFailure: 'fallback',
+          models: [{ sourceModelId: 'm', model: 'g', channel: 'p1/m1' }],
+        },
+      ],
+    };
+    const store = new ConfigStore('/fake', config);
+    const result = resolveAdapterRoute(store, 'a', 'm');
+    expect(result.routes).toHaveLength(2);
+    // pinned 渠道继承 group 上限
+    expect(result.routes[0]?.providerId).toBe('p1');
+    expect(result.routes[0]?.maxOutputTokens).toBe(2048);
+    // fallback 渠道也继承 group 上限
+    const fallback = result.routes.find((r) => r.providerId === 'p2');
+    expect(fallback?.maxOutputTokens).toBe(2048);
+  });
+
+  it('钉死 + fallback：contextWindow 回退到 group 默认', () => {
+    const config: Config = {
+      providers: [{ name: 'p', type: 'openai', apiKey: 'k', models: [{ id: 'm' }] }],
+      modelGroups: [
+        {
+          id: 'g',
+          contextWindow: 128_000,
+          channels: [{ provider: 'p', model: 'm', priority: 1 }],
+        },
+      ],
+      adapters: [
+        {
+          name: 'a',
+          type: 'openai',
+          models: [{ sourceModelId: 'm', model: 'g', channel: 'p/m' }],
+        },
+      ],
+    };
+    const store = new ConfigStore('/fake', config);
+    const result = resolveAdapterRoute(store, 'a', 'm');
+    expect(result.routes[0]?.contextWindow).toBe(128_000);
+  });
+});
+
+describe('proxy/router（B3: 全渠道低档 + 显式 pin 控制流矛盾）', () => {
+  it('组内所有渠道被档位过滤 + 显式 pin：仍按 pin 解析钉死渠道（不抛 ROUTE_NO_ELIGIBLE_CHANNEL）', () => {
+    // pin 是操作员显式意图：应绕过 routeLogicalModel 的 tier filter，
+    // 否则 routeLogicalModel 提前抛 ROUTE_NO_ELIGIBLE_CHANNEL，pin 分支永不执行（C-P1-4）。
+    const config: Config = {
+      providers: [
+        { name: 'gpt', type: 'openai', apiKey: 'k', models: [{ id: 'gpt-1m' }] },
+        { name: 'kiro', type: 'openai', apiKey: 'k', models: [{ id: 'kiro-255k' }] },
+      ],
+      modelGroups: [
+        {
+          id: 'gpt-5.6-1m',
+          contextWindow: 1_000_000, // 极高门槛
+          channels: [
+            // 所有渠道 effective contextWindow 都低于组档位。
+            { provider: 'kiro', model: 'kiro-255k', priority: 1, contextWindow: 255_000 },
+          ],
+        },
+      ],
+      adapters: [
+        {
+          name: 'a',
+          type: 'openai',
+          // 显式 pin 到低档渠道（操作员覆盖档位语义）
+          models: [{ sourceModelId: 'm', model: 'gpt-5.6-1m', channel: 'kiro/kiro-255k' }],
+        },
+      ],
+    };
+    const store = new ConfigStore('/fake', config);
+    // 不应抛 ROUTE_NO_ELIGIBLE_CHANNEL；应成功解析出钉死渠道
+    const result = resolveAdapterRoute(store, 'a', 'm');
+    expect(result.isPinnedChannel).toBe(true);
+    expect(result.routes).toHaveLength(1);
+    expect(result.routes[0]?.providerId).toBe('kiro');
+    expect(result.routes[0]?.resolvedModel).toBe('kiro-255k');
+  });
+});
+
+describe('proxy/router（B4: pinned 不被 selectRoute 改掉）', () => {
+  // R-P1-3：appendFallbackAlternatives 把 pinnedRoute 放首位，
+  // 但 adapterHandler 随后 selectRoute 按 priority 重排 → pinned priority 高时 selected 变成 fallback。
+  // 修复后：adapterHandler 对 pinned 直接用 routes[0] 作 selected，跳过 selectRoute 重排。
+  // 单元层验证 resolveAdapterRoute 返回 routes[0] 是 pinned。
+  it('pinned + fallback：routes[0] 始终是 pinned 渠道（不依赖 priority）', () => {
+    const config: Config = {
+      providers: [
+        { name: 'p1', type: 'openai', apiKey: 'k', models: [{ id: 'm1' }] },
+        { name: 'p2', type: 'openai', apiKey: 'k', models: [{ id: 'm2' }] },
+      ],
+      modelGroups: [
+        {
+          id: 'g',
+          channels: [
+            { provider: 'p1', model: 'm1', priority: 10 }, // fallback priority 更高（数值小）
+            { provider: 'p2', model: 'm2', priority: 1 }, // pinned priority 较低（数值大）
+          ],
+        },
+      ],
+      adapters: [
+        {
+          name: 'a',
+          type: 'openai',
+          onFailure: 'fallback',
+          models: [{ sourceModelId: 'm', model: 'g', channel: 'p2/m2' }],
+        },
+      ],
+    };
+    const store = new ConfigStore('/fake', config);
+    const result = resolveAdapterRoute(store, 'a', 'm');
+    expect(result.isPinnedChannel).toBe(true);
+    // pinned 必须在 routes[0]，不被 selectRoute 的 priority 重排改掉
+    expect(result.routes[0]?.providerId).toBe('p2');
+    expect(result.routes[0]?.resolvedModel).toBe('m2');
+  });
+});

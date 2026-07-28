@@ -357,7 +357,17 @@ const SSE_HEADERS: Record<string, string> = {
 type ForwardOnceResult =
   | { kind: 'success'; response: Response }
   | { kind: 'fatal'; response: Response }
-  | { kind: 'retryable'; status?: number; message: string };
+  | { kind: 'retryable'; status?: number; message: string }
+  // B7：client 断连（非上游错误），终止 failover 循环。
+  | { kind: 'aborted'; message: string };
+
+/**
+ * B7：判定 fetch/读体错误是否由 client abort 引起。
+ * 优先用稳定的 signal.aborted（避免各运行时 AbortError 名称差异），
+ * 其次回退 err.name === 'AbortError'。client 断连不计作上游 retryable。
+ */
+const isClientAbort = (err: unknown, signal: AbortSignal | undefined): boolean =>
+  signal?.aborted === true || (err instanceof Error && err.name === 'AbortError');
 
 /**
  * 一次候选尝试：inbound → IR → 应用路由决策（含钳制）→ outbound → 覆写 → fetch → 响应处理。
@@ -406,6 +416,9 @@ const forwardOnce = async (
       provider: candidate.providerId,
       providerProtocol: candidate.providerProtocol,
       resolvedModel: candidate.resolvedModel,
+      // B9（R14）：client 显式关闭 reasoning 时（applyRouteDecision 解析出 enabled===false），
+      // 后置 override 不得重新写入 reasoning 相关 wire 字段。
+      reasoningDisabled: routed.reasoning?.enabled === false,
     };
     const overridden = applyOverrides(
       upstream.body,
@@ -467,6 +480,10 @@ const forwardOnce = async (
       ...(signal ? { signal } : {}),
     });
   } catch (err) {
+    // B7（R-P2-1）：client 断连不是上游错误，单独终止（非 retryable、不计入上游失败）。
+    if (isClientAbort(err, signal)) {
+      return { kind: 'aborted', message: 'client disconnected' };
+    }
     // 网络错误（连接拒绝 / DNS / 超时 / 连接重置）一律视为 retryable
     const message = err instanceof Error ? err.message : String(err);
     log?.error({ url: maskUrl(upstream.url), err: message }, 'upstream fetch failed (network)');
@@ -474,7 +491,26 @@ const forwardOnce = async (
   }
 
   if (!response.ok) {
-    const errorBody = await response.text();
+    // B5（R-P1-1）：错误响应体读取纳入 try/catch。上游返回 headers 后读 body 时
+    // 连接重置/超时/流错误发生在首字节前，应归类 retryable 继续 failover；client abort 单独终止。
+    let errorBody: string;
+    try {
+      errorBody = await response.text();
+    } catch (err) {
+      if (isClientAbort(err, signal)) {
+        return { kind: 'aborted', message: 'client disconnected' };
+      }
+      const message = err instanceof Error ? err.message : String(err);
+      log?.warn(
+        { status: response.status, url: maskUrl(upstream.url), err: message },
+        'error body read failed (network)',
+      );
+      return {
+        kind: 'retryable',
+        status: response.status,
+        message: `错误响应体读取失败: ${message}`,
+      };
+    }
     let upstreamMessage = `HTTP ${response.status}`;
     try {
       const parsed = JSON.parse(errorBody) as { error?: { message?: string } };
@@ -497,7 +533,18 @@ const forwardOnce = async (
 
   // 6a. 非流式
   if (!isStream || !response.body) {
-    const text = await response.text();
+    // B5（R-P1-1）：非流式成功响应体读取同样在首字节前，读体网络错误归类 retryable。
+    let text: string;
+    try {
+      text = await response.text();
+    } catch (err) {
+      if (isClientAbort(err, signal)) {
+        return { kind: 'aborted', message: 'client disconnected' };
+      }
+      const message = err instanceof Error ? err.message : String(err);
+      log?.warn({ url: maskUrl(upstream.url), err: message }, 'response body read failed (network)');
+      return { kind: 'retryable', message: `响应体读取失败: ${message}` };
+    }
     let parsed: WireBody | undefined;
     try {
       parsed = JSON.parse(text) as WireBody;
@@ -568,8 +615,9 @@ const forwardOnce = async (
   }
 
   // 6b. 流式：stream inbound（上游 SSE → IR 事件）→ stream outbound（→ 客户端 SSE）
-  // 关键不变量：响应 200 已知（response.ok 为真）后才走到这里，向 client pipe 已不可逆。
-  // mid-stream 上游错误由 stream inbound 透传为截断流，pipeline 不重试（KTD/U6）。
+  // B6（R-P1-2）：首字节提交门闩 — 响应 200 已知但上游首字节前仍可能失败（零字节流）。
+  //   eagerly 读第一个事件：读/解码失败 → retryable（client 未收到任何字节，可 failover）；
+  //   首事件成功产生 → 提交候选，后续 mid-stream 错误 surface 为截断流（不重发 message_start）。
   const rawInChunks: string[] = [];
   const tappedIn =
     pairId !== undefined ? tapStream(response.body, (t) => rawInChunks.push(t)) : response.body;
@@ -577,18 +625,26 @@ const forwardOnce = async (
   // 透传客户端断连信号：abort 时提前终止上游 SSE 迭代，且不补发收尾事件（见 StreamInboundAdapter.decode 契约）
   const events = STREAM_INBOUND_ADAPTERS[candidate.providerProtocol].decode(tappedIn, signal);
 
-  // 事件旁路：收集 usage，迭代结束（正常/中断）时落 usage + capture
+  // B8（R-P2-2）：跟踪流是否正常完成（收到终态 message_stop），仅正常完成记 usage；
+  // 异常/取消/截断路径不写部分 token。
   let streamUsage: UsageRecord | undefined;
+  let streamCompleted = false;
   const tracked = (async function* (): AsyncGenerator<CanonicalStreamEvent> {
     try {
       for await (const event of events) {
         if (event.type === 'message_delta' && event.usage) {
           streamUsage = mergeUsage(streamUsage, event.usage);
         }
+        if (event.type === 'message_stop') {
+          streamCompleted = true;
+        }
         yield event;
       }
     } finally {
-      recordUsage(deps, candidate, baseCtx.clientModel, adapterName, streamUsage);
+      // B8：仅正常完成时落 usage（收到 message_stop 且未 abort/异常）。
+      if (streamCompleted) {
+        recordUsage(deps, candidate, baseCtx.clientModel, adapterName, streamUsage);
+      }
       if (pairId !== undefined)
         deps.capture?.updateRequest(pairId, 'responseIn', rawInChunks.join(''));
       finishLog(
@@ -603,9 +659,65 @@ const forwardOnce = async (
     }
   })();
 
+  // B6： eagerly 拉取首个事件，作为「首字节提交门闩」。
+  // 首字节前失败 → retryable（可 failover）；首字节成功 → 提交候选（不可回退）。
+  const iterator = tracked[Symbol.asyncIterator]();
+  let firstEvent: IteratorResult<CanonicalStreamEvent>;
+  try {
+    firstEvent = await iterator.next();
+  } catch (err) {
+    // 首字节前上游读取/解码失败 → client 未收到任何字节，可 failover。
+    if (isClientAbort(err, signal)) {
+      return { kind: 'aborted', message: 'client disconnected' };
+    }
+    const message = err instanceof Error ? err.message : String(err);
+    log?.warn(
+      { url: maskUrl(upstream.url), err: message },
+      'stream failed before first byte (retryable)',
+    );
+    return { kind: 'retryable', message: `流式首字节前失败: ${message}` };
+  }
+
+  // B6：首事件为空（零字节流立即关闭）或为 error 事件（上游在产出真实内容前报错，
+  // 如 openai-chat 入站将读取异常转成 canonical error 事件）也属于「首字节前失败」→ retryable。
+  // 只有拿到正常内容事件才算成功提交；此处主动 return 触发 tracked 的 finally 清理
+  // （streamCompleted=false 故不会写部分 usage）。
+  if (firstEvent.done) {
+    await iterator.return?.(undefined);
+    if (signal?.aborted) {
+      return { kind: 'aborted', message: 'client disconnected' };
+    }
+    log?.warn({ url: maskUrl(upstream.url) }, 'stream closed before first byte (zero-byte, retryable)');
+    return { kind: 'retryable', message: '流式首字节前失败: 上游流在首字节前关闭（零字节流）' };
+  }
+  if (firstEvent.value.type === 'error') {
+    const reason = firstEvent.value.error?.message ?? 'unknown upstream stream error';
+    await iterator.return?.(undefined);
+    if (signal?.aborted) {
+      return { kind: 'aborted', message: 'client disconnected' };
+    }
+    log?.warn({ url: maskUrl(upstream.url), err: reason }, 'stream errored before first byte (retryable)');
+    return { kind: 'retryable', message: `流式首字节前失败: ${reason}` };
+  }
+
+  // 重组生成器：先产出已读取的首事件，再继续同一迭代器；
+  // 取消时传播到 tracked 迭代器（确保 finally 清理执行）。
+  const committed = (async function* (): AsyncGenerator<CanonicalStreamEvent> {
+    try {
+      if (!firstEvent.done) yield firstEvent.value;
+      while (true) {
+        const next = await iterator.next();
+        if (next.done) break;
+        yield next.value;
+      }
+    } finally {
+      await iterator.return?.(undefined);
+    }
+  })();
+
   let clientStream_: ReadableStream<Uint8Array>;
   try {
-    clientStream_ = STREAM_OUTBOUND_ADAPTERS[clientProtocol].encode(tracked, candidate);
+    clientStream_ = STREAM_OUTBOUND_ADAPTERS[clientProtocol].encode(committed, candidate);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     log?.error({ err: message }, 'stream outbound encode failed');
@@ -634,16 +746,25 @@ const forwardOnce = async (
  * - 钉死别名 + on_failure='hard_fail'（默认）：i=0 retryable 时 surface 502，不重试；
  * - 钉死别名 + on_failure='fallback'：i=0 retryable 时继续试 i=1..N；
  * - 自动别名（isPinnedChannel=false）：始终按 retryable 走完整 failover；
- * - retryable 判定：5xx/408/429/网络错误（isRetryableUpstreamError 集中判定）；
- * - 中首字节前是唯一重试判定点：响应 200 一旦产生（response.ok = true 或 body 已构造）即承诺；
+ * - retryable 判定：5xx/408/429/网络错误/读体网络错误（B5）/流式首字节前失败（B6）；
+ * - 首字节提交门闩（B6）：流式 eagerly 读首事件，首字节前失败 retryable，首字节后承诺；
+ * - client abort（B7）：单独归类 aborted，终止 failover（非 retryable、非上游错误）；
  * - mid-stream 失败由 forwardOnce 流式分支透传为截断流，pipeline 不重试、不重发 message_start。
  */
 export const forwardPipeline = async (
   deps: PipelineDeps,
   params: ForwardParams,
 ): Promise<Response> => {
-  const { clientProtocol, wireBody, adapterName, route, alternatives, isPinnedChannel, onFailure } =
-    params;
+  const {
+    clientProtocol,
+    wireBody,
+    adapterName,
+    route,
+    alternatives,
+    isPinnedChannel,
+    onFailure,
+    signal,
+  } = params;
   const startTime = Date.now();
   const clientModel = typeof wireBody.model === 'string' ? wireBody.model : '';
   const logLabel = adapterName ? `/${adapterName}` : `/v1/${endpointFor(clientProtocol)}`;
@@ -691,12 +812,22 @@ export const forwardPipeline = async (
       break;
     }
 
+    // B7（R-P2-1）：循环每次尝试前查 signal.aborted，client 已取消时停止 failover，
+    // 不对剩余候选重复 encode/覆写/capture 并发立即失败的请求。
+    if (signal?.aborted) {
+      return jsonError(499, 'client closed request');
+    }
+
     const result = await forwardOnce(deps, params, candidate, baseCtx);
     if (result.kind === 'success') {
       return result.response;
     }
     if (result.kind === 'fatal') {
       return result.response;
+    }
+    // B7：client 断连（非上游错误）——终止 failover，surface 499。
+    if (result.kind === 'aborted') {
+      return jsonError(499, 'client closed request');
     }
     // retryable
     lastRetryable = { status: result.status, message: result.message };

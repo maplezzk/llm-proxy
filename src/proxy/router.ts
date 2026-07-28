@@ -82,8 +82,9 @@ const appendFallbackAlternatives = (
         thinking: mapping.thinking ?? m.thinking,
         streamPolicy,
         priority: effectiveChannelPriority(ch, provider),
-        contextWindow: effectiveChannelContextWindow(ch, m),
-        maxOutputTokens: ch.maxOutputTokens,
+        // B2：统一回退到 group 默认上限（与 routeLogicalModel 自动候选一致）。
+        contextWindow: ch.contextWindow ?? m.contextWindow ?? group.contextWindow,
+        maxOutputTokens: ch.maxOutputTokens ?? group.maxOutputTokens,
         maxTokensOverride: adapter.max_tokens,
         ...(carryOverrides ? { overrides: carryOverrides } : {}),
       }),
@@ -446,71 +447,58 @@ export const resolveAdapterRoute = (
 
   // --- Model-centric 模式：mapping.model ---
   if (mapping.model) {
-    const candidates = routeLogicalModel(store, mapping.model);
+    const group = config.modelGroups?.find((g) => g.id === mapping.model);
+    if (!group) {
+      throw new AdapterError(
+        `逻辑模型 "${mapping.model}" 对应的 model_group 未找到`,
+        'ROUTE_GROUP_NOT_FOUND',
+      );
+    }
 
     if (mapping.channel) {
-      // 钉死：精确挑出该渠道（不参与 tier 过滤）。
-      const [provName, modelName] = mapping.channel.split('/', 2);
-      const matched = candidates.find(
-        (c) => c.providerId === provName && c.resolvedModel === modelName,
-      );
-      if (!matched) {
-        // fallback：在所有 group 渠道里再查一次（钉死可能低于组档位但用户显式要求）
-        const group = config.modelGroups?.find((g) => g.id === mapping.model);
-        const ch = group?.channels.find((c) => `${c.provider}/${c.model}` === mapping.channel);
-        if (!ch) {
-          throw new AdapterError(
-            `钉死渠道 "${mapping.channel}" 不在 model_group "${mapping.model}" 的 channels 列表中`,
-            'CHANNEL_NOT_FOUND',
-          );
-        }
-        const provider = config.providers.find((p) => p.name === ch.provider);
-        const model = provider?.models.find((m) => m.id === ch.model);
-        if (!provider || !model) {
-          throw new AdapterError(
-            `钉死渠道 "${mapping.channel}" 解析失败：provider 或 model 不存在`,
-            'CHANNEL_NOT_FOUND',
-          );
-        }
-        // 构造钉死决策（不应用 tier filter，尊重用户显式声明）
-        const pinnedRoute = buildRouteDecision({
-          provider,
-          modelId: model.id,
-          // 映射级 thinking 优先，否则继承目标模型。
-          thinking: mapping.thinking ?? model.thinking,
-          streamPolicy,
-          priority: effectiveChannelPriority(ch, provider),
-          contextWindow: effectiveChannelContextWindow(ch, model),
-          maxOutputTokens: ch.maxOutputTokens,
-          maxTokensOverride: adapter.max_tokens,
-          ...(carryOverrides ? { overrides: carryOverrides } : {}),
-        });
-        return {
-          routes: appendFallbackAlternatives(
-            pinnedRoute,
-            group,
-            config,
-            streamPolicy,
-            adapter,
-            mapping,
-            carryOverrides,
-          ),
-          inboundType: adapter.type as ClientProtocol,
-          onFailure,
-          isPinnedChannel: true,
-        };
+      // 钉死（B3）：pin 是操作员显式意图，绕过 tier 过滤（R5 仅约束 auto 路由），
+      // 直接解析钉死渠道；不调 routeLogicalModel，避免“组内全渠道低于档位”时
+      // 提前抛 ROUTE_NO_ELIGIBLE_CHANNEL 使 pin 分支永不执行（C-P1-4）。
+      // 校验：渠道存在（CHANNEL_NOT_FOUND）+ provider 存在/启用（B1 / C-P1-2）+ model 存在。
+      const ch = group.channels.find((c) => `${c.provider}/${c.model}` === mapping.channel);
+      if (!ch) {
+        throw new AdapterError(
+          `钉死渠道 "${mapping.channel}" 不在 model_group "${mapping.model}" 的 channels 列表中`,
+          'CHANNEL_NOT_FOUND',
+        );
       }
-      const decorated: RouteDecision = {
-        ...matched,
-        thinking: mapping.thinking ? toReasoningSpec(mapping.thinking) : matched.thinking,
-        ...(adapter.max_tokens !== undefined ? { maxTokensOverride: adapter.max_tokens } : {}),
+      const provider = config.providers.find((p) => p.name === ch.provider);
+      const model = provider?.models.find((m) => m.id === ch.model);
+      if (!provider || !model) {
+        throw new AdapterError(
+          `钉死渠道 "${mapping.channel}" 解析失败：provider 或 model 不存在`,
+          'CHANNEL_NOT_FOUND',
+        );
+      }
+      if (provider.enabled === false) {
+        // B1：pin 路径不再绕过 disabled provider 检查（C-P1-2）。
+        throw new AdapterError(
+          `钉死渠道 "${mapping.channel}" 的 provider "${provider.name}" 已被禁用`,
+          'CHANNEL_NOT_FOUND',
+        );
+      }
+      // 构造钉死决策（不应用 tier filter，尊重用户显式声明）
+      const pinnedRoute = buildRouteDecision({
+        provider,
+        modelId: model.id,
+        // 映射级 thinking 优先，否则继承目标模型。
+        thinking: mapping.thinking ?? model.thinking,
         streamPolicy,
+        priority: effectiveChannelPriority(ch, provider),
+        // B2：统一回退到 group 默认上限（contextWindow / maxOutputTokens）。
+        contextWindow: ch.contextWindow ?? model.contextWindow ?? group.contextWindow,
+        maxOutputTokens: ch.maxOutputTokens ?? group.maxOutputTokens,
+        maxTokensOverride: adapter.max_tokens,
         ...(carryOverrides ? { overrides: carryOverrides } : {}),
-      };
-      const group = config.modelGroups?.find((g) => g.id === mapping.model);
+      });
       return {
         routes: appendFallbackAlternatives(
-          decorated,
+          pinnedRoute,
           group,
           config,
           streamPolicy,
@@ -524,7 +512,9 @@ export const resolveAdapterRoute = (
       };
     }
 
-    // 自动别名：候选全部注入 mapping 维度的 thinking / streamPolicy / maxTokens。
+    // 自动别名：走 routeLogicalModel（档位过滤 + priority 排序），
+    // 候选全部注入 mapping 维度的 thinking / streamPolicy / maxTokens。
+    const candidates = routeLogicalModel(store, mapping.model);
     return {
       routes: candidates.map((c) => ({
         ...c,

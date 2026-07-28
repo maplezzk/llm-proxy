@@ -81,8 +81,17 @@ const adapterHandler =
       return jsonError(status, message);
     }
 
-    // U3: selectRoute 从候选中选一个 + 取出 alternatives 透传 forwardPipeline（U6 failover 用）
-    const { selected, alternatives } = selectRoute(resolved.routes);
+    // B4（R-P1-3）：钉死别名的 selected 就是钉死渠道本身，不经过 selectRoute 的 priority 重排
+    // （否则 pinned 渠道 priority 高于 fallback 时 selected 会被改成 fallback）。
+    // 仅 on_failure=fallback 时 routes[1..] 作 alternatives（resolveAdapterRoute 已按 priority 排好）。
+    // 自动别名走 selectRoute 统一处理（priority 序选首 + alternatives）。
+    const { selected, alternatives } = resolved.isPinnedChannel
+      ? { selected: resolved.routes[0], alternatives: resolved.routes.slice(1) }
+      : selectRoute(resolved.routes);
+    if (!selected) {
+      // 防御性：resolveAdapterRoute 钉死分支保证 routes 非空；此分支不应到达。
+      return jsonError(502, '路由解析异常：候选列表为空');
+    }
 
     return forwardPipeline(deps, {
       clientProtocol,

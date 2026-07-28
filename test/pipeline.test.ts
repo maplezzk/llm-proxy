@@ -794,6 +794,11 @@ type MockResponse = {
   throw?: Error;
   /** 响应延迟（ms）。 */
   delayMs?: number;
+  /**
+   * B5：headers 已返回（status 照给），但读 body 时抛网络错误
+   * （模拟上游返回 headers 后连接重置/超时/流错误）。response.text() 会 reject。
+   */
+  bodyReadError?: Error;
 };
 
 const buildMockedFetch = (
@@ -819,14 +824,34 @@ const buildMockedFetch = (
     i++;
     if (r.delayMs) await new Promise((resolve) => setTimeout(resolve, r.delayMs));
     if (r.throw) throw r.throw;
-    if (r.streamChunks) {
-      const encoder = new TextEncoder();
+    if (r.bodyReadError) {
+      // B5：返回合法 headers（200），但 body 是一个读取时 error 的流 → response.text() 拒绝。
+      const readError = r.bodyReadError;
       const stream = new ReadableStream<Uint8Array>({
         start(controller) {
-          for (const chunk of r.streamChunks ?? []) {
-            controller.enqueue(encoder.encode(chunk));
-          }
-          if (r.isStreamError) {
+          controller.error(readError);
+        },
+      });
+      return new Response(stream, {
+        status: r.status,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    if (r.streamChunks) {
+      const encoder = new TextEncoder();
+      const chunks = r.streamChunks;
+      let idx = 0;
+      // pull-based：每次拉取交付一个 chunk，全部交付后的下一次拉取才 error/close。
+      // 这保证 chunks 被读取者真实消费后才出错——正确模拟「mid-stream 失败」；
+      // （start 里同步 enqueue+error 会被 ReadableStream 的 error 状态抢占，
+      //   导致排队 chunks 永远不被读取、首读即抛错，退化成「首字节前失败」。B6 门闩依赖该区别。）
+      // 零字节流（chunks=[]）：首次拉取即 error → 首字节前失败。
+      const stream = new ReadableStream<Uint8Array>({
+        pull(controller) {
+          if (idx < chunks.length) {
+            controller.enqueue(encoder.encode(chunks[idx] ?? ''));
+            idx += 1;
+          } else if (r.isStreamError) {
             controller.error(new Error('mid-stream failure'));
           } else {
             controller.close();
@@ -1278,5 +1303,393 @@ describe('pipeline e2e（U6 渠道钳制 + failover 循环）', () => {
     });
     expect(res.status).toBe(502);
     expect(calls).toHaveLength(1);
+  });
+});
+
+// ===================== Batch B 管线侧回归（B4-B9） =====================
+// 设计依据：fix-B-router-pipeline 任务。
+// B4：pinned 不被 selectRoute priority 重排改掉（routes.ts adapterHandler）。
+// B5：响应体读取失败（首字节前）进 failover。
+// B6：零字节流式失败（首字节前）进 failover。
+// B7：client abort 不误判 retryable，终止 failover（499）。
+// B8：流式异常/abort 不写部分 usage（仅正常完成记）。
+// B9：client thinking disabled 时后置 reasoning override 不写入 wire（reasoningDisabled）。
+
+describe('pipeline e2e（B4: pinned 不被 priority 重排）', () => {
+  it('pinned priority 高于 fallback（数值大）时，selected 仍是 pinned（首调 pinned 渠道）', async () => {
+    // R-P1-3：pinned=cc(priority=10)，fallback=kiro(priority=1)。
+    // 修复前 selectRoute 会按 priority 选 kiro；修复后 pinned 直接作 selected。
+    const config = buildFailoverConfig({
+      onFailure: 'fallback',
+      pinnedChannel: 'cc/cc-fast',
+      channels: [
+        { provider: 'cc', model: 'cc-fast', priority: 10 }, // pinned（priority 高数值）
+        { provider: 'kiro', model: 'kiro-fast', priority: 1 }, // fallback（priority 低数值）
+      ],
+    });
+    // cc 是 anthropic 渠道，返回 anthropic wire；pipeline 跨协议转 openai。
+    const { fetchImpl, calls } = buildMockedFetch([
+      {
+        status: 200,
+        jsonBody: {
+          id: 'msg_cc',
+          type: 'message',
+          role: 'assistant',
+          model: 'cc-fast',
+          content: [{ type: 'text', text: 'pinned served' }],
+          stop_reason: 'end_turn',
+          stop_sequence: null,
+          usage: { input_tokens: 3, output_tokens: 1 },
+        },
+      },
+    ]);
+    const { app } = buildTestAppWithFetch(config, fetchImpl);
+    const res = await post(app, '/mytool/v1/chat/completions', {
+      model: 'GPT',
+      stream: false,
+      messages: [{ role: 'user', content: 'hi' }],
+    });
+    expect(res.status).toBe(200);
+    // 首调必须是 pinned 渠道（cc），而不是 priority 更优的 kiro。
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.url).toContain('cc.local');
+    const json = (await res.json()) as Record<string, unknown>;
+    const choices = json.choices as Array<Record<string, unknown>>;
+    const message = choices[0]?.message as Record<string, unknown>;
+    expect(message.content).toBe('pinned served');
+  });
+
+  it('pinned 失败 + fallback：pinned 首调失败后才轮到 fallback（顺序不变）', async () => {
+    const config = buildFailoverConfig({
+      onFailure: 'fallback',
+      pinnedChannel: 'cc/cc-fast',
+      channels: [
+        { provider: 'cc', model: 'cc-fast', priority: 10 },
+        { provider: 'kiro', model: 'kiro-fast', priority: 1 },
+      ],
+    });
+    const { fetchImpl, calls } = buildMockedFetch([
+      { status: 503, jsonBody: { error: { message: 'cc down' } } }, // pinned 失败
+      {
+        status: 200,
+        jsonBody: {
+          id: 'chatcmpl-kiro',
+          object: 'chat.completion',
+          created: 1_700_000_000,
+          model: 'kiro-fast',
+          choices: [
+            { index: 0, message: { role: 'assistant', content: 'fallback ok' }, finish_reason: 'stop' },
+          ],
+          usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+        },
+      },
+    ]);
+    const { app } = buildTestAppWithFetch(config, fetchImpl);
+    const res = await post(app, '/mytool/v1/chat/completions', {
+      model: 'GPT',
+      stream: false,
+      messages: [{ role: 'user', content: 'hi' }],
+    });
+    expect(res.status).toBe(200);
+    expect(calls).toHaveLength(2);
+    // 顺序：pinned(cc) 先，fallback(kiro) 后。
+    expect(calls[0]?.url).toContain('cc.local');
+    expect(calls[1]?.url).toContain('kiro.local');
+  });
+});
+
+describe('pipeline e2e（B5: 响应体读取失败 failover）', () => {
+  it('非流式：上游 200 但读 body 抛网络错误 → failover 到下一候选', async () => {
+    // R-P1-1：headers 已返回，读 body 时连接重置（首字节前）→ 应可 failover。
+    const config = buildFailoverConfig({});
+    const { fetchImpl, calls } = buildMockedFetch([
+      { status: 200, bodyReadError: new Error('connection reset while reading body') },
+      {
+        status: 200,
+        jsonBody: {
+          id: 'msg_cc',
+          type: 'message',
+          role: 'assistant',
+          model: 'cc-fast',
+          content: [{ type: 'text', text: 'recovered' }],
+          stop_reason: 'end_turn',
+          stop_sequence: null,
+          usage: { input_tokens: 4, output_tokens: 2 },
+        },
+      },
+    ]);
+    const { app } = buildTestAppWithFetch(config, fetchImpl);
+    const res = await post(app, '/mytool/v1/chat/completions', {
+      model: 'GPT',
+      stream: false,
+      messages: [{ role: 'user', content: 'hi' }],
+    });
+    expect(res.status).toBe(200);
+    const json = (await res.json()) as Record<string, unknown>;
+    const choices = json.choices as Array<Record<string, unknown>>;
+    const message = choices[0]?.message as Record<string, unknown>;
+    expect(message.content).toBe('recovered');
+    expect(calls).toHaveLength(2);
+    expect(calls[0]?.url).toContain('kiro.local');
+    expect(calls[1]?.url).toContain('cc.local');
+  });
+
+  it('非流式：错误响应（503）读 body 抛网络错误 → 仍按 retryable failover', async () => {
+    const config = buildFailoverConfig({});
+    const { fetchImpl, calls } = buildMockedFetch([
+      { status: 503, bodyReadError: new Error('reset during error body') },
+      {
+        status: 200,
+        jsonBody: {
+          id: 'msg_cc',
+          type: 'message',
+          role: 'assistant',
+          model: 'cc-fast',
+          content: [{ type: 'text', text: 'ok' }],
+          stop_reason: 'end_turn',
+          stop_sequence: null,
+          usage: { input_tokens: 1, output_tokens: 1 },
+        },
+      },
+    ]);
+    const { app } = buildTestAppWithFetch(config, fetchImpl);
+    const res = await post(app, '/mytool/v1/chat/completions', {
+      model: 'GPT',
+      stream: false,
+      messages: [{ role: 'user', content: 'hi' }],
+    });
+    expect(res.status).toBe(200);
+    expect(calls).toHaveLength(2);
+  });
+});
+
+describe('pipeline e2e（B6: 零字节流式失败 failover）', () => {
+  const chatChunk = (model: string, delta: unknown, finishReason: string | null): string =>
+    `data: ${JSON.stringify({
+      id: 'chatcmpl',
+      object: 'chat.completion.chunk',
+      created: 1_700_000_000,
+      model,
+      choices: [{ index: 0, delta, finish_reason: finishReason }],
+    })}\n\n`;
+
+  // B6 专用：两个 openai 协议 provider，保证两候选都走 openai-chat 流式解码。
+  const buildStreamFailoverConfig = (): Config => ({
+    providers: [
+      { name: 'p1', type: 'openai', apiKey: 'sk-1', apiBase: 'http://p1.local', models: [{ id: 'm1' }] },
+      { name: 'p2', type: 'openai', apiKey: 'sk-2', apiBase: 'http://p2.local', models: [{ id: 'm2' }] },
+    ],
+    modelGroups: [
+      {
+        id: 'g',
+        channels: [
+          { provider: 'p1', model: 'm1', priority: 1 },
+          { provider: 'p2', model: 'm2', priority: 2 },
+        ],
+      },
+    ],
+    adapters: [
+      { name: 'mytool', type: 'openai', models: [{ sourceModelId: 'GPT', model: 'g' }] },
+    ],
+  });
+
+  it('流式：上游 200 但首字节前流就报错 → failover 到下一候选成功', async () => {
+    // R-P1-2：p1 返回 200 后首字节前失败（零字节流）→ client 未收到字节，应可 failover。
+    const config = buildStreamFailoverConfig();
+    const { fetchImpl, calls } = buildMockedFetch([
+      { status: 200, streamChunks: [], isStreamError: true }, // 零字节流失败
+      {
+        status: 200,
+        streamChunks: [
+          chatChunk('m2', { role: 'assistant', content: '' }, null),
+          chatChunk('m2', { content: 'recovered' }, null),
+          chatChunk('m2', {}, 'stop'),
+          'data: [DONE]\n\n',
+        ],
+      },
+    ]);
+    const { app } = buildTestAppWithFetch(config, fetchImpl);
+    const res = await post(app, '/mytool/v1/chat/completions', {
+      model: 'GPT',
+      stream: true,
+      messages: [{ role: 'user', content: 'hi' }],
+    });
+    expect(res.status).toBe(200);
+    const text = await res.text();
+    expect(text).toContain('recovered');
+    // 首字节前失败 → failover：两个候选都调了。
+    expect(calls).toHaveLength(2);
+    expect(calls[0]?.url).toContain('p1.local');
+    expect(calls[1]?.url).toContain('p2.local');
+  });
+});
+
+describe('pipeline e2e（B7: client abort 不误判 retryable）', () => {
+  it('预 abort 的 signal → 循环首检即返回 499，不发任何上游请求', async () => {
+    const config = buildFailoverConfig({});
+    const { fetchImpl, calls } = buildMockedFetch([
+      { status: 200, jsonBody: { id: 'x', object: 'chat.completion', choices: [], usage: {} } },
+    ]);
+    const { app } = buildTestAppWithFetch(config, fetchImpl);
+    const ac = new AbortController();
+    ac.abort(); // 客户端在请求前已断连
+    const res = await app.fetch(
+      new Request('http://proxy.local/mytool/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model: 'GPT', stream: false, messages: [{ role: 'user', content: 'hi' }] }),
+        signal: ac.signal,
+      }),
+    );
+    expect(res.status).toBe(499);
+    // 循环首检 signal.aborted → 不发上游请求。
+    expect(calls).toHaveLength(0);
+  });
+
+  it('候选切换间隙 abort：首候选 retryable 后，第二候选 fetch 抛 AbortError → 499，不再继续', async () => {
+    const config = buildFailoverConfig({});
+    const abortErr = new Error('The operation was aborted');
+    abortErr.name = 'AbortError';
+    const { fetchImpl, calls } = buildMockedFetch([
+      { status: 503, jsonBody: { error: { message: 'kiro down' } } }, // 首候选 retryable
+      { status: 0, throw: abortErr }, // 第二候选：client 已断连 → AbortError
+      // 若误判 retryable，会继续试第三个候选；这里只配两个，验证不会越过 abort。
+    ]);
+    const { app } = buildTestAppWithFetch(config, fetchImpl);
+    const res = await post(app, '/mytool/v1/chat/completions', {
+      model: 'GPT',
+      stream: false,
+      messages: [{ role: 'user', content: 'hi' }],
+    });
+    expect(res.status).toBe(499);
+    // 恰好两次：kiro(503) + cc(AbortError)；abort 后不会继续。
+    expect(calls).toHaveLength(2);
+  });
+});
+
+describe('pipeline e2e（B8: 流式异常/abort 不写部分 usage）', () => {
+  // openai chat usage-only chunk → inbound 映射为 message_delta(usage)。
+  const usageChunk = `data: ${JSON.stringify({
+    id: 'chatcmpl',
+    object: 'chat.completion.chunk',
+    created: 1_700_000_000,
+    model: 'kiro-fast',
+    choices: [],
+    usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
+  })}\n\n`;
+  const contentChunk = `data: ${JSON.stringify({
+    id: 'chatcmpl',
+    object: 'chat.completion.chunk',
+    created: 1_700_000_000,
+    model: 'kiro-fast',
+    choices: [{ index: 0, delta: { content: 'partial' }, finish_reason: null }],
+  })}\n\n`;
+
+  it('mid-stream 错误（已收到部分 usage，未 message_stop）→ 不写 usage', async () => {
+    const config = buildFailoverConfig({
+      channels: [{ provider: 'kiro', model: 'kiro-fast', priority: 1 }],
+    });
+    const { fetchImpl } = buildMockedFetch([
+      {
+        status: 200,
+        // 首字节成功（contentChunk）→ 提交；随后 usage chunk；然后 mid-stream error（无 message_stop）。
+        streamChunks: [contentChunk, usageChunk],
+        isStreamError: true,
+      },
+    ]);
+    const { app, usage } = buildTestAppWithFetch(config, fetchImpl);
+    const res = await post(app, '/mytool/v1/chat/completions', {
+      model: 'GPT',
+      stream: true,
+      messages: [{ role: 'user', content: 'hi' }],
+    });
+    expect(res.status).toBe(200);
+    await res.text(); // 消费流触发异常路径
+    // 流未正常完成（无 message_stop）→ 不记部分 usage。
+    expect(usage.getToday().request_count).toBe(0);
+  });
+
+  it('正常完成（收到 message_stop）→ 照记 usage（回归守护）', async () => {
+    const config = buildFailoverConfig({
+      channels: [{ provider: 'kiro', model: 'kiro-fast', priority: 1 }],
+    });
+    const { fetchImpl } = buildMockedFetch([
+      {
+        status: 200,
+        streamChunks: [contentChunk, usageChunk, 'data: [DONE]\n\n'],
+      },
+    ]);
+    const { app, usage } = buildTestAppWithFetch(config, fetchImpl);
+    const res = await post(app, '/mytool/v1/chat/completions', {
+      model: 'GPT',
+      stream: true,
+      messages: [{ role: 'user', content: 'hi' }],
+    });
+    expect(res.status).toBe(200);
+    await res.text();
+    // 正常完成 → 记一次 usage（input 10 / output 5）。
+    const today = usage.getToday();
+    expect(today.request_count).toBe(1);
+    expect(today.input_tokens).toBe(10);
+    expect(today.output_tokens).toBe(5);
+  });
+});
+
+describe('pipeline e2e（B9: client thinking disabled 拦截 reasoning override）', () => {
+  const buildReasoningOverrideConfig = (overrides: OverrideRule[]): Config => ({
+    providers: [
+      {
+        name: 'mock-openai',
+        type: 'openai',
+        apiKey: 'sk-mock',
+        apiBase: upstreamUrl,
+        models: [{ id: 'gpt-target' }],
+      },
+    ],
+    adapters: [
+      {
+        name: 'mytool',
+        type: 'anthropic',
+        models: [
+          {
+            sourceModelId: 'GPT',
+            provider: 'mock-openai',
+            targetModelId: 'gpt-target',
+            overrides,
+          },
+        ],
+      },
+    ],
+  });
+
+  const reasoningOverride: OverrideRule[] = [
+    { scope: 'adapter-alias', body: [{ op: 'set', path: 'reasoning_effort', value: 'high' }] },
+  ];
+
+  it('client thinking disabled + reasoning override → 出站 body 不含 reasoning_effort', async () => {
+    const { app } = buildTestApp(buildReasoningOverrideConfig(reasoningOverride));
+    // anthropic 客户端（/v1/messages 路径）显式关闭 thinking → routed.reasoning.enabled=false。
+    const res = await post(app, '/mytool/v1/messages', {
+      model: 'GPT',
+      max_tokens: 100,
+      stream: false,
+      thinking: { type: 'disabled' },
+      messages: [{ role: 'user', content: 'hi' }],
+    });
+    expect(res.status).toBe(200);
+    // R14：reasoningDisabled=true → reasoning_effort override 被拦截。
+    expect(lastUpstream().body.reasoning_effort).toBeUndefined();
+  });
+
+  it('对照组：client 未关闭 thinking → 同一 override 正常写入 reasoning_effort', async () => {
+    const { app } = buildTestApp(buildReasoningOverrideConfig(reasoningOverride));
+    const res = await post(app, '/mytool/v1/messages', {
+      model: 'GPT',
+      max_tokens: 100,
+      stream: false,
+      messages: [{ role: 'user', content: 'hi' }],
+    });
+    expect(res.status).toBe(200);
+    expect(lastUpstream().body.reasoning_effort).toBe('high');
   });
 });
