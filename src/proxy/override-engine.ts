@@ -15,11 +15,7 @@
  *   通过 registerBodyOp / registerHeaderOp 扩展（extensibility 验证）。
  */
 import type { Logger } from 'pino';
-import type {
-  OverrideBodyOp,
-  OverrideHeaderOp,
-  OverrideRule,
-} from '../config/types.ts';
+import type { OverrideBodyOp, OverrideHeaderOp, OverrideRule } from '../config/types.ts';
 import type { WireBody } from './adapters/index.ts';
 
 /** 覆写上下文：携带供模板渲染使用的路由/请求元信息。 */
@@ -51,7 +47,7 @@ export const PROTECTED_OVERRIDE_PATHS: readonly string[] = [
   'tools',
 ];
 
-/** 模板白名单变量（与 config/validator.ts 的 VALID_OVERRIDE_VARIABLES 对齐）。 */
+/** 模板白名单变量（R12：仅这些变量可在覆写条件模板中使用）。 */
 const TEMPLATE_VARIABLES = new Set([
   'model',
   'logicalModel',
@@ -366,7 +362,7 @@ class ExprParser {
     }
     throw new Error(`unexpected token: ${tok.kind}`);
   }
-};
+}
 
 /**
  * 求值已替换（变量已展开）后的表达式为 boolean。

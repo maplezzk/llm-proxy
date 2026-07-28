@@ -6,7 +6,7 @@
  * 验收 R13-R15：resolver 统一仲裁，并保证 Anthropic budget_tokens < max_tokens。
  */
 import { describe, expect, it } from 'vitest';
-import { makeRoute, type LegacyRouteLike } from '../helpers/route.ts';
+import { type LegacyRouteLike, makeRoute } from '../helpers/route.ts';
 import { translate } from '../helpers/translate.ts';
 
 const anthropicRoute: LegacyRouteLike = {

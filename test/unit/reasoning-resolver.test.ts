@@ -2,7 +2,10 @@ import { describe, expect, it } from 'vitest';
 import type { ReasoningSpec } from '../../src/proxy/ir/types.ts';
 import { resolveReasoning } from '../../src/proxy/reasoning-resolver.ts';
 
-const spec = (source: ReasoningSpec['source'], values: Omit<ReasoningSpec, 'source'>): ReasoningSpec => ({
+const spec = (
+  source: ReasoningSpec['source'],
+  values: Omit<ReasoningSpec, 'source'>,
+): ReasoningSpec => ({
   source,
   ...values,
 });

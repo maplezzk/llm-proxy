@@ -1,3 +1,4 @@
+import type { Logger } from 'pino';
 /**
  * U5 覆写引擎单元测试。
  *
@@ -11,7 +12,8 @@
  * - 注册新操作扩展注册表（extensibility）。
  */
 import { describe, expect, it, vi } from 'vitest';
-import type { Logger } from 'pino';
+import type { OverrideBodyOp, OverrideHeaderOp, OverrideRule } from '../../src/config/types.ts';
+import type { WireBody } from '../../src/proxy/adapters/index.ts';
 import {
   type OverrideContext,
   applyOverrides,
@@ -19,8 +21,6 @@ import {
   registerBodyOp,
   registerHeaderOp,
 } from '../../src/proxy/override-engine.ts';
-import type { WireBody } from '../../src/proxy/adapters/index.ts';
-import type { OverrideBodyOp, OverrideHeaderOp, OverrideRule } from '../../src/config/types.ts';
 
 const baseCtx: OverrideContext = {
   model: 'claude-sonnet-4',
@@ -200,8 +200,7 @@ describe('unit/override-engine: applyOverrides', () => {
       },
     ];
 
-    const expectNoThrow = () =>
-      applyOverrides(body, {}, rules, baseCtx, silentLogger);
+    const expectNoThrow = () => applyOverrides(body, {}, rules, baseCtx, silentLogger);
     expect(expectNoThrow).not.toThrow();
 
     const result = applyOverrides(body, {}, rules, baseCtx, silentLogger);
@@ -324,8 +323,7 @@ describe('unit/override-engine: applyOverrides', () => {
       },
     ];
 
-    const expectNoThrow = () =>
-      applyOverrides(body, {}, rules, baseCtx, silentLogger);
+    const expectNoThrow = () => applyOverrides(body, {}, rules, baseCtx, silentLogger);
     expect(expectNoThrow).not.toThrow();
 
     const result = applyOverrides(body, {}, rules, baseCtx, silentLogger);
@@ -341,8 +339,7 @@ describe('unit/override-engine: applyOverrides', () => {
       },
     ];
 
-    const expectNoThrow = () =>
-      applyOverrides(body, {}, rules, baseCtx, silentLogger);
+    const expectNoThrow = () => applyOverrides(body, {}, rules, baseCtx, silentLogger);
     expect(expectNoThrow).not.toThrow();
   });
 

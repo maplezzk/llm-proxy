@@ -32,21 +32,13 @@ const VALID_BODY_OPS = ['set', 'set_if_absent', 'delete'];
 const VALID_HEADER_OPS = ['set', 'delete'];
 /** 覆写引擎保护字段（按 R12，不得被任何 body/header 操作覆盖）。 */
 const PROTECTED_OVERRIDE_PATHS = new Set(['model', 'messages', 'stream', 'system', 'tools']);
-const VALID_OVERRIDE_VARIABLES = new Set([
-  'model',
-  'logicalModel',
-  'provider',
-  'providerProtocol',
-  'resolvedModel',
-]);
-
 /** 校验完整配置，返回全部错误（不短路）。 */
 export const validateConfig = (config: Config): ValidationError[] => {
   const errors = validateProviders(config);
   const providerIndex = buildProviderIndex(config);
   const modelGroupIndex = buildModelGroupIndex(config);
   errors.push(...validateModelGroups(config, providerIndex));
-  errors.push(...validateAdapters(config, providerIndex, modelGroupIndex));
+  errors.push(...validateAdapters(config, modelGroupIndex));
   errors.push(...validateVision(config));
   if (config.port != null) {
     if (!Number.isInteger(config.port) || config.port < 1 || config.port > 65535) {
@@ -60,7 +52,10 @@ export const validateConfig = (config: Config): ValidationError[] => {
 const buildProviderIndex = (config: Config): Map<string, { id: string }[]> => {
   const index = new Map<string, { id: string }[]>();
   for (const provider of config.providers ?? []) {
-    index.set(provider.name, (provider.models ?? []).map((m) => ({ id: m.id })));
+    index.set(
+      provider.name,
+      (provider.models ?? []).map((m) => ({ id: m.id })),
+    );
   }
   return index;
 };
@@ -281,7 +276,6 @@ const validateVision = (config: Config): ValidationError[] => {
 
 const validateAdapters = (
   config: Config,
-  providerIndex: Map<string, { id: string }[]>,
   modelGroupIndex: Map<string, ModelGroup>,
 ): ValidationError[] => {
   const errors: ValidationError[] = [];

@@ -9,9 +9,9 @@
  * - RouteDecision / StreamPolicy / ProxyError / RetryableErrorJudge：路由与重试契约。
  */
 
+import type { OverrideRule } from '../../config/types.ts';
 import type { CanonicalStreamEvent } from '../ir/stream-events.ts';
 import type { CanonicalRequest, ClientProtocol, ReasoningSpec } from '../ir/types.ts';
-import type { OverrideRule } from '../../config/types.ts';
 
 /**
  * wire 协议 body（JSON 对象）。inbound 解码前视为不可信，
