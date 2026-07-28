@@ -79,10 +79,25 @@ export const loadConfigFromYaml = (filePath: string): Config => {
       type: p.type,
       apiKey: p.api_key,
       apiBase: p.api_base,
+      priority: p.priority,
+      enabled: p.enabled,
       models: (p.models ?? []).map((m) => ({
         id: m.id,
         thinking: parseThinkingConfig(m),
         input: m.input as InputModality[] | undefined,
+        contextWindow: m.context_window,
+      })),
+    })),
+    modelGroups: (interpolated.model_groups ?? []).map((g) => ({
+      id: g.id,
+      contextWindow: g.context_window,
+      maxOutputTokens: g.max_output_tokens,
+      channels: (g.channels ?? []).map((c) => ({
+        provider: c.provider,
+        model: c.model,
+        priority: c.priority,
+        contextWindow: c.context_window,
+        maxOutputTokens: c.max_output_tokens,
       })),
     })),
     adapters: (interpolated.adapters ?? []).map((a) => ({
@@ -90,10 +105,27 @@ export const loadConfigFromYaml = (filePath: string): Config => {
       type: a.type,
       max_tokens: a.max_tokens,
       stream: a.stream,
+      onFailure: a.on_failure,
       models: (a.models ?? []).map((m) => ({
         sourceModelId: m.source_model_id,
         provider: m.provider,
         targetModelId: m.target_model_id,
+        model: m.model,
+        channel: m.channel,
+        overrides: (m.overrides ?? []).map((r) => ({
+          scope: r.scope,
+          when: r.when,
+          body: (r.body ?? []).map((op) => ({
+            op: op.op,
+            path: op.path,
+            value: op.value,
+          })),
+          headers: (r.headers ?? []).map((op) => ({
+            op: op.op,
+            name: op.name,
+            value: op.value,
+          })),
+        })),
         thinking: parseThinkingConfig(m),
       })),
     })),
@@ -122,6 +154,8 @@ export const serializeConfigToYaml = (config: Config): string => {
       type: p.type,
       api_key: p.apiKey,
       api_base: p.apiBase,
+      ...(p.priority !== undefined ? { priority: p.priority } : {}),
+      ...(p.enabled !== undefined ? { enabled: p.enabled } : {}),
       models: p.models.map((m) => ({
         id: m.id,
         ...(m.thinking?.budget_tokens
@@ -135,6 +169,19 @@ export const serializeConfigToYaml = (config: Config): string => {
           : {}),
         ...(m.thinking?.reasoning_effort ? { reasoning_effort: m.thinking.reasoning_effort } : {}),
         ...(m.input?.length ? { input: m.input } : {}),
+        ...(m.contextWindow !== undefined ? { context_window: m.contextWindow } : {}),
+      })),
+    })),
+    model_groups: (config.modelGroups ?? []).map((g) => ({
+      id: g.id,
+      ...(g.contextWindow !== undefined ? { context_window: g.contextWindow } : {}),
+      ...(g.maxOutputTokens !== undefined ? { max_output_tokens: g.maxOutputTokens } : {}),
+      channels: g.channels.map((c) => ({
+        provider: c.provider,
+        model: c.model,
+        ...(c.priority !== undefined ? { priority: c.priority } : {}),
+        ...(c.contextWindow !== undefined ? { context_window: c.contextWindow } : {}),
+        ...(c.maxOutputTokens !== undefined ? { max_output_tokens: c.maxOutputTokens } : {}),
       })),
     })),
     adapters: (config.adapters ?? []).map((a) => ({
@@ -142,10 +189,39 @@ export const serializeConfigToYaml = (config: Config): string => {
       type: a.type,
       ...(a.max_tokens !== undefined ? { max_tokens: a.max_tokens } : {}),
       ...(a.stream !== undefined ? { stream: a.stream } : {}),
+      ...(a.onFailure !== undefined ? { on_failure: a.onFailure } : {}),
       models: a.models.map((m) => ({
         source_model_id: m.sourceModelId,
-        provider: m.provider,
-        target_model_id: m.targetModelId,
+        ...(m.provider !== undefined ? { provider: m.provider } : {}),
+        ...(m.targetModelId !== undefined ? { target_model_id: m.targetModelId } : {}),
+        ...(m.model !== undefined ? { model: m.model } : {}),
+        ...(m.channel !== undefined ? { channel: m.channel } : {}),
+        ...(m.overrides && m.overrides.length > 0
+          ? {
+              overrides: m.overrides.map((r) => ({
+                scope: r.scope,
+                ...(r.when !== undefined ? { when: r.when } : {}),
+                ...(r.body && r.body.length > 0
+                  ? {
+                      body: r.body.map((op) => ({
+                        op: op.op,
+                        path: op.path,
+                        ...(op.value !== undefined ? { value: op.value } : {}),
+                      })),
+                    }
+                  : {}),
+                ...(r.headers && r.headers.length > 0
+                  ? {
+                      headers: r.headers.map((op) => ({
+                        op: op.op,
+                        name: op.name,
+                        ...(op.value !== undefined ? { value: op.value } : {}),
+                      })),
+                    }
+                  : {}),
+              })),
+            }
+          : {}),
         ...(m.thinking?.budget_tokens
           ? { thinking: { budget_tokens: m.thinking.budget_tokens } }
           : {}),

@@ -223,9 +223,14 @@ export const configToRows = (config: Config): ConfigRowBundle => {
     });
 
     for (const mapping of adapter.models) {
+      // Model-centric mode（P2.X）：映射指向 model_group，U2 才落库 adapter_model_mappings.model_group_id。
+      // U1 阶段 mapper 暂不写 model_group 绑定，仅写 legacy provider/targetModelId 映射。
+      if (mapping.model !== undefined) {
+        continue;
+      }
       const providerModelId = resolveModelId(
-        mapping.provider,
-        mapping.targetModelId,
+        mapping.provider as string,
+        mapping.targetModelId as string,
         `adapter "${adapter.name}" 的模型映射 "${mapping.sourceModelId}"`,
       );
       adapterModelMappings.push({
