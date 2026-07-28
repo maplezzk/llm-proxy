@@ -1,23 +1,23 @@
 /**
- * Config ↔ PG 行映射层（P1.16 增量2）。
+ * Config ↔ PG 行映射层（P1.16，P2 U2 扩展）。
  *
  * 设计要点：
  * - `configToRows(config)` 是纯函数：把运行时 Config 翻译成一整套「行束」（ConfigRowBundle）。
- *   行束内使用**合成自增 id**（从 1 递增）保证束内外键自洽；真实落库 id 由
- *   `importConfigToPg` 在插入后重新解析（见 src/db/config-repo.ts）。
- * - `rowsToConfig(bundle)` 是反向纯函数：只依赖 id 的**内部一致性**（不依赖具体取值），
- *   因此既能消费 configToRows 的合成 id 束，也能消费 loadConfigFromPg 读回的真实 id 束。
- * - 外键解析失败（mapping/vision 指向不存在的 provider+model）抛清晰错误。
- *
- * 行束使用轻量行接口（*RowLite），只保留映射所需列，剥离 createdAt/updatedAt/metadata 等
- * 落库时由列默认值补齐的字段，使正反向映射的类型边界清晰。
- *
- * 过渡期已知限制（诚实标注，不做假加密）：
- * - Provider.apiKey 明文写入 providers.credential_ref。
- * - Config.proxyKey 明文写入 proxy_settings.proxy_key_hash。
+ *   行束内使用合成自增 id 保证外键自洽；真实落库 id 由 config-repo 重映射。
+ * - `rowsToConfig(bundle)` 只依赖行束的内部外键一致性，既可消费合成 id，也可消费真实 id。
+ * - legacy adapter mapping 会在行束中自动升级为单渠道模型组；反向映射仍还原 legacy 配置形状。
+ * - Provider.apiKey / Config.proxyKey 在双写过渡期仍以明文进入 PG 对应列。
  */
-import type { Config, InputModality, ProviderType, ThinkingConfig } from './types.ts';
 import type { StreamPolicy } from '../db/schema/index.ts';
+import type {
+  AdapterOnFailure,
+  ChannelKey,
+  Config,
+  InputModality,
+  OverrideRule,
+  ProviderType,
+  ThinkingConfig,
+} from './types.ts';
 
 /** providers 行（合成 id）。credential_ref 过渡期存明文 api_key。 */
 export interface ProviderRowLite {
@@ -26,6 +26,8 @@ export interface ProviderRowLite {
   type: ProviderType;
   apiBase: string | null;
   credentialRef: string;
+  priority: number;
+  enabled: boolean;
 }
 
 /** provider_models 行（合成 id + 合成 providerId）。 */
@@ -38,6 +40,29 @@ export interface ProviderModelRowLite {
   thinkingBudgetTokens: number | null;
   thinkingReasoningEffort: string | null;
   thinkingType: string | null;
+  /** 暂存于 provider_models.metadata.contextWindow。 */
+  contextWindow: number | null;
+}
+
+/** model_groups 行（合成 id）。 */
+export interface ModelGroupRowLite {
+  id: number;
+  name: string;
+  contextWindow: number | null;
+  maxOutputTokens: number | null;
+  enabled: boolean;
+  metadata: Record<string, unknown>;
+}
+
+/** model_group_channels 行（合成 id + 合成外键）。 */
+export interface ModelGroupChannelRowLite {
+  id: number;
+  modelGroupId: number;
+  providerModelId: number;
+  priority: number;
+  contextWindow: number | null;
+  maxOutputTokens: number | null;
+  enabled: boolean;
 }
 
 /** adapters 行（合成 id）。 */
@@ -47,15 +72,22 @@ export interface AdapterRowLite {
   inboundType: ProviderType;
   maxTokensOverride: number | null;
   streamPolicy: StreamPolicy;
+  /** 暂存于 adapters.metadata.onFailure。 */
+  onFailure: AdapterOnFailure | null;
 }
 
-/** adapter_model_mappings 行（合成 adapterId + 合成 providerModelId）。 */
+/** adapter_model_mappings 行（合成外键）。 */
 export interface AdapterModelMappingRowLite {
   adapterId: number;
   sourceModelId: string;
-  providerModelId: number;
+  /** Legacy 目标或 model-centric 钉死渠道；auto 模式为 null。 */
+  providerModelId: number | null;
+  /** Model-centric 绑定；未升级的历史 PG 行可为 null。 */
+  modelGroupId: number | null;
   /** thinking 覆盖；null = 继承 provider_model。 */
   thinkingOverride: ThinkingConfig | null;
+  /** 复用现有 generation_overrides JSONB 承载声明式覆写规则。 */
+  generationOverrides: OverrideRule[] | null;
 }
 
 /** vision_settings 单例行（合成 providerModelId）。 */
@@ -73,46 +105,40 @@ export interface ProxySettingRowLite {
   captureMaxSize: number;
 }
 
-/**
- * 一整套配置行束。各表 id 为合成值，束内外键自洽；
- * 落库时由 config-repo 重映射为真实自增 id。
- */
+/** 一整套配置行束；所有 id 均在束内自洽。 */
 export interface ConfigRowBundle {
   providers: ProviderRowLite[];
   providerModels: ProviderModelRowLite[];
+  modelGroups: ModelGroupRowLite[];
+  modelGroupChannels: ModelGroupChannelRowLite[];
   adapters: AdapterRowLite[];
   adapterModelMappings: AdapterModelMappingRowLite[];
-  /** 单例表：无 vision 配置时为 null。 */
   visionSettings: VisionSettingRowLite | null;
   proxySettings: ProxySettingRowLite;
 }
 
-// PG 各 NOT NULL 列的默认值（与 drizzle schema 保持一致）。
 const DEFAULT_LOG_LEVEL = 'info';
 const DEFAULT_LOCALE = 'en';
 const DEFAULT_PORT = 9000;
 const DEFAULT_CAPTURE_MAX_SIZE = 1000;
+const KEY_SEPARATOR = '\u0000';
+const LEGACY_MAPPING_METADATA_KEY = 'legacyAdapterMapping';
 
-/** (provider 名, model id) 复合键分隔符（model id 合法字符不含 NUL，避免歧义）。 */
-const KEY_SEP = '\u0000';
 const modelKey = (providerName: string, modelId: string): string =>
-  `${providerName}${KEY_SEP}${modelId}`;
+  `${providerName}${KEY_SEPARATOR}${modelId}`;
 
-/** Config.adapters[].stream（布尔/缺省）→ stream_policy 枚举。 */
 const streamToPolicy = (stream: boolean | undefined): StreamPolicy => {
   if (stream === true) return 'default_true';
   if (stream === false) return 'force_false';
   return 'passthrough';
 };
 
-/** stream_policy 枚举 → Config.adapters[].stream（force_true 无布尔对应，归并为 true）。 */
 const policyToStream = (policy: StreamPolicy): boolean | undefined => {
   if (policy === 'default_true' || policy === 'force_true') return true;
   if (policy === 'force_false') return false;
-  return undefined; // passthrough
+  return undefined;
 };
 
-/** thinking 配置 → provider_models 的思考列（enabled 由是否存在配置推断）。 */
 const thinkingToColumns = (
   thinking: ThinkingConfig | undefined,
 ): Pick<
@@ -135,56 +161,68 @@ const thinkingToColumns = (
   };
 };
 
-/** provider_models 思考列 → ThinkingConfig（thinkingEnabled=false 时返回 undefined）。 */
 const columnsToThinking = (row: ProviderModelRowLite): ThinkingConfig | undefined => {
   if (!row.thinkingEnabled) return undefined;
-  const tc: ThinkingConfig = {};
-  if (row.thinkingBudgetTokens != null) tc.budget_tokens = row.thinkingBudgetTokens;
+  const thinking: ThinkingConfig = {};
+  if (row.thinkingBudgetTokens != null) thinking.budget_tokens = row.thinkingBudgetTokens;
   if (row.thinkingReasoningEffort != null) {
-    tc.reasoning_effort = row.thinkingReasoningEffort as ThinkingConfig['reasoning_effort'];
+    thinking.reasoning_effort = row.thinkingReasoningEffort as ThinkingConfig['reasoning_effort'];
   }
-  if (row.thinkingType != null) tc.type = row.thinkingType;
-  return tc;
+  if (row.thinkingType != null) thinking.type = row.thinkingType;
+  return thinking;
 };
 
-/** 判断输入模态是否等价于默认「仅文本」（用于反向归一为 undefined）。 */
 const isTextOnly = (modalities: string[]): boolean =>
   modalities.length === 1 && modalities[0] === 'text';
 
-/**
- * Config → 行束（纯函数）。
- *
- * 合成 id 分配顺序：providers → provider_models → adapters → mappings。
- * mapping/vision 的 provider_model_id 通过 (provider 名, model id) 解析到合成 model id，
- * 解析不到抛清晰错误。
- */
+const parseChannelKey = (channel: string, context: string): [string, string] => {
+  const separatorIndex = channel.indexOf('/');
+  if (separatorIndex <= 0 || separatorIndex === channel.length - 1) {
+    throw new Error(`configToRows: ${context} 的 channel "${channel}" 必须是 "provider/model"`);
+  }
+  return [channel.slice(0, separatorIndex), channel.slice(separatorIndex + 1)];
+};
+
+const allocateLegacyGroupName = (
+  adapterName: string,
+  sourceModelId: string,
+  usedNames: Set<string>,
+): string => {
+  const baseName = `__legacy__:${adapterName}:${sourceModelId}`;
+  let candidate = baseName;
+  let suffix = 2;
+  while (usedNames.has(candidate)) {
+    candidate = `${baseName}:${suffix++}`;
+  }
+  usedNames.add(candidate);
+  return candidate;
+};
+
+const isLegacyModelGroup = (group: ModelGroupRowLite): boolean =>
+  group.metadata[LEGACY_MAPPING_METADATA_KEY] === true;
+
+/** Config → 行束（纯函数）。 */
 export const configToRows = (config: Config): ConfigRowBundle => {
   const providers: ProviderRowLite[] = [];
   const providerModels: ProviderModelRowLite[] = [];
-
-  // provider 名 → 合成 provider id
-  const providerIdByName = new Map<string, number>();
-  // (provider 名, model id) → 合成 provider_model id
   const modelIdByKey = new Map<string, number>();
-
   let nextProviderId = 1;
-  let nextModelId = 1;
+  let nextProviderModelId = 1;
 
-  // 1) providers + provider_models（先建模型行，供后续解析外键）
   for (const provider of config.providers) {
     const providerSyntheticId = nextProviderId++;
-    providerIdByName.set(provider.name, providerSyntheticId);
     providers.push({
       id: providerSyntheticId,
       name: provider.name,
       type: provider.type,
-      // TODO(security): P1.16 过渡期明文存储，P2 引入加密/vault 后替换
       credentialRef: provider.apiKey,
       apiBase: provider.apiBase ?? null,
+      priority: provider.priority ?? 0,
+      enabled: provider.enabled ?? true,
     });
 
     for (const model of provider.models) {
-      const modelSyntheticId = nextModelId++;
+      const modelSyntheticId = nextProviderModelId++;
       modelIdByKey.set(modelKey(provider.name, model.id), modelSyntheticId);
       providerModels.push({
         id: modelSyntheticId,
@@ -192,22 +230,75 @@ export const configToRows = (config: Config): ConfigRowBundle => {
         modelId: model.id,
         inputModalities: model.input ?? ['text'],
         ...thinkingToColumns(model.thinking),
+        contextWindow: model.contextWindow ?? null,
       });
     }
   }
 
-  // 解析 (provider 名, model id) → 合成 provider_model id，失败抛清晰错误。
-  const resolveModelId = (providerName: string, targetModelId: string, ctx: string): number => {
+  const resolveProviderModelId = (
+    providerName: string,
+    targetModelId: string,
+    context: string,
+  ): number => {
     const resolved = modelIdByKey.get(modelKey(providerName, targetModelId));
     if (resolved === undefined) {
       throw new Error(
-        `configToRows: ${ctx} 引用了不存在的 provider 模型 (provider="${providerName}", model="${targetModelId}")`,
+        `configToRows: ${context} 引用了不存在的 provider 模型 (provider="${providerName}", model="${targetModelId}")`,
       );
     }
     return resolved;
   };
 
-  // 2) adapters + adapter_model_mappings
+  const modelGroups: ModelGroupRowLite[] = [];
+  const modelGroupChannels: ModelGroupChannelRowLite[] = [];
+  const modelGroupIdByName = new Map<string, number>();
+  const channelModelIdsByGroupId = new Map<number, Set<number>>();
+  const usedGroupNames = new Set<string>();
+  let nextModelGroupId = 1;
+  let nextModelGroupChannelId = 1;
+
+  for (const group of config.modelGroups ?? []) {
+    if (usedGroupNames.has(group.id)) {
+      throw new Error(`configToRows: model_group "${group.id}" 重复`);
+    }
+    usedGroupNames.add(group.id);
+    const groupSyntheticId = nextModelGroupId++;
+    modelGroupIdByName.set(group.id, groupSyntheticId);
+    modelGroups.push({
+      id: groupSyntheticId,
+      name: group.id,
+      contextWindow: group.contextWindow ?? null,
+      maxOutputTokens: group.maxOutputTokens ?? null,
+      enabled: true,
+      metadata: {},
+    });
+
+    const channelModelIds = new Set<number>();
+    for (const channel of group.channels) {
+      const providerModelId = resolveProviderModelId(
+        channel.provider,
+        channel.model,
+        `model_group "${group.id}" 的渠道`,
+      );
+      if (channelModelIds.has(providerModelId)) {
+        throw new Error(
+          `configToRows: model_group "${group.id}" 重复绑定 provider 模型 (provider="${channel.provider}", model="${channel.model}")`,
+        );
+      }
+      channelModelIds.add(providerModelId);
+      modelGroupChannels.push({
+        id: nextModelGroupChannelId++,
+        modelGroupId: groupSyntheticId,
+        providerModelId,
+        priority: channel.priority ?? 0,
+        contextWindow: channel.contextWindow ?? null,
+        maxOutputTokens: channel.maxOutputTokens ?? null,
+        enabled: true,
+      });
+    }
+    channelModelIdsByGroupId.set(groupSyntheticId, channelModelIds);
+  }
+
   const adapters: AdapterRowLite[] = [];
   const adapterModelMappings: AdapterModelMappingRowLite[] = [];
   let nextAdapterId = 1;
@@ -220,46 +311,103 @@ export const configToRows = (config: Config): ConfigRowBundle => {
       inboundType: adapter.type,
       maxTokensOverride: adapter.max_tokens ?? null,
       streamPolicy: streamToPolicy(adapter.stream),
+      onFailure: adapter.onFailure ?? null,
     });
 
     for (const mapping of adapter.models) {
-      // Model-centric mode（P2.X）：映射指向 model_group，U2 才落库 adapter_model_mappings.model_group_id。
-      // U1 阶段 mapper 暂不写 model_group 绑定，仅写 legacy provider/targetModelId 映射。
+      const context = `adapter "${adapter.name}" 的模型映射 "${mapping.sourceModelId}"`;
+      if (
+        mapping.model !== undefined &&
+        (mapping.provider !== undefined || mapping.targetModelId !== undefined)
+      ) {
+        throw new Error(`configToRows: ${context} 不能同时指定 model 与 legacy provider/model`);
+      }
+
       if (mapping.model !== undefined) {
+        const modelGroupId = modelGroupIdByName.get(mapping.model);
+        if (modelGroupId === undefined) {
+          throw new Error(`configToRows: ${context} 引用了不存在的 model_group "${mapping.model}"`);
+        }
+
+        let providerModelId: number | null = null;
+        if (mapping.channel !== undefined) {
+          const [providerName, modelId] = parseChannelKey(mapping.channel, context);
+          providerModelId = resolveProviderModelId(providerName, modelId, context);
+          if (!channelModelIdsByGroupId.get(modelGroupId)?.has(providerModelId)) {
+            throw new Error(
+              `configToRows: ${context} 的钉死渠道 "${mapping.channel}" 不属于 model_group "${mapping.model}"`,
+            );
+          }
+        }
+
+        adapterModelMappings.push({
+          adapterId: adapterSyntheticId,
+          sourceModelId: mapping.sourceModelId,
+          providerModelId,
+          modelGroupId,
+          thinkingOverride: mapping.thinking ?? null,
+          generationOverrides: mapping.overrides ?? null,
+        });
         continue;
       }
-      const providerModelId = resolveModelId(
-        mapping.provider as string,
-        mapping.targetModelId as string,
-        `adapter "${adapter.name}" 的模型映射 "${mapping.sourceModelId}"`,
+
+      if (mapping.provider === undefined || mapping.targetModelId === undefined) {
+        throw new Error(`configToRows: ${context} 缺少 legacy provider/targetModelId`);
+      }
+      const providerModelId = resolveProviderModelId(
+        mapping.provider,
+        mapping.targetModelId,
+        context,
       );
+      const modelGroupId = nextModelGroupId++;
+      const groupName = allocateLegacyGroupName(
+        adapter.name,
+        mapping.sourceModelId,
+        usedGroupNames,
+      );
+      modelGroups.push({
+        id: modelGroupId,
+        name: groupName,
+        contextWindow: null,
+        maxOutputTokens: null,
+        enabled: true,
+        metadata: { [LEGACY_MAPPING_METADATA_KEY]: true },
+      });
+      modelGroupChannels.push({
+        id: nextModelGroupChannelId++,
+        modelGroupId,
+        providerModelId,
+        priority: 0,
+        contextWindow: null,
+        maxOutputTokens: null,
+        enabled: true,
+      });
+      channelModelIdsByGroupId.set(modelGroupId, new Set([providerModelId]));
+
       adapterModelMappings.push({
         adapterId: adapterSyntheticId,
         sourceModelId: mapping.sourceModelId,
         providerModelId,
-        // thinking 覆盖以 JSONB 存储；null = 继承 provider_model
+        modelGroupId,
         thinkingOverride: mapping.thinking ?? null,
+        generationOverrides: mapping.overrides ?? null,
       });
     }
   }
 
-  // 3) vision_settings（单例）
   let visionSettings: VisionSettingRowLite | null = null;
   if (config.vision) {
-    const providerModelId = resolveModelId(
-      config.vision.provider,
-      config.vision.model,
-      'vision 识图配置',
-    );
     visionSettings = {
-      providerModelId,
+      providerModelId: resolveProviderModelId(
+        config.vision.provider,
+        config.vision.model,
+        'vision 识图配置',
+      ),
       prompt: config.vision.prompt ?? null,
     };
   }
 
-  // 4) proxy_settings（单例）
   const proxySettings: ProxySettingRowLite = {
-    // TODO(security): P1.16 过渡期明文存储 proxy_key，P2 改为 bcrypt/argon2 哈希
     proxyKeyHash: config.proxyKey ?? null,
     logLevel: config.logLevel ?? DEFAULT_LOG_LEVEL,
     locale: config.locale ?? DEFAULT_LOCALE,
@@ -267,88 +415,155 @@ export const configToRows = (config: Config): ConfigRowBundle => {
     captureMaxSize: config.captureMaxSize ?? DEFAULT_CAPTURE_MAX_SIZE,
   };
 
-  return { providers, providerModels, adapters, adapterModelMappings, visionSettings, proxySettings };
+  return {
+    providers,
+    providerModels,
+    modelGroups,
+    modelGroupChannels,
+    adapters,
+    adapterModelMappings,
+    visionSettings,
+    proxySettings,
+  };
 };
 
-/**
- * 行束 → Config（反向纯函数）。
- *
- * 语义归一（与原 Config 语义等价，非逐字节相等）：
- * - input_modalities=['text'] 归一为 input=undefined（仅文本是默认态）。
- * - proxy 各字段忠实读回；若取值为 schema 默认值，可能与「未配置」的原始 Config 不同，
- *   但运行行为一致（如 port=9000 ≡ 未配置）。
- * - credential_ref 明文还原为 apiKey（过渡期）。
- */
+/** 行束 → Config（反向纯函数）。 */
 export const rowsToConfig = (bundle: ConfigRowBundle): Config => {
-  const providerById = new Map(bundle.providers.map((p) => [p.id, p]));
-  const modelById = new Map(bundle.providerModels.map((m) => [m.id, m]));
+  const providerById = new Map(bundle.providers.map((provider) => [provider.id, provider]));
+  const modelById = new Map(bundle.providerModels.map((model) => [model.id, model]));
+  const modelGroupRows = bundle.modelGroups ?? [];
+  const modelGroupChannelRows = bundle.modelGroupChannels ?? [];
+  const modelGroupById = new Map(modelGroupRows.map((group) => [group.id, group]));
 
-  // providers + 其 models（按行束顺序，保留直连路由优先级语义）
-  const providers = bundle.providers.map((p) => ({
-    name: p.name,
-    type: p.type,
-    apiKey: p.credentialRef,
-    apiBase: p.apiBase ?? undefined,
+  const resolveProviderModel = (
+    providerModelId: number,
+    context: string,
+  ): { provider: ProviderRowLite; model: ProviderModelRowLite } => {
+    const model = modelById.get(providerModelId);
+    const provider = model ? providerById.get(model.providerId) : undefined;
+    if (!model || !provider) {
+      throw new Error(
+        `rowsToConfig: ${context} 指向不存在的 provider_model(id=${providerModelId})`,
+      );
+    }
+    return { provider, model };
+  };
+
+  const providers = bundle.providers.map((provider) => ({
+    name: provider.name,
+    type: provider.type,
+    apiKey: provider.credentialRef,
+    apiBase: provider.apiBase ?? undefined,
+    priority: provider.priority == null || provider.priority === 0 ? undefined : provider.priority,
+    enabled: provider.enabled === false ? false : undefined,
     models: bundle.providerModels
-      .filter((m) => m.providerId === p.id)
-      .map((m) => ({
-        id: m.modelId,
-        thinking: columnsToThinking(m),
-        input: isTextOnly(m.inputModalities) ? undefined : (m.inputModalities as InputModality[]),
+      .filter((model) => model.providerId === provider.id)
+      .map((model) => ({
+        id: model.modelId,
+        thinking: columnsToThinking(model),
+        input: isTextOnly(model.inputModalities)
+          ? undefined
+          : (model.inputModalities as InputModality[]),
+        contextWindow: model.contextWindow ?? undefined,
       })),
   }));
 
-  // adapters + 其 mappings（解析 provider 名与目标 model id）
-  const adapters = bundle.adapters.map((a) => ({
-    name: a.name,
-    type: a.inboundType,
-    max_tokens: a.maxTokensOverride ?? undefined,
-    stream: policyToStream(a.streamPolicy),
+  const explicitModelGroups = modelGroupRows
+    .filter((group) => !isLegacyModelGroup(group))
+    .map((group) => ({
+      id: group.name,
+      contextWindow: group.contextWindow ?? undefined,
+      maxOutputTokens: group.maxOutputTokens ?? undefined,
+      channels: modelGroupChannelRows
+        .filter((channel) => channel.modelGroupId === group.id)
+        .map((channel) => {
+          const target = resolveProviderModel(
+            channel.providerModelId,
+            `model_group "${group.name}" 的渠道`,
+          );
+          return {
+            provider: target.provider.name,
+            model: target.model.modelId,
+            priority: channel.priority === 0 ? undefined : channel.priority,
+            contextWindow: channel.contextWindow ?? undefined,
+            maxOutputTokens: channel.maxOutputTokens ?? undefined,
+          };
+        }),
+    }));
+
+  const adapters = bundle.adapters.map((adapter) => ({
+    name: adapter.name,
+    type: adapter.inboundType,
+    max_tokens: adapter.maxTokensOverride ?? undefined,
+    stream: policyToStream(adapter.streamPolicy),
+    onFailure: adapter.onFailure ?? undefined,
     models: bundle.adapterModelMappings
-      .filter((mm) => mm.adapterId === a.id)
-      .map((mm) => {
-        const targetModel = modelById.get(mm.providerModelId);
-        const targetProvider = targetModel ? providerById.get(targetModel.providerId) : undefined;
-        if (!targetModel || !targetProvider) {
+      .filter((mapping) => mapping.adapterId === adapter.id)
+      .map((mapping) => {
+        const shared = {
+          sourceModelId: mapping.sourceModelId,
+          thinking: mapping.thinkingOverride ?? undefined,
+          overrides: mapping.generationOverrides ?? undefined,
+        };
+
+        if (mapping.modelGroupId !== null) {
+          const group = modelGroupById.get(mapping.modelGroupId);
+          if (!group) {
+            throw new Error(
+              `rowsToConfig: adapter "${adapter.name}" 的映射 "${mapping.sourceModelId}" 指向不存在的 model_group(id=${mapping.modelGroupId})`,
+            );
+          }
+
+          if (!isLegacyModelGroup(group)) {
+            let channel: ChannelKey | undefined;
+            if (mapping.providerModelId !== null) {
+              const target = resolveProviderModel(
+                mapping.providerModelId,
+                `adapter "${adapter.name}" 的映射 "${mapping.sourceModelId}"`,
+              );
+              channel = `${target.provider.name}/${target.model.modelId}` as ChannelKey;
+            }
+            return { ...shared, model: group.name, channel };
+          }
+        }
+
+        if (mapping.providerModelId === null) {
           throw new Error(
-            `rowsToConfig: adapter "${a.name}" 的映射 "${mm.sourceModelId}" 指向不存在的 provider_model(id=${mm.providerModelId})`,
+            `rowsToConfig: adapter "${adapter.name}" 的 legacy 映射 "${mapping.sourceModelId}" 缺少 provider_model_id`,
           );
         }
+        const target = resolveProviderModel(
+          mapping.providerModelId,
+          `adapter "${adapter.name}" 的映射 "${mapping.sourceModelId}"`,
+        );
         return {
-          sourceModelId: mm.sourceModelId,
-          provider: targetProvider.name,
-          targetModelId: targetModel.modelId,
-          thinking: mm.thinkingOverride ?? undefined,
+          ...shared,
+          provider: target.provider.name,
+          targetModelId: target.model.modelId,
         };
       }),
   }));
 
-  // vision（解析 provider 名 + model id）
   let vision: Config['vision'];
   if (bundle.visionSettings) {
-    const vm = modelById.get(bundle.visionSettings.providerModelId);
-    const vp = vm ? providerById.get(vm.providerId) : undefined;
-    if (!vm || !vp) {
-      throw new Error(
-        `rowsToConfig: vision 指向不存在的 provider_model(id=${bundle.visionSettings.providerModelId})`,
-      );
-    }
+    const target = resolveProviderModel(bundle.visionSettings.providerModelId, 'vision');
     vision = {
-      provider: vp.name,
-      model: vm.modelId,
+      provider: target.provider.name,
+      model: target.model.modelId,
       prompt: bundle.visionSettings.prompt ?? undefined,
     };
   }
 
-  const ps = bundle.proxySettings;
+  const proxySettings = bundle.proxySettings;
   return {
     providers,
+    modelGroups: explicitModelGroups.length > 0 ? explicitModelGroups : undefined,
     adapters: adapters.length > 0 ? adapters : undefined,
     vision,
-    proxyKey: ps.proxyKeyHash ?? undefined,
-    logLevel: ps.logLevel as Config['logLevel'],
-    locale: ps.locale,
-    port: ps.port,
-    captureMaxSize: ps.captureMaxSize,
+    proxyKey: proxySettings.proxyKeyHash ?? undefined,
+    logLevel: proxySettings.logLevel as Config['logLevel'],
+    locale: proxySettings.locale,
+    port: proxySettings.port,
+    captureMaxSize: proxySettings.captureMaxSize,
   };
 };

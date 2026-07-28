@@ -13,26 +13,40 @@
  * 后续可改为按 name upsert。
  */
 import { asc } from 'drizzle-orm';
+import { type ConfigRowBundle, configToRows, rowsToConfig } from '../config/pg-mapper.ts';
+import type { AdapterOnFailure, Config, OverrideRule, ThinkingConfig } from '../config/types.ts';
 import type { Db } from './client.ts';
 import {
+  type ReasoningEffort,
+  type ThinkingType,
   adapterModelMappings,
   adapters,
+  modelGroupChannels,
+  modelGroups,
   providerModels,
   providers,
   proxySettings,
   visionSettings,
-  type ReasoningEffort,
-  type ThinkingType,
 } from './schema/index.ts';
-import { configToRows, rowsToConfig, type ConfigRowBundle } from '../config/pg-mapper.ts';
-import type { Config, ThinkingConfig } from '../config/types.ts';
+
+const readContextWindow = (metadata: unknown): number | null => {
+  if (metadata === null || typeof metadata !== 'object' || Array.isArray(metadata)) return null;
+  const value = (metadata as Record<string, unknown>).contextWindow;
+  return typeof value === 'number' ? value : null;
+};
+
+const readOnFailure = (metadata: unknown): AdapterOnFailure | null => {
+  if (metadata === null || typeof metadata !== 'object' || Array.isArray(metadata)) return null;
+  const value = (metadata as Record<string, unknown>).onFailure;
+  return value === 'hard_fail' || value === 'fallback' ? value : null;
+};
 
 /**
  * 幂等导入配置到 PG（事务内清旧插新）。
  *
  * 删除顺序遵守外键约束：vision_settings / adapter_model_mappings（引用 provider_models，
- * 无级联）先删，adapters 次之，providers 最后（级联删除 provider_models）。
- * 插入顺序相反：providers → provider_models → adapters → mappings → vision → proxy。
+ * 无级联）先删，adapters 与 model_groups 次之，providers 最后（级联删除 provider_models）。
+ * 插入顺序相反：providers → provider_models → model_groups/channels → adapters → mappings → vision → proxy。
  */
 export const importConfigToPg = async (db: Db, config: Config): Promise<void> => {
   const bundle = configToRows(config);
@@ -42,6 +56,7 @@ export const importConfigToPg = async (db: Db, config: Config): Promise<void> =>
     await tx.delete(visionSettings);
     await tx.delete(adapterModelMappings);
     await tx.delete(adapters);
+    await tx.delete(modelGroups); // 级联删除 model_group_channels
     await tx.delete(providers); // 级联删除 provider_models
     await tx.delete(proxySettings);
 
@@ -55,6 +70,8 @@ export const importConfigToPg = async (db: Db, config: Config): Promise<void> =>
           type: p.type,
           apiBase: p.apiBase,
           credentialRef: p.credentialRef,
+          priority: p.priority,
+          enabled: p.enabled,
         })
         .returning({ id: providers.id });
       if (!inserted) throw new Error(`importConfigToPg: 插入 provider "${p.name}" 未返回 id`);
@@ -80,10 +97,47 @@ export const importConfigToPg = async (db: Db, config: Config): Promise<void> =>
           // Lite 行以 string 承载枚举值（来自已校验 Config），此处收窄为 PG 枚举类型
           thinkingReasoningEffort: m.thinkingReasoningEffort as ReasoningEffort | null,
           thinkingType: m.thinkingType as ThinkingType | null,
+          metadata: m.contextWindow === null ? {} : { contextWindow: m.contextWindow },
         })
         .returning({ id: providerModels.id });
       if (!inserted) throw new Error(`importConfigToPg: 插入 model "${m.modelId}" 未返回 id`);
       realModelId.set(m.id, inserted.id);
+    }
+
+    const realModelGroupId = new Map<number, number>();
+    for (const group of bundle.modelGroups) {
+      const [inserted] = await tx
+        .insert(modelGroups)
+        .values({
+          name: group.name,
+          contextWindow: group.contextWindow,
+          maxOutputTokens: group.maxOutputTokens,
+          enabled: group.enabled,
+          metadata: group.metadata,
+        })
+        .returning({ id: modelGroups.id });
+      if (!inserted) {
+        throw new Error(`importConfigToPg: 插入 model_group "${group.name}" 未返回 id`);
+      }
+      realModelGroupId.set(group.id, inserted.id);
+    }
+
+    for (const channel of bundle.modelGroupChannels) {
+      const modelGroupId = realModelGroupId.get(channel.modelGroupId);
+      const providerModelId = realModelId.get(channel.providerModelId);
+      if (modelGroupId === undefined || providerModelId === undefined) {
+        throw new Error(
+          `importConfigToPg: model_group channel 外键解析失败 (modelGroupId=${channel.modelGroupId}, providerModelId=${channel.providerModelId})`,
+        );
+      }
+      await tx.insert(modelGroupChannels).values({
+        modelGroupId,
+        providerModelId,
+        priority: channel.priority,
+        contextWindow: channel.contextWindow,
+        maxOutputTokens: channel.maxOutputTokens,
+        enabled: channel.enabled,
+      });
     }
 
     const realAdapterId = new Map<number, number>();
@@ -95,6 +149,7 @@ export const importConfigToPg = async (db: Db, config: Config): Promise<void> =>
           inboundType: a.inboundType,
           maxTokensOverride: a.maxTokensOverride,
           streamPolicy: a.streamPolicy,
+          metadata: a.onFailure === null ? {} : { onFailure: a.onFailure },
         })
         .returning({ id: adapters.id });
       if (!inserted) throw new Error(`importConfigToPg: 插入 adapter "${a.name}" 未返回 id`);
@@ -103,17 +158,25 @@ export const importConfigToPg = async (db: Db, config: Config): Promise<void> =>
 
     for (const mm of bundle.adapterModelMappings) {
       const adapterId = realAdapterId.get(mm.adapterId);
-      const providerModelId = realModelId.get(mm.providerModelId);
-      if (adapterId === undefined || providerModelId === undefined) {
+      const providerModelId =
+        mm.providerModelId === null ? null : realModelId.get(mm.providerModelId);
+      const modelGroupId = mm.modelGroupId === null ? null : realModelGroupId.get(mm.modelGroupId);
+      if (
+        adapterId === undefined ||
+        (mm.providerModelId !== null && providerModelId === undefined) ||
+        (mm.modelGroupId !== null && modelGroupId === undefined)
+      ) {
         throw new Error(
-          `importConfigToPg: 映射 "${mm.sourceModelId}" 外键解析失败 (adapterId=${mm.adapterId}, providerModelId=${mm.providerModelId})`,
+          `importConfigToPg: 映射 "${mm.sourceModelId}" 外键解析失败 (adapterId=${mm.adapterId}, providerModelId=${mm.providerModelId}, modelGroupId=${mm.modelGroupId})`,
         );
       }
       await tx.insert(adapterModelMappings).values({
         adapterId,
         sourceModelId: mm.sourceModelId,
         providerModelId,
+        modelGroupId,
         thinkingOverride: mm.thinkingOverride,
+        generationOverrides: mm.generationOverrides,
       });
     }
 
@@ -147,6 +210,11 @@ export const importConfigToPg = async (db: Db, config: Config): Promise<void> =>
 export const loadConfigFromPg = async (db: Db): Promise<Config> => {
   const providerRows = await db.select().from(providers).orderBy(asc(providers.id));
   const modelRows = await db.select().from(providerModels).orderBy(asc(providerModels.id));
+  const modelGroupRows = await db.select().from(modelGroups).orderBy(asc(modelGroups.id));
+  const channelRows = await db
+    .select()
+    .from(modelGroupChannels)
+    .orderBy(asc(modelGroupChannels.id));
   const adapterRows = await db.select().from(adapters).orderBy(asc(adapters.id));
   const mappingRows = await db
     .select()
@@ -166,6 +234,8 @@ export const loadConfigFromPg = async (db: Db): Promise<Config> => {
       type: p.type,
       apiBase: p.apiBase,
       credentialRef: p.credentialRef,
+      priority: p.priority,
+      enabled: p.enabled,
     })),
     providerModels: modelRows.map((m) => ({
       id: m.id,
@@ -176,6 +246,29 @@ export const loadConfigFromPg = async (db: Db): Promise<Config> => {
       thinkingBudgetTokens: m.thinkingBudgetTokens,
       thinkingReasoningEffort: m.thinkingReasoningEffort,
       thinkingType: m.thinkingType,
+      contextWindow: readContextWindow(m.metadata),
+    })),
+    modelGroups: modelGroupRows.map((group) => ({
+      id: group.id,
+      name: group.name,
+      contextWindow: group.contextWindow,
+      maxOutputTokens: group.maxOutputTokens,
+      enabled: group.enabled,
+      metadata:
+        group.metadata !== null &&
+        typeof group.metadata === 'object' &&
+        !Array.isArray(group.metadata)
+          ? (group.metadata as Record<string, unknown>)
+          : {},
+    })),
+    modelGroupChannels: channelRows.map((channel) => ({
+      id: channel.id,
+      modelGroupId: channel.modelGroupId,
+      providerModelId: channel.providerModelId,
+      priority: channel.priority,
+      contextWindow: channel.contextWindow,
+      maxOutputTokens: channel.maxOutputTokens,
+      enabled: channel.enabled,
     })),
     adapters: adapterRows.map((a) => ({
       id: a.id,
@@ -183,13 +276,16 @@ export const loadConfigFromPg = async (db: Db): Promise<Config> => {
       inboundType: a.inboundType,
       maxTokensOverride: a.maxTokensOverride,
       streamPolicy: a.streamPolicy,
+      onFailure: readOnFailure(a.metadata),
     })),
     adapterModelMappings: mappingRows.map((mm) => ({
       adapterId: mm.adapterId,
       sourceModelId: mm.sourceModelId,
       providerModelId: mm.providerModelId,
-      // jsonb 读回为 unknown，此处还原为 ThinkingConfig（null = 继承 provider_model）
+      modelGroupId: mm.modelGroupId,
+      // JSONB 读回为 unknown；mapper 接收已由配置 validator 校验的结构。
       thinkingOverride: (mm.thinkingOverride as ThinkingConfig | null) ?? null,
+      generationOverrides: (mm.generationOverrides as OverrideRule[] | null) ?? null,
     })),
     visionSettings: visionRow
       ? { providerModelId: visionRow.providerModelId, prompt: visionRow.prompt }

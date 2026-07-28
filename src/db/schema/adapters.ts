@@ -2,16 +2,17 @@
  * adapters / adapter_model_mappings 两张表（设计文档 §6）。
  *
  * - adapters：协议适配虚拟端点，inbound_type 为入站协议，stream_policy 控制流式策略。
- * - adapter_model_mappings：adapter 入站模型 → provider_model 的映射。
+ * - adapter_model_mappings：adapter 入站模型映射到 legacy provider_model 或逻辑 model_group。
  *   - adapter_id 外键 ON DELETE CASCADE（删 adapter 级联删映射）。
- *   - provider_model_id 外键不级联（映射指向的模型被删时应由应用层处理）。
+ *   - provider_model_id 保留 legacy 映射，也用于 model-centric 钉死渠道。
+ *   - model_group_id 为 model-centric 绑定；迁移期允许与 provider_model_id 同时存在。
  *   - (adapter_id, source_model_id) 组合唯一。
  *   - thinking_override / generation_overrides 为 JSONB，由应用层 validate。
  */
 import { sql } from 'drizzle-orm';
 import {
-  bigserial,
   bigint,
+  bigserial,
   boolean,
   check,
   index,
@@ -23,6 +24,7 @@ import {
   unique,
 } from 'drizzle-orm/pg-core';
 import { protocolType, streamPolicy } from './enums.ts';
+import { modelGroups } from './model-groups.ts';
 import { providerModels } from './providers.ts';
 
 export const adapters = pgTable(
@@ -53,10 +55,12 @@ export const adapterModelMappings = pgTable(
       .notNull()
       .references(() => adapters.id, { onDelete: 'cascade' }),
     sourceModelId: text('source_model_id').notNull(),
-    // 指向目标 provider_model，不做级联删除
-    providerModelId: bigint('provider_model_id', { mode: 'number' })
-      .notNull()
-      .references(() => providerModels.id),
+    // Legacy 映射目标；model-centric 钉死渠道时也复用此列
+    providerModelId: bigint('provider_model_id', { mode: 'number' }).references(
+      () => providerModels.id,
+    ),
+    // 逻辑模型组；legacy 行在自动升级后也会写入该列
+    modelGroupId: bigint('model_group_id', { mode: 'number' }).references(() => modelGroups.id),
     // null = 继承 provider_model；否则存 ReasoningSpec 子集（应用层 validate）
     thinkingOverride: jsonb('thinking_override'),
     generationOverrides: jsonb('generation_overrides'),
@@ -66,8 +70,15 @@ export const adapterModelMappings = pgTable(
   },
   (t) => [
     // 同 adapter 内 source_model_id 唯一
-    unique('adapter_model_mappings_adapter_id_source_model_id_unique').on(t.adapterId, t.sourceModelId),
+    unique('adapter_model_mappings_adapter_id_source_model_id_unique').on(
+      t.adapterId,
+      t.sourceModelId,
+    ),
     index('idx_adapter_mappings_adapter_id').on(t.adapterId),
+    check(
+      'adapter_model_mappings_target_check',
+      sql`${t.providerModelId} IS NOT NULL OR ${t.modelGroupId} IS NOT NULL`,
+    ),
   ],
 );
 

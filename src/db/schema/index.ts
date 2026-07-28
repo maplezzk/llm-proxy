@@ -8,12 +8,21 @@
  * - requests：P0 请求日志探针表
  * - enums：4 个全局 ENUM（protocol_type / reasoning_effort / thinking_type / stream_policy）
  * - providers：providers + provider_models
+ * - model-groups：model_groups + model_group_channels
  * - adapters：adapters + adapter_model_mappings
  * - settings：vision_settings + proxy_settings（单例）
  * - usage：usage_records
  */
 import * as adapters from './adapters.ts';
 import * as enums from './enums.ts';
+import {
+  type ModelGroupChannelRow,
+  type ModelGroupRow,
+  type NewModelGroupChannelRow,
+  type NewModelGroupRow,
+  modelGroupChannels,
+  modelGroups,
+} from './model-groups.ts';
 import * as providers from './providers.ts';
 import * as requests from './requests.ts';
 import * as settings from './settings.ts';
@@ -25,6 +34,8 @@ export const tables = {
   ...requests,
   ...enums,
   ...providers,
+  modelGroups,
+  modelGroupChannels,
   ...adapters,
   ...settings,
   ...usage,
@@ -43,6 +54,9 @@ export type {
   ProviderModelRow,
   NewProviderModelRow,
 } from './providers.ts';
+
+export { modelGroups, modelGroupChannels };
+export type { ModelGroupRow, NewModelGroupRow, ModelGroupChannelRow, NewModelGroupChannelRow };
 
 export { adapters, adapterModelMappings } from './adapters.ts';
 export type {

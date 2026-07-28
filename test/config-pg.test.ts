@@ -1,3 +1,11 @@
+import { existsSync, mkdtempSync, readFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
+import { type PostgresJsDatabase, drizzle } from 'drizzle-orm/postgres-js';
+import { migrate } from 'drizzle-orm/postgres-js/migrator';
+import postgres from 'postgres';
 /**
  * P1.16 增量2：Config ↔ PG 映射 + ConfigStore 双写过渡 集成测试。
  *
@@ -12,21 +20,13 @@
  * 需要 Docker（持久化部分）；纯函数部分无外部依赖。
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
-import { drizzle, type PostgresJsDatabase } from 'drizzle-orm/postgres-js';
-import { migrate } from 'drizzle-orm/postgres-js/migrator';
-import postgres from 'postgres';
-import { resolve, dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { mkdtempSync, existsSync, readFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { providers as providersTable, tables, type Schema } from '../src/db/schema/index.js';
-import { configToRows, rowsToConfig } from '../src/config/pg-mapper.js';
-import { importConfigToPg, loadConfigFromPg } from '../src/db/config-repo.js';
-import { ConfigStore } from '../src/config/store.js';
 import { resetEnvCache } from '../src/config/env.js';
-import { closeDb, getDb } from '../src/db/client.js';
+import { configToRows, rowsToConfig } from '../src/config/pg-mapper.js';
+import { ConfigStore } from '../src/config/store.js';
 import type { Config } from '../src/config/types.js';
+import { closeDb, getDb } from '../src/db/client.js';
+import { importConfigToPg, loadConfigFromPg } from '../src/db/config-repo.js';
+import { type Schema, providers as providersTable, tables } from '../src/db/schema/index.js';
 
 const MIGRATIONS_FOLDER = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'drizzle');
 
@@ -82,12 +82,146 @@ const buildConfig = (): Config => ({
   captureMaxSize: 250,
 });
 
+/** 覆盖 U2 新增的模型组、渠道能力、adapter 绑定与现有 PG 保留列。 */
+const buildModelCentricConfig = (): Config => ({
+  providers: [
+    {
+      name: 'channel-a',
+      type: 'anthropic',
+      apiKey: 'sk-channel-a',
+      priority: 10,
+      enabled: false,
+      models: [{ id: 'claude-sonnet-real', contextWindow: 200_000 }],
+    },
+    {
+      name: 'channel-b',
+      type: 'openai',
+      apiKey: 'sk-channel-b',
+      priority: 20,
+      models: [{ id: 'gpt-reasoning-real', contextWindow: 128_000 }],
+    },
+  ],
+  modelGroups: [
+    {
+      id: 'reasoning-128k',
+      contextWindow: 128_000,
+      maxOutputTokens: 16_384,
+      channels: [
+        {
+          provider: 'channel-a',
+          model: 'claude-sonnet-real',
+          priority: 1,
+          contextWindow: 200_000,
+          maxOutputTokens: 16_384,
+        },
+        {
+          provider: 'channel-b',
+          model: 'gpt-reasoning-real',
+          priority: 2,
+          contextWindow: 128_000,
+          maxOutputTokens: 8_192,
+        },
+      ],
+    },
+  ],
+  adapters: [
+    {
+      name: 'model-tool',
+      type: 'anthropic',
+      onFailure: 'fallback',
+      models: [
+        {
+          sourceModelId: 'reasoning',
+          model: 'reasoning-128k',
+          channel: 'channel-a/claude-sonnet-real',
+          thinking: { budget_tokens: 4_096 },
+          overrides: [
+            {
+              scope: 'adapter-alias',
+              body: [{ op: 'set_if_absent', path: 'temperature', value: 0.2 }],
+            },
+            {
+              scope: 'channel',
+              headers: [{ op: 'set', name: 'X-Channel', value: 'channel-a' }],
+            },
+          ],
+        },
+        {
+          sourceModelId: 'reasoning-auto',
+          model: 'reasoning-128k',
+        },
+      ],
+    },
+  ],
+  proxyKey: 'sk-model-centric',
+  logLevel: 'debug',
+  locale: 'zh',
+  port: 9200,
+  captureMaxSize: 300,
+});
+
 // ===== 纯函数映射（无需 Docker）=====
 
 describe('config ↔ PG 映射（纯函数）', () => {
   it('configToRows → rowsToConfig 内存 round-trip 语义等价', () => {
     const config = buildConfig();
     expect(rowsToConfig(configToRows(config))).toEqual(config);
+  });
+
+  it('模型组、渠道能力、adapter 绑定和覆写规则完整 round-trip', () => {
+    const config = buildModelCentricConfig();
+    const bundle = configToRows(config);
+
+    expect(bundle.modelGroups).toHaveLength(1);
+    expect(bundle.modelGroupChannels).toHaveLength(2);
+    expect(bundle.providers[0]).toMatchObject({ priority: 10, enabled: false });
+    expect(bundle.providerModels[0]).toMatchObject({ contextWindow: 200_000 });
+
+    const group = bundle.modelGroups[0];
+    const pinnedMapping = bundle.adapterModelMappings[0];
+    const automaticMapping = bundle.adapterModelMappings[1];
+    expect(pinnedMapping.modelGroupId).toBe(group?.id);
+    expect(pinnedMapping.generationOverrides).toEqual(config.adapters?.[0]?.models[0]?.overrides);
+    expect(automaticMapping).toMatchObject({
+      modelGroupId: group?.id,
+      providerModelId: null,
+    });
+    expect(rowsToConfig(bundle)).toEqual(config);
+  });
+
+  it('legacy mapping 保持原配置形状，同时在 PG 行束中自动升级为单渠道组', () => {
+    const config = buildConfig();
+    const bundle = configToRows(config);
+
+    expect(bundle.modelGroups).toHaveLength(2);
+    expect(bundle.modelGroupChannels).toHaveLength(2);
+    for (const mapping of bundle.adapterModelMappings) {
+      expect(mapping.modelGroupId).not.toBeNull();
+      expect(mapping.providerModelId).not.toBeNull();
+    }
+    expect(rowsToConfig(bundle)).toEqual(config);
+  });
+
+  it('configToRows：model_group 渠道引用不存在的 (provider, model) 抛清晰错误', () => {
+    const bad: Config = {
+      providers: [{ name: 'p', type: 'openai', apiKey: 'k', models: [{ id: 'm1' }] }],
+      modelGroups: [{ id: 'g', channels: [{ provider: 'p', model: 'nope' }] }],
+    };
+    expect(() => configToRows(bad)).toThrow(/model_group "g"/);
+  });
+
+  it('configToRows：adapter 引用不存在的 model_group 抛清晰错误', () => {
+    const bad: Config = {
+      providers: [{ name: 'p', type: 'openai', apiKey: 'k', models: [{ id: 'm1' }] }],
+      adapters: [
+        {
+          name: 'a',
+          type: 'openai',
+          models: [{ sourceModelId: 's', model: 'missing-group' }],
+        },
+      ],
+    };
+    expect(() => configToRows(bad)).toThrow(/不存在的 model_group/);
   });
 
   it('configToRows：adapter 映射引用不存在的 (provider, model) 抛清晰错误', () => {
@@ -149,13 +283,20 @@ describe('config ↔ PG 持久化 + ConfigStore 双写（testcontainers）', () 
     if (client) await client.end({ timeout: 5 });
     if (container) await container.stop();
     // 恢复环境变量，避免污染其它测试文件
-    if (savedDbUrl === undefined) delete process.env.DATABASE_URL;
+    if (savedDbUrl === undefined) Reflect.deleteProperty(process.env, 'DATABASE_URL');
     else process.env.DATABASE_URL = savedDbUrl;
     resetEnvCache();
   });
 
   it('round-trip：importConfigToPg → loadConfigFromPg 语义等价', async () => {
     const config = buildConfig();
+    await importConfigToPg(requireDb(), config);
+    const loaded = await loadConfigFromPg(requireDb());
+    expect(loaded).toEqual(config);
+  }, 30_000);
+
+  it('round-trip：model-centric 配置经 PG 后保持模型组与 adapter 绑定', async () => {
+    const config = buildModelCentricConfig();
     await importConfigToPg(requireDb(), config);
     const loaded = await loadConfigFromPg(requireDb());
     expect(loaded).toEqual(config);
@@ -201,7 +342,7 @@ describe('config ↔ PG 持久化 + ConfigStore 双写（testcontainers）', () 
   }, 30_000);
 
   it('ConfigStore.writeConfig 降级：DATABASE_URL 未配置时不抛错且 YAML 仍写入', async () => {
-    delete process.env.DATABASE_URL;
+    Reflect.deleteProperty(process.env, 'DATABASE_URL');
     resetEnvCache();
     await closeDb(); // getDb 将因缺 DATABASE_URL 抛错（被 writeConfig 捕获）
     try {
@@ -218,7 +359,7 @@ describe('config ↔ PG 持久化 + ConfigStore 双写（testcontainers）', () 
   }, 30_000);
 
   it('ConfigStore.syncToPg 降级：无 DATABASE_URL 时静默跳过不抛错', async () => {
-    delete process.env.DATABASE_URL;
+    Reflect.deleteProperty(process.env, 'DATABASE_URL');
     resetEnvCache();
     await closeDb();
     try {
