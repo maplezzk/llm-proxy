@@ -475,6 +475,16 @@ const validateModelGroups = (
     }
     groupIds.add(group.id);
 
+    // A6: group 级别的 context_window 校验（正整数）
+    if (group.contextWindow !== undefined) {
+      if (!Number.isInteger(group.contextWindow) || group.contextWindow <= 0) {
+        errors.push({
+          field: `${baseField}.context_window`,
+          message: `context_window 必须为正整数，实际为 ${group.contextWindow}`,
+        });
+      }
+    }
+
     if (!group.channels || group.channels.length === 0) {
       errors.push({
         field: `${baseField}.channels`,
@@ -522,6 +532,26 @@ const validateModelChannels = (
         });
       }
     }
+
+    // A6: channel 级别的 context_window 校验（正整数）
+    if (channel.contextWindow !== undefined) {
+      if (!Number.isInteger(channel.contextWindow) || channel.contextWindow <= 0) {
+        errors.push({
+          field: `${baseField}[].context_window`,
+          message: `channel.context_window 必须为正整数，实际为 ${channel.contextWindow}`,
+        });
+      }
+    }
+
+    // A6: channel 级别的 max_output_tokens 校验（正整数）
+    if (channel.maxOutputTokens !== undefined) {
+      if (!Number.isInteger(channel.maxOutputTokens) || channel.maxOutputTokens <= 0) {
+        errors.push({
+          field: `${baseField}[].max_output_tokens`,
+          message: `channel.max_output_tokens 必须为正整数，实际为 ${channel.maxOutputTokens}`,
+        });
+      }
+    }
   }
   return errors;
 };
@@ -557,6 +587,32 @@ const validateOverrideRules = (rules: OverrideRule[], baseField: string): Valida
   return errors;
 };
 
+/** 危险路径段（A1 原型链污染防护）。 */
+const DANGEROUS_PATH_SEGMENTS = new Set(['__proto__', 'constructor', 'prototype']);
+
+/**
+ * 规范化并校验路径段（A1/A2）。
+ * 返回规范化后的非空段数组；若路径全为空段则 reject 空路径；
+ * 若任一段为危险段则 reject 危险段。
+ */
+const normalizePathSegments = (
+  path: string,
+): { valid: boolean; segments?: string[]; reason?: string } => {
+  const raw = path.split('.');
+  const segments: string[] = [];
+  for (const seg of raw) {
+    if (seg.length === 0) continue; // 跳过空段
+    if (DANGEROUS_PATH_SEGMENTS.has(seg)) {
+      return { valid: false, reason: `危险段 "${seg}"（原型链污染）` };
+    }
+    segments.push(seg);
+  }
+  if (segments.length === 0) {
+    return { valid: false, reason: '路径全为空段' };
+  }
+  return { valid: true, segments };
+};
+
 const validateBodyOps = (ops: OverrideBodyOp[], baseField: string): ValidationError[] => {
   const errors: ValidationError[] = [];
   for (let i = 0; i < ops.length; i++) {
@@ -575,11 +631,22 @@ const validateBodyOps = (ops: OverrideBodyOp[], baseField: string): ValidationEr
       });
       continue;
     }
-    if (PROTECTED_OVERRIDE_PATHS.has(op.path)) {
+    // A1+A2: 规范化路径，拒绝危险段和空路径
+    const norm = normalizePathSegments(op.path);
+    if (!norm.valid) {
       errors.push({
         field: `${opField}.path`,
-        message: `路径 "${op.path}" 是覆写引擎受保护字段（model / messages / stream / system / tools），不得覆写`,
+        message: `路径 "${op.path}" 非法：${norm.reason}`,
       });
+    } else if (norm.segments) {
+      // A2: 基于规范化后首段判断保护字段（.model → model, ..messages → messages）
+      const top = norm.segments[0];
+      if (PROTECTED_OVERRIDE_PATHS.has(top)) {
+        errors.push({
+          field: `${opField}.path`,
+          message: `路径 "${op.path}" 是覆写引擎受保护字段（model / messages / stream / system / tools），不得覆写`,
+        });
+      }
     }
     if (op.op !== 'delete' && op.value === undefined) {
       errors.push({

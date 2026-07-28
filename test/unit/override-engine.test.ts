@@ -224,16 +224,18 @@ describe('unit/override-engine: applyOverrides', () => {
   });
 
   it('evaluateCondition 接受带空白的 "true"', () => {
-    expect(evaluateCondition('  true  ', baseCtx)).toBe(true);
-    expect(evaluateCondition('true', baseCtx)).toBe(true);
-    expect(evaluateCondition('false', baseCtx)).toBe(false);
-    expect(evaluateCondition('  false ', baseCtx)).toBe(false);
+    expect(evaluateCondition('  true  ', baseCtx).matched).toBe(true);
+    expect(evaluateCondition('true', baseCtx).matched).toBe(true);
+    expect(evaluateCondition('false', baseCtx).matched).toBe(false);
+    expect(evaluateCondition('  false ', baseCtx).matched).toBe(false);
     // {{model}} == "other-model" 渲染后 "claude-sonnet-4" == "other-model" → false
-    expect(evaluateCondition('{{model}} == "other-model"', baseCtx)).toBe(false);
+    expect(evaluateCondition('{{model}} == "other-model"', baseCtx).matched).toBe(false);
   });
 
-  it('evaluateCondition 在模板变量未知时失败开放返回 false', () => {
-    expect(evaluateCondition('{{unknown}}', baseCtx)).toBe(false);
+  it('evaluateCondition 在模板变量未知时失败开放返回 { matched: false, error }', () => {
+    const result = evaluateCondition('{{unknown}}', baseCtx);
+    expect(result.matched).toBe(false);
+    expect(result.error).toBeDefined();
   });
 
   it('空规则列表直接返回原 body/headers', () => {
@@ -414,5 +416,348 @@ describe('unit/override-engine: applyOverrides', () => {
     const result = applyOverrides(body, {}, rules, ctx, silentLogger);
 
     expect(result.body.hit).toBe(true);
+  });
+
+// =====================================================================
+// A1 回归测试：原型链污染防护（__proto__ / constructor / prototype）
+// =====================================================================
+
+  it('A1: set __proto__.polluted 拒绝（原型链污染防护）', () => {
+    const body: WireBody = { model: 'x' };
+    const rules: OverrideRule[] = [
+      { scope: 'adapter-alias', body: [{ op: 'set', path: '__proto__.polluted', value: 'hacked' }] },
+    ];
+    const result = applyOverrides(body, {}, rules, baseCtx, silentLogger);
+    // A1: Object.prototype 不应被污染（跨请求）
+    expect(({} as Record<string, unknown>).polluted).toBeUndefined();
+    expect(result.body.model).toBe('x');
+    // body['__proto__'] 返回原型链引用，非 own 属性 → 用 hasOwn 验证
+    expect(Object.hasOwn(result.body, '__proto__')).toBe(false);
+  });
+
+  it('A1: set constructor.prototype.foo 拒绝（原型链污染防护）', () => {
+    const body: WireBody = { model: 'x' };
+    const rules: OverrideRule[] = [
+      {
+        scope: 'adapter-alias',
+        body: [{ op: 'set', path: 'constructor.prototype.foo', value: 'bar' }],
+      },
+    ];
+    const result = applyOverrides(body, {}, rules, baseCtx, silentLogger);
+    expect(result.body.model).toBe('x');
+  });
+
+  it('A1: set a.__proto__.x 拒绝（中间段为 __proto__）', () => {
+    const body: WireBody = { model: 'x' };
+    const rules: OverrideRule[] = [
+      { scope: 'adapter-alias', body: [{ op: 'set', path: 'a.__proto__.x', value: 'y' }] },
+    ];
+    const result = applyOverrides(body, {}, rules, baseCtx, silentLogger);
+    expect(result.body.model).toBe('x');
+  });
+
+  it('A1: delete __proto__ 拒绝（原型链污染防护）', () => {
+    const body: WireBody = { model: 'x' };
+    const rules: OverrideRule[] = [
+      { scope: 'adapter-alias', body: [{ op: 'delete', path: '__proto__' }] },
+    ];
+    const result = applyOverrides(body, {}, rules, baseCtx, silentLogger);
+    expect(result.body.model).toBe('x');
+  });
+
+  it('A1: lookupPath 用 Object.hasOwn 不接受继承属性', () => {
+    const body: WireBody = Object.create(null) as WireBody;
+    (body as Record<string, unknown>).ownProp = 'mine';
+    // __proto__ 作为自有键（Object.create(null) 无原型）
+    (body as Record<string, unknown>)['__proto__'] = 'should_not_be_seen';
+    const rules: OverrideRule[] = [
+      { scope: 'adapter-alias', body: [{ op: 'set', path: 'ownProp', value: 'overwritten' }] },
+    ];
+    const result = applyOverrides(body, {}, rules, baseCtx, silentLogger);
+    expect((result.body as Record<string, unknown>).ownProp).toBe('overwritten');
+    // A1：__proto__ 保留为自有键（set ownProp 不应改 __proto__）
+    expect(Object.hasOwn(result.body, '__proto__')).toBe(true);
+    expect((result.body as Record<string, unknown>)['__proto__']).toBe('should_not_be_seen');
+  });
+
+  // =====================================================================
+  // A2 回归测试：保护字段前导点绕过（.model / ..messages）
+  // =====================================================================
+
+  it('A2: .model 拒绝（规范化后首段为 model，受保护）', () => {
+    const body: WireBody = { model: 'original' };
+    const rules: OverrideRule[] = [
+      { scope: 'adapter-alias', body: [{ op: 'set', path: '.model', value: 'hacked' }] },
+    ];
+    const result = applyOverrides(body, {}, rules, baseCtx, silentLogger);
+    expect(result.body.model).toBe('original');
+  });
+
+  it('A2: ..messages 拒绝（规范化后首段为 messages，受保护）', () => {
+    const body: WireBody = { model: 'x', messages: [{ role: 'user', content: 'hi' }] };
+    const rules: OverrideRule[] = [
+      { scope: 'adapter-alias', body: [{ op: 'set', path: '..messages', value: [] }] },
+    ];
+    const result = applyOverrides(body, {}, rules, baseCtx, silentLogger);
+    expect(result.body.messages).toEqual([{ role: 'user', content: 'hi' }]);
+  });
+
+  it('A2: ...stream 拒绝（三个点，空段后接 stream）', () => {
+    const body: WireBody = { model: 'x', stream: true };
+    const rules: OverrideRule[] = [
+      { scope: 'adapter-alias', body: [{ op: 'delete', path: '...stream' }] },
+    ];
+    const result = applyOverrides(body, {}, rules, baseCtx, silentLogger);
+    expect(result.body.stream).toBe(true);
+  });
+
+  it('A2: metadata.model 不受保护（顶级段是 metadata，非保护字段）', () => {
+    const body: WireBody = { model: 'x', metadata: { source: 'old' } };
+    const rules: OverrideRule[] = [
+      { scope: 'adapter-alias', body: [{ op: 'set', path: 'metadata.model', value: 'override' }] },
+    ];
+    const result = applyOverrides(body, {}, rules, baseCtx, silentLogger);
+    expect((result.body.metadata as Record<string, unknown>).model).toBe('override');
+    expect(result.body.model).toBe('x');
+  });
+
+  it('A2: leading dot + __proto__ 拒绝（双重防护）', () => {
+    const body: WireBody = { model: 'x' };
+    const rules: OverrideRule[] = [
+      { scope: 'adapter-alias', body: [{ op: 'set', path: '.__proto__.x', value: 'y' }] },
+    ];
+    const result = applyOverrides(body, {}, rules, baseCtx, silentLogger);
+    expect(result.body.model).toBe('x');
+  });
+
+  // =====================================================================
+  // A3 回归测试：reasoningDisabled 保护 reasoning 相关字段（R14）
+  // =====================================================================
+
+  it('A3: reasoningDisabled=true 时 reasoning_effort 被保护', () => {
+    const body: WireBody = { model: 'x' };
+    const ctx = { ...baseCtx, reasoningDisabled: true };
+    const rules: OverrideRule[] = [
+      {
+        scope: 'adapter-alias',
+        body: [{ op: 'set', path: 'reasoning_effort', value: 'high' }],
+      },
+    ];
+    const result = applyOverrides(body, {}, rules, ctx, silentLogger);
+    expect(result.body.reasoning_effort).toBeUndefined();
+  });
+
+  it('A3: reasoningDisabled=true 时 thinking 被保护', () => {
+    const body: WireBody = { model: 'x' };
+    const ctx = { ...baseCtx, reasoningDisabled: true };
+    const rules: OverrideRule[] = [
+      {
+        scope: 'adapter-alias',
+        body: [{ op: 'set', path: 'thinking', value: { type: 'enabled' } }],
+      },
+    ];
+    const result = applyOverrides(body, {}, rules, ctx, silentLogger);
+    expect(result.body.thinking).toBeUndefined();
+  });
+
+  it('A3: reasoningDisabled=true 时 reasoning（OpenAI）被保护', () => {
+    const body: WireBody = { model: 'x' };
+    const ctx = { ...baseCtx, reasoningDisabled: true };
+    const rules: OverrideRule[] = [
+      { scope: 'adapter-alias', body: [{ op: 'set', path: 'reasoning', value: { effort: 'high' } }] },
+    ];
+    const result = applyOverrides(body, {}, rules, ctx, silentLogger);
+    expect((result.body as Record<string, unknown>).reasoning).toBeUndefined();
+  });
+
+  it('A3: reasoningDisabled=false 时 reasoning_effort 正常可写', () => {
+    const body: WireBody = { model: 'x' };
+    const ctx = { ...baseCtx, reasoningDisabled: false };
+    const rules: OverrideRule[] = [
+      { scope: 'adapter-alias', body: [{ op: 'set', path: 'reasoning_effort', value: 'high' }] },
+    ];
+    const result = applyOverrides(body, {}, rules, ctx, silentLogger);
+    expect(result.body.reasoning_effort).toBe('high');
+  });
+
+  it('A3: reasoningDisabled=undefined 时 reasoning_effort 正常可写', () => {
+    const body: WireBody = { model: 'x' };
+    const rules: OverrideRule[] = [
+      { scope: 'adapter-alias', body: [{ op: 'set', path: 'reasoning_effort', value: 'high' }] },
+    ];
+    const result = applyOverrides(body, {}, rules, baseCtx, silentLogger);
+    expect(result.body.reasoning_effort).toBe('high');
+  });
+
+  // =====================================================================
+  // A4 回归测试：整条 rule 跳过（保护 body op 不执行后续 body，也不执行 headers）
+  // =====================================================================
+
+  it('A4: 保护 body op + 同 rule header op → header 不执行（整条 rule 跳过）', () => {
+    const headers: Record<string, string> = {};
+    const rules: OverrideRule[] = [
+      {
+        scope: 'adapter-alias',
+        body: [{ op: 'set', path: 'model', value: 'hacked' }], // 保护，rule 被拒
+        headers: [{ op: 'set', name: 'X-Should-Not-Be-Set', value: 'BAD' }],
+      },
+    ];
+    const result = applyOverrides({ model: 'x' }, headers, rules, baseCtx, silentLogger);
+    expect(result.body.model).toBe('x');
+    expect(result.headers['X-Should-Not-Be-Set']).toBeUndefined();
+  });
+
+  it('A4: set_if_absent 保护字段 → 同 rule headers 不执行', () => {
+    const headers: Record<string, string> = {};
+    const rules: OverrideRule[] = [
+      {
+        scope: 'adapter-alias',
+        body: [{ op: 'set_if_absent', path: '.messages', value: [] }], // 保护
+        headers: [{ op: 'set', name: 'X-Block-This', value: 'blocked' }],
+      },
+    ];
+    const result = applyOverrides({ model: 'x' }, headers, rules, baseCtx, silentLogger);
+    expect(result.headers['X-Block-This']).toBeUndefined();
+  });
+
+  it('A4: delete 保护字段 → 同 rule headers 不执行', () => {
+    const headers: Record<string, string> = {};
+    const rules: OverrideRule[] = [
+      {
+        scope: 'adapter-alias',
+        body: [{ op: 'delete', path: '..stream' }], // 保护
+        headers: [{ op: 'set', name: 'X-Block-Also', value: 'blocked' }],
+      },
+    ];
+    const result = applyOverrides({ model: 'x', stream: true }, headers, rules, baseCtx, silentLogger);
+    expect(result.headers['X-Block-Also']).toBeUndefined();
+  });
+
+  it('A4: __proto__ 危险路径 → 同 rule headers 不执行', () => {
+    const headers: Record<string, string> = {};
+    const rules: OverrideRule[] = [
+      {
+        scope: 'adapter-alias',
+        body: [{ op: 'set', path: '__proto__.evil', value: 'X' }], // 危险
+        headers: [{ op: 'set', name: 'X-Evil-Header', value: 'blocked' }],
+      },
+    ];
+    const result = applyOverrides({ model: 'x' }, headers, rules, baseCtx, silentLogger);
+    expect(result.headers['X-Evil-Header']).toBeUndefined();
+  });
+
+  // =====================================================================
+  // A5 回归测试：表达式解析 EOF 检查（尾随 token / 未闭合引号）
+  // =====================================================================
+
+  it('A5: 尾随 token "true garbage" 不解析为 true（返回 matched: false）', () => {
+    const result = evaluateCondition('true garbage', baseCtx);
+    expect(result.matched).toBe(false);
+    expect(result.error).toContain('trailing tokens');
+  });
+
+  it('A5: 尾随 token "true)" 不解析为 true（tokenizer 拒绝）', () => {
+    const result = evaluateCondition('true)', baseCtx);
+    expect(result.matched).toBe(false);
+    expect(result.error).toBeDefined();
+  });
+
+  it('A5: 未闭合引号 "hello 报错（matched: false）', () => {
+    const result = evaluateCondition('"hello', baseCtx);
+    expect(result.matched).toBe(false);
+    expect(result.error).toContain('unclosed string literal');
+  });
+
+  it('A5: 未闭合单引号 \'world 报错（matched: false）', () => {
+    const result = evaluateCondition("'world", baseCtx);
+    expect(result.matched).toBe(false);
+    expect(result.error).toContain('unclosed string literal');
+  });
+
+  it('A5: 未闭合括号 1 && (2 报错（matched: false）', () => {
+    const result = evaluateCondition('1 && (2', baseCtx);
+    expect(result.matched).toBe(false);
+    expect(result.error).toContain('unclosed');
+  });
+
+  it('A5: 多余右括号报错（tokenizer depth=0 时拒绝）', () => {
+    const result = evaluateCondition('true))', baseCtx);
+    expect(result.matched).toBe(false);
+    expect(result.error).toBeDefined();
+  });
+
+  it('A5: 有效表达式 "deep" == "deep" 解析为 true', () => {
+    const ctx = { ...baseCtx, model: 'deep' };
+    const result = evaluateCondition('"deep" == "deep"', ctx);
+    expect(result.matched).toBe(true);
+  });
+
+  it('A5: 尾随标识符 "true extra" 被拒绝（需 pos===tokens.length）', () => {
+    const result = evaluateCondition('true extra', baseCtx);
+    expect(result.matched).toBe(false);
+    expect(result.error).toContain('trailing tokens');
+  });
+
+  // =====================================================================
+  // A7 回归测试：条件求值失败 → { matched: false, error } + warn 日志
+  // =====================================================================
+
+  it('A7: evaluateCondition 未知变量返回 { matched: false, error }', () => {
+    const result = evaluateCondition('{{unknown_var}}', baseCtx);
+    expect(result.matched).toBe(false);
+    expect(result.error).toBeDefined();
+    expect(result.error).toContain('unknown template variable');
+  });
+
+  it('A7: evaluateCondition 表达式解析失败返回 { matched: false, error }', () => {
+    const result = evaluateCondition('@@@invalid@@@', baseCtx);
+    expect(result.matched).toBe(false);
+    expect(result.error).toBeDefined();
+  });
+
+  it('A7: 条件失败时 applyOverrides 记录 warn 日志（模板变量未知）', () => {
+    const logger = { ...silentLogger, warn: vi.fn() };
+    const body: WireBody = { model: 'x' };
+    const rules: OverrideRule[] = [
+      {
+        scope: 'adapter-alias',
+        when: '{{unknown_var_that_does_not_exist}}', // 渲染失败
+        body: [{ op: 'set', path: 'temperature', value: 0.5 }],
+      },
+    ];
+    applyOverrides(body, {}, rules, baseCtx, logger);
+    // 模板渲染失败 → Outer catch block → logger.warn({...}, 'override rule failed')
+    expect(logger.warn).toHaveBeenCalled();
+    const warnCalls = (logger.warn as ReturnType<typeof vi.fn>).mock.calls;
+    // warn 签名：warn(contextObj, messageString)，message 在第二个参数
+    const ruleFailCalls = warnCalls.filter(
+      (c) => typeof c[1] === 'string' && c[1].includes('rule'),
+    );
+    expect(ruleFailCalls.length).toBeGreaterThan(0);
+  });
+
+  // =====================================================================
+  // A8 回归测试：when 资源上限（字节长度 / token 数 / 括号深度）
+  // =====================================================================
+
+  it('A8: when 超过 MAX_WHEN_BYTES（2048 字节）被拒绝', () => {
+    const result = evaluateCondition('x'.repeat(3000), baseCtx);
+    expect(result.matched).toBe(false);
+    expect(result.error).toContain('exceeds');
+    expect(result.error).toContain('bytes');
+  });
+
+  it('A8: when 括号深度超过 MAX_BRACKET_DEPTH（32）被拒绝', () => {
+    const depth = 35;
+    const expr = '('.repeat(depth) + 'true' + ')'.repeat(depth);
+    const result = evaluateCondition(expr, baseCtx);
+    expect(result.matched).toBe(false);
+    expect(result.error).toContain('bracket depth');
+  });
+
+  it('A8: 正常嵌套括号（深度 5）在限制内通过', () => {
+    const expr = '(((((' + 'true' + ')))))';
+    const result = evaluateCondition(expr, baseCtx);
+    expect(result.matched).toBe(true);
   });
 });

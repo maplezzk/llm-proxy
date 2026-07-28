@@ -570,4 +570,260 @@ describe('config/validator', () => {
     const errors = validateConfig(config);
     expect(errors.some((e) => e.message.includes('op'))).toBeTruthy();
   });
+
+  // =====================================================================
+  // A6 回归测试：context_window / max_output_tokens 数值校验
+  // =====================================================================
+
+  it('A6: model_group.context_window 为负数报错', () => {
+    const config: Config = {
+      providers: [{ name: 'p1', type: 'openai', apiKey: 'k1', models: [{ id: 'm1' }] }],
+      modelGroups: [
+        {
+          id: 'g1',
+          contextWindow: -1,
+          channels: [{ provider: 'p1', model: 'm1' }],
+        },
+      ],
+    };
+    const errors = validateConfig(config);
+    expect(
+      errors.some((e) => e.message.includes('context_window 必须为正整数')),
+    ).toBeTruthy();
+  });
+
+  it('A6: model_group.context_window 为 0 报错', () => {
+    const config: Config = {
+      providers: [{ name: 'p1', type: 'openai', apiKey: 'k1', models: [{ id: 'm1' }] }],
+      modelGroups: [
+        {
+          id: 'g1',
+          contextWindow: 0,
+          channels: [{ provider: 'p1', model: 'm1' }],
+        },
+      ],
+    };
+    const errors = validateConfig(config);
+    expect(
+      errors.some((e) => e.message.includes('context_window 必须为正整数')),
+    ).toBeTruthy();
+  });
+
+  it('A6: model_group.context_window 为非整数报错', () => {
+    const config: Config = {
+      providers: [{ name: 'p1', type: 'openai', apiKey: 'k1', models: [{ id: 'm1' }] }],
+      modelGroups: [
+        {
+          id: 'g1',
+          contextWindow: 128000.5,
+          channels: [{ provider: 'p1', model: 'm1' }],
+        },
+      ],
+    };
+    const errors = validateConfig(config);
+    expect(
+      errors.some((e) => e.message.includes('context_window 必须为正整数')),
+    ).toBeTruthy();
+  });
+
+  it('A6: channel.context_window 为负数报错', () => {
+    const config: Config = {
+      providers: [{ name: 'p1', type: 'openai', apiKey: 'k1', models: [{ id: 'm1' }] }],
+      modelGroups: [
+        {
+          id: 'g1',
+          channels: [{ provider: 'p1', model: 'm1', contextWindow: -1024 }],
+        },
+      ],
+    };
+    const errors = validateConfig(config);
+    expect(
+      errors.some((e) => e.message.includes('channel.context_window 必须为正整数')),
+    ).toBeTruthy();
+  });
+
+  it('A6: channel.max_output_tokens 为负数报错', () => {
+    const config: Config = {
+      providers: [{ name: 'p1', type: 'openai', apiKey: 'k1', models: [{ id: 'm1' }] }],
+      modelGroups: [
+        {
+          id: 'g1',
+          channels: [{ provider: 'p1', model: 'm1', maxOutputTokens: -1 }],
+        },
+      ],
+    };
+    const errors = validateConfig(config);
+    expect(
+      errors.some((e) => e.message.includes('channel.max_output_tokens 必须为正整数')),
+    ).toBeTruthy();
+  });
+
+  it('A6: channel.max_output_tokens 为 0 报错', () => {
+    const config: Config = {
+      providers: [{ name: 'p1', type: 'openai', apiKey: 'k1', models: [{ id: 'm1' }] }],
+      modelGroups: [
+        {
+          id: 'g1',
+          channels: [{ provider: 'p1', model: 'm1', maxOutputTokens: 0 }],
+        },
+      ],
+    };
+    const errors = validateConfig(config);
+    expect(
+      errors.some((e) => e.message.includes('channel.max_output_tokens 必须为正整数')),
+    ).toBeTruthy();
+  });
+
+  it('A6: channel.max_output_tokens 为非整数报错', () => {
+    const config: Config = {
+      providers: [{ name: 'p1', type: 'openai', apiKey: 'k1', models: [{ id: 'm1' }] }],
+      modelGroups: [
+        {
+          id: 'g1',
+          channels: [{ provider: 'p1', model: 'm1', maxOutputTokens: 8192.9 }],
+        },
+      ],
+    };
+    const errors = validateConfig(config);
+    expect(
+      errors.some((e) => e.message.includes('channel.max_output_tokens 必须为正整数')),
+    ).toBeTruthy();
+  });
+
+  it('A6: 合法正整数 context_window / max_output_tokens 通过', () => {
+    const config: Config = {
+      providers: [{ name: 'p1', type: 'openai', apiKey: 'k1', models: [{ id: 'm1' }] }],
+      modelGroups: [
+        {
+          id: 'g1',
+          contextWindow: 128000,
+          channels: [
+            { provider: 'p1', model: 'm1', contextWindow: 200000, maxOutputTokens: 8192 },
+          ],
+        },
+      ],
+    };
+    const errors = validateConfig(config);
+    expect(errors.length).toBe(0);
+  });
+
+  // =====================================================================
+  // A1/A2 回归测试：validator 层保护字段前导点绕过
+  // =====================================================================
+
+  it('A2: override path ".model" 报错（前导点规范化后首段为 model）', () => {
+    const config: Config = {
+      providers: [{ name: 'p1', type: 'openai', apiKey: 'k1', models: [{ id: 'm1' }] }],
+      modelGroups: [{ id: 'g1', channels: [{ provider: 'p1', model: 'm1' }] }],
+      adapters: [
+        {
+          name: 'a1',
+          type: 'openai',
+          models: [
+            {
+              sourceModelId: 'alias',
+              model: 'g1',
+              overrides: [
+                {
+                  scope: 'adapter-alias',
+                  body: [{ op: 'set', path: '.model', value: 'hijack' }],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    const errors = validateConfig(config);
+    expect(
+      errors.some((e) => e.message.includes('受保护字段')),
+    ).toBeTruthy();
+  });
+
+  it('A2: override path "..messages" 报错（前导点规范化后首段为 messages）', () => {
+    const config: Config = {
+      providers: [{ name: 'p1', type: 'openai', apiKey: 'k1', models: [{ id: 'm1' }] }],
+      modelGroups: [{ id: 'g1', channels: [{ provider: 'p1', model: 'm1' }] }],
+      adapters: [
+        {
+          name: 'a1',
+          type: 'openai',
+          models: [
+            {
+              sourceModelId: 'alias',
+              model: 'g1',
+              overrides: [
+                {
+                  scope: 'adapter-alias',
+                  body: [{ op: 'set', path: '..messages', value: [] }],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    const errors = validateConfig(config);
+    expect(
+      errors.some((e) => e.message.includes('受保护字段')),
+    ).toBeTruthy();
+  });
+
+  it('A1: override path "__proto__.polluted" 报错（原型链污染）', () => {
+    const config: Config = {
+      providers: [{ name: 'p1', type: 'openai', apiKey: 'k1', models: [{ id: 'm1' }] }],
+      modelGroups: [{ id: 'g1', channels: [{ provider: 'p1', model: 'm1' }] }],
+      adapters: [
+        {
+          name: 'a1',
+          type: 'openai',
+          models: [
+            {
+              sourceModelId: 'alias',
+              model: 'g1',
+              overrides: [
+                {
+                  scope: 'adapter-alias',
+                  body: [{ op: 'set', path: '__proto__.polluted', value: 'hack' }],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    const errors = validateConfig(config);
+    expect(
+      errors.some((e) => e.message.includes('原型链污染') || e.message.includes('危险段')),
+    ).toBeTruthy();
+  });
+
+  it('A1: override path "constructor.prototype" 报错（原型链污染）', () => {
+    const config: Config = {
+      providers: [{ name: 'p1', type: 'openai', apiKey: 'k1', models: [{ id: 'm1' }] }],
+      modelGroups: [{ id: 'g1', channels: [{ provider: 'p1', model: 'm1' }] }],
+      adapters: [
+        {
+          name: 'a1',
+          type: 'openai',
+          models: [
+            {
+              sourceModelId: 'alias',
+              model: 'g1',
+              overrides: [
+                {
+                  scope: 'adapter-alias',
+                  body: [{ op: 'set', path: 'constructor.prototype.foo', value: 'bar' }],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    const errors = validateConfig(config);
+    expect(
+      errors.some((e) => e.message.includes('原型链污染') || e.message.includes('危险段')),
+    ).toBeTruthy();
+  });
 });

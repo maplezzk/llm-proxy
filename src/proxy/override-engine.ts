@@ -30,6 +30,8 @@ export interface OverrideContext {
   providerProtocol: string;
   /** 选中渠道的真实模型 ID（route.resolvedModel）。 */
   resolvedModel: string;
+  /** P2 R14：当 client 显式关闭 reasoning 时为 true，防止后置 override wire 重新启用。 */
+  reasoningDisabled?: boolean;
 }
 
 /** applyOverrides 返回值：可能被覆写修改的 body 和 headers（不可变调用语义内部共用同一引用）。 */
@@ -47,6 +49,13 @@ export const PROTECTED_OVERRIDE_PATHS: readonly string[] = [
   'tools',
 ];
 
+/**
+ * reasoningDisabled 为 true 时，wire 中的 reasoning 相关字段亦受保护（R14）。
+ * 覆盖 reasoning_effort/thinking/reasoning 意味着重新启用 reasoning，
+ * 故 override 不能 targeting 它们。
+ */
+const REASONING_WIRE_PATHS = ['reasoning_effort', 'thinking', 'reasoning'];
+
 /** 模板白名单变量（R12：仅这些变量可在覆写条件模板中使用）。 */
 const TEMPLATE_VARIABLES = new Set([
   'model',
@@ -55,6 +64,11 @@ const TEMPLATE_VARIABLES = new Set([
   'providerProtocol',
   'resolvedModel',
 ]);
+
+// --- 资源限制常量（A8） ---
+const MAX_WHEN_BYTES = 2048; /** when 模板最大字节数 */
+const MAX_TOKENS = 512; /** 单个表达式最大 token 数（标识符 + 操作符 + 括号） */
+const MAX_BRACKET_DEPTH = 32; /** 表达式括号最大嵌套深度 */
 
 /** body 操作处理函数签名。 */
 export type BodyOpHandler = (body: WireBody, op: OverrideBodyOp, ctx: OverrideContext) => void;
@@ -92,59 +106,169 @@ class OverrideRuleRejectError extends Error {
   }
 }
 
-/** 检查路径顶级段是否命中保护字段。 */
-const isProtectedPath = (path: string): boolean => {
-  const top = path.split('.')[0] ?? '';
-  return PROTECTED_OVERRIDE_PATHS.includes(top);
+/** 危险路径段（A1：原型链污染防护）。 */
+const DANGEROUS_PATH_SEGMENTS = new Set(['__proto__', 'constructor', 'prototype']);
+
+// --- 路径规范化（合并 A1/A2 修复） ---
+//
+// 关键设计：
+// 1. 先 split('.') 保留空段（不 filter），一次统一规范化；
+// 2. 规范化后若路径为空（全是空段），抛出 OverrideSkipError；
+// 3. 规范化后若任一段为危险段（__proto__/constructor/prototype），抛出 OverrideSkipError；
+// 4. 规范化结果供 isProtectedPath、setPath、lookupPath、deletePath 共用。
+
+/**
+ * 规范化路径字符串：拒绝空路径和危险段（原型链污染防护 A1）。
+ * 返回规范化后的 segments（永不包含空段）。
+ * @throws OverrideSkipError 路径为空或包含危险段时
+ */
+const normalizePath = (path: string): string[] => {
+  // split('.') 不过滤空段，保留完整路径结构
+  const raw = path.split('.');
+  if (raw.length === 0 || raw.every((s) => s.length === 0)) {
+    throw new OverrideSkipError('path is empty (no non-empty segments)', {
+      kind: 'body',
+      name: 'normalize',
+      target: path,
+    });
+  }
+  // 过滤空段后检查危险段
+  const segments: string[] = [];
+  for (const seg of raw) {
+    if (seg.length === 0) continue; // 跳过空段（前导/尾随/连续点）
+    if (DANGEROUS_PATH_SEGMENTS.has(seg)) {
+      throw new OverrideSkipError(
+        `dangerous path segment: "${seg}" (prototype pollution attempt)`,
+        { kind: 'body', name: 'normalize', target: path },
+      );
+    }
+    segments.push(seg);
+  }
+  if (segments.length === 0) {
+    throw new OverrideSkipError('path has only empty segments', {
+      kind: 'body',
+      name: 'normalize',
+      target: path,
+    });
+  }
+  return segments;
 };
 
-/** 把路径按 '.' 拆分为 segments；空 segments 过滤掉。 */
-const splitPath = (path: string): string[] => path.split('.').filter((s) => s.length > 0);
-
-/** 沿路径写入值（创建中间对象）。要求 path 非空。 */
-const setPath = (body: WireBody, path: string, value: unknown): void => {
-  const segments = splitPath(path);
-  if (segments.length === 0) {
-    throw new Error('empty path');
+/**
+ * 检查路径顶级段是否命中保护字段（A2：只基于规范化后首段）。
+ * 也检查 reasoningDisabled 模式下 reasoning 相关 wire 字段（R14）。
+ * A1：直接检查危险段（不在 isProtectedPath 中调用 normalizePath，避免异常被误当拒绝）。
+ */
+const isProtectedPath = (
+  path: string,
+  ctx: OverrideContext,
+): { protected: boolean; reason: string } => {
+  // A1：先规范化（split 不过滤空段）检查危险段
+  const raw = path.split('.');
+  for (const seg of raw) {
+    if (seg.length === 0) continue; // 跳过空段（前导点）
+    if (DANGEROUS_PATH_SEGMENTS.has(seg)) {
+      return { protected: true, reason: `dangerous path segment: ${seg}` };
+    }
   }
+  // 过滤空段后取首段
+  const segments = raw.filter((s) => s.length > 0);
+  if (segments.length === 0) {
+    return { protected: true, reason: 'empty path (all segments are empty)' };
+  }
+  const top = segments[0];
+  if (PROTECTED_OVERRIDE_PATHS.includes(top)) {
+    return { protected: true, reason: `protected top-level field: ${top}` };
+  }
+  // R14：当 client 显式关闭 reasoning 时，wire 中的 reasoning 字段亦受保护
+  if (ctx.reasoningDisabled && REASONING_WIRE_PATHS.includes(top)) {
+    return { protected: true, reason: `reasoning field blocked by client explicit-off: ${top}` };
+  }
+  return { protected: false, reason: '' };
+};
+
+/**
+ * 预扫描规则中所有操作，检查是否有保护字段/危险路径（A4）。
+ * 返回 { reject, reason } 或 null（可继续）。
+ */
+const preScanRule = (
+  rule: OverrideRule,
+  ctx: OverrideContext,
+): { reject: boolean; reason: string; opName?: string; target?: string } | null => {
+  if (rule.body) {
+    for (const op of rule.body) {
+      try {
+        const { protected: isProt, reason } = isProtectedPath(op.path, ctx);
+        if (isProt) {
+          return { reject: true, reason, opName: op.op, target: op.path };
+        }
+        // A1：normalizePath 会在操作时再做，这里提前扫一遍以覆盖"危险段非首段"场景
+        // （实际上 normalizePath 已包含检查，isProtectedPath 已调用了 normalizePath）
+      } catch (err) {
+        if (err instanceof OverrideSkipError) {
+          return {
+            reject: true,
+            reason: err.message,
+            opName: op.op,
+            target: op.path,
+          };
+        }
+        throw err;
+      }
+    }
+  }
+  return null;
+};
+
+/** 沿路径写入值（创建中间对象）。要求 segments 非空。 */
+const setPath = (body: WireBody, segments: string[], value: unknown): void => {
   let cursor: Record<string, unknown> = body as Record<string, unknown>;
   for (let i = 0; i < segments.length - 1; i++) {
     const seg = segments[i] as string;
     const next = cursor[seg];
     if (typeof next !== 'object' || next === null || Array.isArray(next)) {
-      cursor[seg] = {};
+      // A1：中间对象用 Object.create(null)，避免 __proto__ 作为自有键的原型污染
+      cursor[seg] = Object.create(null);
     }
     cursor = cursor[seg] as Record<string, unknown>;
   }
   cursor[segments[segments.length - 1] as string] = value;
 };
 
-/** 探测路径是否存在；返回 { exists, parent, lastKey }。 */
+/** 探测路径是否存在；返回 { exists, parent, lastKey }。A1：用 Object.hasOwn 不用 in。 */
 const lookupPath = (
   body: WireBody,
-  path: string,
+  segments: string[],
 ): { exists: boolean; parent?: Record<string, unknown>; lastKey?: string } => {
-  const segments = splitPath(path);
-  if (segments.length === 0) return { exists: false };
   let cursor: Record<string, unknown> = body as Record<string, unknown>;
   for (let i = 0; i < segments.length - 1; i++) {
     const seg = segments[i] as string;
-    const next = cursor[seg];
-    if (typeof next !== 'object' || next === null || Array.isArray(next)) {
+    // A1：只用 Object.hasOwn 读取自有属性，拒绝继承属性
+    if (
+      !Object.prototype.hasOwnProperty.call(cursor, seg) ||
+      typeof cursor[seg] !== 'object' ||
+      cursor[seg] === null ||
+      Array.isArray(cursor[seg])
+    ) {
       return { exists: false };
     }
-    cursor = next as Record<string, unknown>;
+    cursor = cursor[seg] as Record<string, unknown>;
   }
   const lastKey = segments[segments.length - 1] as string;
   if (cursor === null || typeof cursor !== 'object') {
     return { exists: false };
   }
-  return { exists: lastKey in cursor, parent: cursor, lastKey };
+  // A1：只用 Object.hasOwn，不用 `in`
+  return {
+    exists: Object.prototype.hasOwnProperty.call(cursor, lastKey),
+    parent: cursor,
+    lastKey,
+  };
 };
 
 /** 删除路径对应的键（路径不存在时为 no-op）。 */
-const deletePath = (body: WireBody, path: string): void => {
-  const result = lookupPath(body, path);
+const deletePath = (body: WireBody, segments: string[]): void => {
+  const result = lookupPath(body, segments);
   if (result.exists && result.parent && result.lastKey !== undefined) {
     delete result.parent[result.lastKey];
   }
@@ -152,43 +276,49 @@ const deletePath = (body: WireBody, path: string): void => {
 
 // --- 内置 body 操作注册 ---
 
-BODY_OP_REGISTRY.set('set', (body, op, _ctx) => {
-  if (isProtectedPath(op.path)) {
+BODY_OP_REGISTRY.set('set', (body, op, ctx) => {
+  const { protected: isProt, reason } = isProtectedPath(op.path, ctx);
+  if (isProt) {
     throw new OverrideRuleRejectError(
-      `protected path: ${op.path}`,
+      `protected path: ${reason}`,
       { scope: 'adapter-alias', body: [op] },
       op.op,
       op.path,
     );
   }
-  setPath(body, op.path, op.value);
+  const segments = normalizePath(op.path);
+  setPath(body, segments, op.value);
 });
 
-BODY_OP_REGISTRY.set('set_if_absent', (body, op, _ctx) => {
-  if (isProtectedPath(op.path)) {
+BODY_OP_REGISTRY.set('set_if_absent', (body, op, ctx) => {
+  const { protected: isProt, reason } = isProtectedPath(op.path, ctx);
+  if (isProt) {
     throw new OverrideRuleRejectError(
-      `protected path: ${op.path}`,
+      `protected path: ${reason}`,
       { scope: 'adapter-alias', body: [op] },
       op.op,
       op.path,
     );
   }
-  const result = lookupPath(body, op.path);
+  const segments = normalizePath(op.path);
+  const result = lookupPath(body, segments);
   if (!result.exists) {
-    setPath(body, op.path, op.value);
+    setPath(body, segments, op.value);
   }
 });
 
-BODY_OP_REGISTRY.set('delete', (body, op, _ctx) => {
-  if (isProtectedPath(op.path)) {
+BODY_OP_REGISTRY.set('delete', (body, op, ctx) => {
+  const { protected: isProt, reason } = isProtectedPath(op.path, ctx);
+  if (isProt) {
     throw new OverrideRuleRejectError(
-      `protected path: ${op.path}`,
+      `protected path: ${reason}`,
       { scope: 'adapter-alias', body: [op] },
       op.op,
       op.path,
     );
   }
-  deletePath(body, op.path);
+  const segments = normalizePath(op.path);
+  deletePath(body, segments);
 });
 
 // --- 内置 header 操作注册 ---
@@ -225,13 +355,31 @@ type ExprToken =
   | { kind: 'neq' }
   | { kind: 'and' }
   | { kind: 'or' }
-  | { kind: 'lparen' }
-  | { kind: 'rparen' };
+  | { kind: 'lparen'; depth: number }
+  | { kind: 'rparen'; depth: number };
 
 const tokenizeExpression = (input: string): ExprToken[] => {
+  // A8: 字节长度限制
+  if (new TextEncoder().encode(input).length > MAX_WHEN_BYTES) {
+    throw new OverrideSkipError(
+      `when expression exceeds ${MAX_WHEN_BYTES} bytes`,
+      { kind: 'body', name: 'tokenize', target: input.slice(0, 64) },
+    );
+  }
+
   const tokens: ExprToken[] = [];
   let i = 0;
+  let depth = 0;
   while (i < input.length) {
+    // A8: token 数限制
+    if (tokens.length >= MAX_TOKENS) {
+      throw new OverrideSkipError(`expression exceeds ${MAX_TOKENS} tokens`, {
+        kind: 'body',
+        name: 'tokenize',
+        target: input.slice(0, 64),
+      });
+    }
+
     const ch = input[i] as string;
     if (ch === ' ' || ch === '\t' || ch === '\n' || ch === '\r') {
       i++;
@@ -241,8 +389,16 @@ const tokenizeExpression = (input: string): ExprToken[] => {
       const quote = ch;
       let j = i + 1;
       while (j < input.length && input[j] !== quote) {
+        // A5: 支持转义字符
         if (input[j] === '\\' && j + 1 < input.length) j++;
         j++;
+      }
+      // A5: 引号必须闭合
+      if (j >= input.length || input[j] !== quote) {
+        throw new OverrideSkipError(
+          `unclosed string literal: "${input.slice(i, j + 1)}"`,
+          { kind: 'body', name: 'tokenize', target: input.slice(i, i + 32) },
+        );
       }
       tokens.push({ kind: 'string', value: input.slice(i + 1, j) });
       i = j + 1;
@@ -269,12 +425,30 @@ const tokenizeExpression = (input: string): ExprToken[] => {
       continue;
     }
     if (ch === '(') {
-      tokens.push({ kind: 'lparen' });
+      depth++;
+      // A8: 括号深度限制
+      if (depth > MAX_BRACKET_DEPTH) {
+        throw new OverrideSkipError(`bracket depth exceeds ${MAX_BRACKET_DEPTH}`, {
+          kind: 'body',
+          name: 'tokenize',
+          target: input.slice(i, i + 8),
+        });
+      }
+      tokens.push({ kind: 'lparen', depth });
       i++;
       continue;
     }
     if (ch === ')') {
-      tokens.push({ kind: 'rparen' });
+      // A5: 遇到右括号时必须有对应的左括号（depth > 0）
+      if (depth === 0) {
+        throw new OverrideSkipError('unexpected ) without matching (', {
+          kind: 'body',
+          name: 'tokenize',
+          target: input.slice(i, i + 8),
+        });
+      }
+      depth--;
+      tokens.push({ kind: 'rparen', depth });
       i++;
       continue;
     }
@@ -282,16 +456,29 @@ const tokenizeExpression = (input: string): ExprToken[] => {
     let j = i;
     while (j < input.length && /[A-Za-z0-9_.\-/]/.test(input[j] as string)) j++;
     if (j === i) {
-      throw new Error(`unexpected character at position ${i}: ${JSON.stringify(ch)}`);
+      throw new OverrideSkipError(`unexpected character at position ${i}: ${JSON.stringify(ch)}`, {
+        kind: 'body',
+        name: 'tokenize',
+        target: input.slice(i, i + 8),
+      });
     }
     tokens.push({ kind: 'string', value: input.slice(i, j) });
     i = j;
+  }
+  // A5: 所有引号必须已闭合（左括号与右括号数量相等由 depth 检验）
+  // depth !== 0 已由 unclosed left parens 检测（depth > 0 意味着还有左括号未匹配）
+  if (depth > 0) {
+    throw new OverrideSkipError(`unclosed ( (missing ${depth} closing ) )`, {
+      kind: 'body',
+      name: 'tokenize',
+      target: input.slice(0, 64),
+    });
   }
   return tokens;
 };
 
 class ExprParser {
-  private pos = 0;
+  pos = 0;
 
   constructor(private readonly tokens: ExprToken[]) {}
 
@@ -347,32 +534,53 @@ class ExprParser {
   parsePrimary(): string {
     const tok = this.consume();
     if (!tok) {
-      throw new Error('unexpected end of expression');
+      throw new OverrideSkipError('unexpected end of expression', {
+        kind: 'body',
+        name: 'parse',
+        target: 'primary',
+      });
     }
     if (tok.kind === 'lparen') {
       const result = this.parseOr();
       const close = this.consume();
       if (close?.kind !== 'rparen') {
-        throw new Error('expected )');
+        throw new OverrideSkipError('expected ) after (', {
+          kind: 'body',
+          name: 'parse',
+          target: 'primary',
+        });
       }
       return result ? 'true' : 'false';
     }
     if (tok.kind === 'string') {
       return tok.value;
     }
-    throw new Error(`unexpected token: ${tok.kind}`);
+    throw new OverrideSkipError(`unexpected token: ${tok.kind}`, {
+      kind: 'body',
+      name: 'parse',
+      target: 'primary',
+    });
   }
 }
 
 /**
  * 求值已替换（变量已展开）后的表达式为 boolean。
- * 解析失败抛 Error，由 evaluateCondition 转为 fail open。
+ * A5：解析后必须 pos === tokens.length（EOF），否则抛 OverrideSkipError（fail open）。
  */
 const evaluateExpression = (rendered: string): boolean => {
   const tokens = tokenizeExpression(rendered.trim());
   if (tokens.length === 0) return false;
   const parser = new ExprParser(tokens);
   const result = parser.parseOr();
+  // A5: 检查是否消费了所有 token（EOF）
+  if (parser.pos !== tokens.length) {
+    const remaining = tokens.slice(parser.pos).map((t) => (t as { kind: string }).kind).join(' ');
+    throw new OverrideSkipError(`trailing tokens after valid expression: ${remaining || 'unknown'}`, {
+      kind: 'body',
+      name: 'evaluate',
+      target: rendered.slice(0, 64),
+    });
+  }
   return result;
 };
 
@@ -399,23 +607,36 @@ const renderTemplate = (template: string, ctx: OverrideContext): string =>
   });
 
 /**
- * 评估条件：渲染模板（变量替换）→ 解析表达式 → 折叠为 boolean。
- * 渲染或解析异常返回 false（fail open；applyOverrides 会另外打日志）。
- * 暴露此函数便于单测和未来复用。
+ * 条件求值结果（A7：可识别的错误信息）。
+ * @returns { matched, error } matched 为 true/false，error 存在时表示求值失败原因。
+ * 内部使用；applyOverrides 将错误信息记 warn 日志。
  */
-export const evaluateCondition = (template: string, ctx: OverrideContext): boolean => {
+export interface EvaluateConditionResult {
+  matched: boolean;
+  error?: string;
+}
+
+/**
+ * 评估条件：渲染模板（变量替换）→ 解析表达式 → 折叠为 boolean。
+ * A5: 尾随 token / 未闭合引号 / 括号不匹配抛 OverrideSkipError → error。
+ * A7: 条件求值失败返回 { matched: false, error }，由 applyOverrides 统一记 warn。
+ */
+export const evaluateCondition = (template: string, ctx: OverrideContext): EvaluateConditionResult => {
   let rendered: string;
   try {
     rendered = renderTemplate(template, ctx);
-  } catch {
-    // fail open: 未知模板变量 → 视作条件不满足（U5 设计原则，调用方会另行打日志）
-    return false;
+  } catch (err) {
+    const reason =
+      err instanceof Error ? err.message : String(err);
+    return { matched: false, error: `template render failed: ${reason}` };
   }
   try {
-    return evaluateExpression(rendered);
-  } catch {
-    // fail open: 表达式解析失败 → 视作条件不满足（U5 设计原则，调用方会另行打日志）
-    return false;
+    const result = evaluateExpression(rendered);
+    return { matched: result };
+  } catch (err) {
+    const reason =
+      err instanceof Error ? err.message : String(err);
+    return { matched: false, error: `expression evaluation failed: ${reason}` };
   }
 };
 
@@ -423,8 +644,9 @@ export const evaluateCondition = (template: string, ctx: OverrideContext): boole
  * 主入口：把 applicable overrides 应用到序列化后的 body 与上游 headers。
  *
  * 失败开放语义（对齐 AxonHub）：
- * - 模板渲染错误 → 跳过整条 rule；
- * - body op 抛出 OverrideRuleRejectError（保护字段） → 跳过整条 rule；
+ * - A4：预扫描整条 rule 保护字段，发现危险路径/字段 → 整条 rule 跳过；
+ * - 模板渲染错误 → 跳过整条 rule（A7 记录 warn 日志）；
+ * - body op 抛出 OverrideRuleRejectError（保护字段） → 跳过整条 rule（A4 已预扫，此为兜底）；
  * - body op 抛出其他 Error → 跳过该 op，继续同 rule 内其余 op；
  * - header op 错误 → 跳过该 op，继续；
  * - 整体过程不抛异常给调用方。
@@ -442,14 +664,42 @@ export const applyOverrides = (
 
   for (const rule of rules) {
     try {
+      // A4: 预扫描整条 rule 的保护字段/危险路径（body + headers 全部预扫）
+      const scanResult = preScanRule(rule, ctx);
+      if (scanResult?.reject) {
+        logger?.warn(
+          {
+            scope: rule.scope,
+            when: rule.when,
+            reason: scanResult.reason,
+            op: scanResult.opName,
+            target: scanResult.target,
+          },
+          'override rule rejected by pre-scan (protected field or dangerous path)',
+        );
+        continue; // A4：整条 rule 跳过（不执行 body，也不执行 headers）
+      }
+
       // 1. 条件渲染
       if (rule.when !== undefined && rule.when.length > 0) {
-        if (!evaluateCondition(rule.when, ctx)) {
+        const condResult = evaluateCondition(rule.when, ctx);
+        if (!condResult.matched) {
+          if (condResult.error) {
+            // A7: 条件求值失败，记录原因，继续下一条 rule
+            logger?.warn(
+              {
+                scope: rule.scope,
+                when: rule.when,
+                reason: condResult.error,
+              },
+              'override rule condition failed (fail open)',
+            );
+          }
           continue;
         }
       }
 
-      // 2. body 操作
+      // 2. body 操作（A4：已预扫保护字段，此处仅执行；若预扫通过则整条 rule 执行）
       if (rule.body && rule.body.length > 0) {
         for (const op of rule.body) {
           try {
@@ -465,10 +715,11 @@ export const applyOverrides = (
                   op: err.opName,
                   target: err.target,
                   reason: err.message,
+                  scope: rule.scope,
                 },
                 'override rule rejected (protected field)',
               );
-              // 拒绝整条 rule：跳出 body 循环，再跳出本 rule
+              // A4：保护字段命中 → 整条 rule 跳过（break body + 不执行 headers）
               break;
             }
             logger?.warn(
@@ -476,6 +727,7 @@ export const applyOverrides = (
                 op: op.op,
                 target: op.path,
                 reason: err instanceof Error ? err.message : String(err),
+                scope: rule.scope,
               },
               'override body op failed',
             );
@@ -484,7 +736,7 @@ export const applyOverrides = (
         }
       }
 
-      // 3. header 操作
+      // 3. header 操作（A4：已在预扫阶段检查 headers 中的危险路径）
       if (rule.headers && rule.headers.length > 0) {
         for (const op of rule.headers) {
           try {
@@ -499,6 +751,7 @@ export const applyOverrides = (
                 op: op.op,
                 target: op.name,
                 reason: err instanceof Error ? err.message : String(err),
+                scope: rule.scope,
               },
               'override header op failed',
             );
