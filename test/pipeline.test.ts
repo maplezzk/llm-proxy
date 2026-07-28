@@ -15,7 +15,7 @@ import type { AddressInfo } from 'node:net';
 import { Hono } from 'hono';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { ConfigStore } from '../src/config/store.ts';
-import type { Config } from '../src/config/types.ts';
+import type { Config, OverrideRule } from '../src/config/types.ts';
 import { CaptureBuffer } from '../src/proxy/capture-store.ts';
 import {
   adapterStreamToPolicy,
@@ -527,6 +527,151 @@ describe('pipeline e2e（mock 上游）', () => {
     expect(pair.requestOut).toContain('"model":"gpt-target"');
     expect(pair.responseIn).toContain('chatcmpl-mock');
     expect(pair.responseOut).toContain('Hello!');
+  });
+});
+
+// --- U5 覆写引擎端到端（pipeline 级，用 mocked fetch 证明覆写到达出站 body/headers） ---
+
+describe('pipeline e2e（U5 覆写引擎）', () => {
+  const configWithOverrides = (overrides: OverrideRule[] | undefined): Config => ({
+    providers: [
+      {
+        name: 'mock-openai',
+        type: 'openai',
+        apiKey: 'sk-mock',
+        apiBase: upstreamUrl,
+        models: [{ id: 'gpt-target' }],
+      },
+    ],
+    adapters: [
+      {
+        name: 'mytool',
+        type: 'openai',
+        models: [
+          {
+            sourceModelId: 'GPT',
+            provider: 'mock-openai',
+            targetModelId: 'gpt-target',
+            ...(overrides ? { overrides } : {}),
+          },
+        ],
+      },
+    ],
+  });
+
+  it('覆写 body set：reasoning_effort high 到达出站 body', async () => {
+    const { app } = buildTestApp(
+      configWithOverrides([
+        {
+          scope: 'adapter-alias',
+          when: '{{model}} == "GPT"',
+          body: [{ op: 'set', path: 'reasoning_effort', value: 'high' }],
+        },
+      ]),
+    );
+    const res = await post(app, '/mytool/v1/chat/completions', {
+      model: 'GPT',
+      stream: false,
+      messages: [{ role: 'user', content: 'hi' }],
+    });
+    expect(res.status).toBe(200);
+    expect(lastUpstream().body.reasoning_effort).toBe('high');
+  });
+
+  it('覆写 header set/delete：修改出站请求头', async () => {
+    const { app } = buildTestApp(
+      configWithOverrides([
+        {
+          scope: 'adapter-alias',
+          headers: [
+            { op: 'set', name: 'X-Channel', value: 'kiro' },
+            { op: 'set', name: 'X-Internal', value: 'secret' },
+          ],
+        },
+      ]),
+    );
+    const res = await post(app, '/mytool/v1/chat/completions', {
+      model: 'GPT',
+      stream: false,
+      messages: [{ role: 'user', content: 'hi' }],
+    });
+    expect(res.status).toBe(200);
+    const up = lastUpstream();
+    expect(up.headers['x-channel']).toBe('kiro');
+    expect(up.headers['x-internal']).toBe('secret');
+  });
+
+  it('保护字段 model 被拒：出站 model 仍为 gpt-target', async () => {
+    const { app } = buildTestApp(
+      configWithOverrides([
+        {
+          scope: 'adapter-alias',
+          body: [{ op: 'set', path: 'model', value: 'hacked' }],
+        },
+      ]),
+    );
+    const res = await post(app, '/mytool/v1/chat/completions', {
+      model: 'GPT',
+      stream: false,
+      messages: [{ role: 'user', content: 'hi' }],
+    });
+    expect(res.status).toBe(200);
+    expect(lastUpstream().body.model).toBe('gpt-target');
+  });
+
+  it('false 条件 no-op：覆写不被应用', async () => {
+    const { app } = buildTestApp(
+      configWithOverrides([
+        {
+          scope: 'adapter-alias',
+          when: '{{model}} == "other"',
+          body: [{ op: 'set', path: 'reasoning_effort', value: 'high' }],
+        },
+      ]),
+    );
+    const res = await post(app, '/mytool/v1/chat/completions', {
+      model: 'GPT',
+      stream: false,
+      messages: [{ role: 'user', content: 'hi' }],
+    });
+    expect(res.status).toBe(200);
+    expect(lastUpstream().body.reasoning_effort).toBeUndefined();
+  });
+
+  it('直连路由未携带 overrides：不应用任何覆写（正常上游请求）', async () => {
+    const { app } = buildTestApp(buildConfig());
+    const res = await post(app, '/v1/chat/completions', {
+      model: 'gpt-target',
+      stream: false,
+      messages: [{ role: 'user', content: 'hi' }],
+    });
+    expect(res.status).toBe(200);
+    // 直连不应注入 reasoning_effort（除非 model.thinking 配置）
+    expect(lastUpstream().body.reasoning_effort).toBeUndefined();
+  });
+
+  it('capture 反映覆写后的 body（覆写在 capture.updateRequest 之前）', async () => {
+    const { app, capture } = buildTestApp(
+      configWithOverrides([
+        {
+          scope: 'adapter-alias',
+          body: [{ op: 'set', path: 'reasoning_effort', value: 'high' }],
+        },
+      ]),
+    );
+    capture.setEnabled(true);
+    const res = await post(app, '/mytool/v1/chat/completions', {
+      model: 'GPT',
+      stream: false,
+      messages: [{ role: 'user', content: 'hi' }],
+    });
+    expect(res.status).toBe(200);
+    await res.text();
+    const pairs = capture.list();
+    expect(pairs).toHaveLength(1);
+    const pair = pairs.at(0);
+    if (!pair) throw new Error('capture pair missing');
+    expect(pair.requestOut).toContain('"reasoning_effort":"high"');
   });
 });
 

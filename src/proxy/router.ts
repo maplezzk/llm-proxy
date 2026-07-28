@@ -21,6 +21,7 @@ import type {
   Model,
   ModelChannelRef,
   ModelGroup,
+  OverrideRule,
   Provider,
   ThinkingConfig,
 } from '../config/types.ts';
@@ -121,6 +122,7 @@ const buildRouteDecision = (params: {
   maxTokensOverride?: number;
   contextWindow?: number;
   maxOutputTokens?: number;
+  overrides?: OverrideRule[];
 }): RouteDecision => ({
   providerId: params.provider.name,
   providerProtocol: params.provider.type as ClientProtocol,
@@ -136,6 +138,7 @@ const buildRouteDecision = (params: {
   ...(params.maxTokensOverride !== undefined
     ? { maxTokensOverride: params.maxTokensOverride }
     : {}),
+  ...(params.overrides ? { overrides: params.overrides } : {}),
 });
 
 /**
@@ -369,6 +372,8 @@ export const resolveAdapterRoute = (
 
   const onFailure = adapter.onFailure ?? 'hard_fail';
   const streamPolicy = adapterStreamToPolicy(adapter.stream);
+  // U5: 适用覆写规则随路由决策携带，供 pipeline 在 outbound.encode 后、doFetch 前调用 applyOverrides。
+  const carryOverrides = mapping.overrides && mapping.overrides.length > 0 ? mapping.overrides : undefined;
 
   // --- Model-centric 模式：mapping.model ---
   if (mapping.model) {
@@ -411,6 +416,7 @@ export const resolveAdapterRoute = (
               contextWindow: effectiveChannelContextWindow(ch, model),
               maxOutputTokens: ch.maxOutputTokens,
               maxTokensOverride: adapter.max_tokens,
+              ...(carryOverrides ? { overrides: carryOverrides } : {}),
             }),
           ],
           inboundType: adapter.type as ClientProtocol,
@@ -425,6 +431,7 @@ export const resolveAdapterRoute = (
             thinking: mapping.thinking ? toReasoningSpec(mapping.thinking) : matched.thinking,
             ...(adapter.max_tokens !== undefined ? { maxTokensOverride: adapter.max_tokens } : {}),
             streamPolicy,
+            ...(carryOverrides ? { overrides: carryOverrides } : {}),
           },
         ],
         inboundType: adapter.type as ClientProtocol,
@@ -440,6 +447,7 @@ export const resolveAdapterRoute = (
         thinking: mapping.thinking ? toReasoningSpec(mapping.thinking) : c.thinking,
         streamPolicy,
         ...(adapter.max_tokens !== undefined ? { maxTokensOverride: adapter.max_tokens } : {}),
+        ...(carryOverrides ? { overrides: carryOverrides } : {}),
       })),
       inboundType: adapter.type as ClientProtocol,
       onFailure,
@@ -474,6 +482,7 @@ export const resolveAdapterRoute = (
         streamPolicy,
         priority: 0,
         maxTokensOverride: adapter.max_tokens,
+        ...(carryOverrides ? { overrides: carryOverrides } : {}),
       }),
     ],
     inboundType: adapter.type as ClientProtocol,

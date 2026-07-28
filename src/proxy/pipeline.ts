@@ -53,6 +53,7 @@ import type {
   UsageRecord,
 } from './ir/types.ts';
 import { resolveReasoning } from './reasoning-resolver.ts';
+import { applyOverrides } from './override-engine.ts';
 import { decodeUpstreamResponse, extractWireUsage } from './response-decode.ts';
 import { hasExplicitThinking, resolveStreamPolicy } from './router.ts';
 import { anthropicStreamInboundAdapter } from './stream/inbound/anthropic.ts';
@@ -377,6 +378,27 @@ export const forwardPipeline = async (
     const message = err instanceof Error ? err.message : String(err);
     log?.error({ model: clientModel, err: message }, 'outbound encode failed');
     return jsonError(500, `请求转换失败: ${message}`);
+  }
+
+  // 5. 覆写引擎：序列化后、doFetch 前应用（按 KTD8）。
+  // body 操作作用于 upstream.body，header 操作作用于 upstream.headers；
+  // 适用覆写规则由 resolveAdapterRoute 在 route 时解析并携带在 route.overrides。
+  if (route.overrides && route.overrides.length > 0) {
+    const overrideCtx = {
+      model: clientModel,
+      logicalModel: clientModel,
+      provider: route.providerId,
+      providerProtocol: route.providerProtocol,
+      resolvedModel: route.resolvedModel,
+    };
+    const overridden = applyOverrides(
+      upstream.body,
+      upstream.headers,
+      route.overrides,
+      overrideCtx,
+      deps.logger,
+    );
+    upstream = { ...upstream, body: overridden.body, headers: overridden.headers };
   }
 
   const crossProtocol = clientProtocol !== route.providerProtocol;

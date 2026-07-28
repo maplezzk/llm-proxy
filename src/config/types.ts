@@ -61,16 +61,16 @@ export interface Provider {
 /** 覆写引擎作用域。adapter-alias 作用于整个 alias；channel 仅作用于选定的渠道。 */
 export type OverrideScope = 'adapter-alias' | 'channel';
 
-/** body 单条操作。 */
+/** body 单条操作。op 额外允许注册表扩展（registerBodyOp）的任意字符串。 */
 export interface OverrideBodyOp {
-  op: 'set' | 'set_if_absent' | 'delete';
+  op: 'set' | 'set_if_absent' | 'delete' | (string & {});
   path: string;
   value?: unknown;
 }
 
-/** header 单条操作。 */
+/** header 单条操作。op 额外允许注册表扩展（registerHeaderOp）的任意字符串。 */
 export interface OverrideHeaderOp {
-  op: 'set' | 'delete';
+  op: 'set' | 'delete' | (string & {});
   name: string;
   value?: string;
 }
@@ -190,13 +190,13 @@ export interface ProviderConfigFile {
 }
 
 export interface OverrideBodyOpFile {
-  op: 'set' | 'set_if_absent' | 'delete';
+  op: 'set' | 'set_if_absent' | 'delete' | (string & {});
   path: string;
   value?: unknown;
 }
 
 export interface OverrideHeaderOpFile {
-  op: 'set' | 'delete';
+  op: 'set' | 'delete' | (string & {});
   name: string;
   value?: string;
 }

@@ -11,6 +11,7 @@
 
 import type { CanonicalStreamEvent } from '../ir/stream-events.ts';
 import type { CanonicalRequest, ClientProtocol, ReasoningSpec } from '../ir/types.ts';
+import type { OverrideRule } from '../../config/types.ts';
 
 /**
  * wire 协议 body（JSON 对象）。inbound 解码前视为不可信，
@@ -49,6 +50,12 @@ export interface RouteDecision {
   maxOutputTokens?: number;
   /** 备选渠道（failover 用，U6 消费）。selectRoute 在选中态挂上 alternatives。 */
   alternatives?: RouteDecision[];
+  /**
+   * 适用覆写规则（U5）：route 时由 resolveAdapterRoute 从 mapping.overrides 解析，
+   * pipeline 在 outbound.encode 之后、doFetch 之前调用 applyOverrides 应用。
+   * 直连（routeModel）保持 undefined。
+   */
+  overrides?: OverrideRule[];
 }
 
 /** 渠道选择策略（KTD2 策略缝：v1=priority，weight/round-robin/latency 后续插件化）。 */
