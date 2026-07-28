@@ -311,7 +311,7 @@ export default function CapturePage() {
       </div>
 
       {/* 条目列表 */}
-      <div className="overflow-x-auto">
+      <div className="max-h-[60vh] overflow-auto rounded-md">
         <Table size="sm" hoverableRows>
           <TableHeader>
             <TableRow>
