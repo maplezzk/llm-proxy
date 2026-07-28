@@ -8,7 +8,9 @@
 
 本地统一 LLM 代理服务，单端口提供 AI API：多协议（Anthropic / OpenAI Chat / OpenAI Responses）
 路由、跨协议互转、流式 SSE 双向转换、token 统计。P1 阶段把协议核心重写为 **canonical IR 中枢 +
-三协议适配器**，并把配置/用量持久化迁到 PostgreSQL。
+三协议适配器**，并把配置/用量持久化迁到 PostgreSQL。P2 阶段在 P1 协议核心上加**编排核心**：
+模型为中心的多渠道路由（模型组 + priority/failover + 能力档位）、adapter 稳定别名隐藏真实模型名、
+声明式覆写引擎、reasoning 解析集中化（除多租户/鉴权/管理 UI）。
 
 - **运行时**: Node.js >= 22，TypeScript ESM（`"type": "module"`，tsup target node22）
 - **HTTP**: Hono + `@hono/node-server`（中间件链：req-id → request log → 路由）
@@ -48,14 +50,17 @@ src/
       enums.ts             # 4 个 PG ENUM
       index.ts             # schema 聚合入口（drizzle 客户端 + drizzle-kit）
       providers.ts         # providers + provider_models
-      adapters.ts          # adapters + adapter_model_mappings
+      adapters.ts          # adapters + adapter_model_mappings（P2 加 model_group_id 可空 FK）
+      model-groups.ts      # P2 model_groups + model_group_channels（模型组 + 渠道绑定 + priority + 能力上限）
       settings.ts          # vision_settings + proxy_settings（单例）
       usage.ts             # usage_records
       requests.ts          # requests（P0 请求日志探针表）
   proxy/
-    pipeline.ts            # 转发管线：parseAndAuth / applyRouteDecision / forwardPipeline
+    pipeline.ts            # 转发管线：parseAndAuth / applyRouteDecision（含 resolveReasoning + 钳制）/ forwardPipeline（failover 循环 + applyOverrides 接线）
     routes.ts              # Hono 代理路由（直连三协议 + 适配器虚拟端点）
-    router.ts              # 模型路由：routeModel / resolveAdapterRoute / StreamPolicy / ReasoningSpec
+    router.ts              # 模型路由：routeModel（直连）/ routeLogicalModel + selectRoute（模型组候选+选择，P2）/ resolveAdapterRoute（别名→模型组→候选）
+    reasoning-resolver.ts  # P2 reasoning 集中解析：resolveReasoning（client/route/override 仲裁 + effort→budget 表 + explicit-off + source 标注）
+    override-engine.ts     # P2 声明式覆写引擎：applyOverrides（序列化后/fetch 前；body set/set_if_absent/delete + header set/delete；模板条件；保护字段；失败开放）
     response-decode.ts     # 上游非流式响应 → CanonicalResponse（+ extractWireUsage）
     capture-store.ts       # CaptureBuffer：抓包环形缓冲（当前无 HTTP 端点消费）
     ir/
@@ -126,10 +131,13 @@ POST /v1/{messages|chat/completions|responses}
 `POST /{name}/v1/{messages|chat/completions|responses}` + `GET /{name}/v1/models`：
 
 - 入站协议**由请求路径决定**（`adapter.type` 仅用于配置校验）。
-- `router.resolveAdapterRoute(adapterName, sourceModelId)`：adapter → 映射 → provider → model；
-  映射级 `thinking` 优先，否则继承目标模型配置。
-- 错误映射：`ADAPTER_NOT_FOUND` / `MODEL_MAPPING_NOT_FOUND` → 404，其余适配器错误 → 502。
-- 复用同一条 `forwardPipeline`。
+- `router.resolveAdapterRoute(adapterName, sourceModelId)`（P2 模型为中心）：别名 → `model` 引用 → 模型组 →
+  候选渠道；钉死 `channel` 得单个候选，自动别名得全候选集；legacy `provider`+`targetModelId` 保留为单候选；
+  携带 `onFailure` / `isPinnedChannel` / `overrides`（adapter-alias 作用域）。
+- `selectRoute(candidates, ctx)`：priority 序选首 + alternatives（策略缝，v1 仅 priority）。
+- 错误映射：`ADAPTER_NOT_FOUND` / `MODEL_MAPPING_NOT_FOUND` / `ROUTE_GROUP_NOT_FOUND` /
+  `ROUTE_NO_ELIGIBLE_CHANNEL` / `CHANNEL_NOT_FOUND` → 404，`ROUTE_ALL_FAILED` 及其余适配器错误 → 502。
+- 复用同一条 `forwardPipeline`（含 failover 循环 + 覆写接线）。
 
 ## 配置
 
@@ -155,12 +163,32 @@ providers:
           budget_tokens: 4096            #   anthropic thinking 预算
           reasoning_effort: high         #   low|medium|high|xhigh|max
           type: enabled                  #   enabled|disabled|adaptive|auto 透传
+model_groups:                          # P2 模型组（逻辑模型 = 组，档位写进名字）
+  - id: opus
+    context_window: 200000             # 可选，组默认档位
+    channels:
+      - provider: kiro                 # 渠道 = provider + 其下模型
+        model: claude-opus
+        priority: 1                    # 可选，priority 序选择（小优先）
+        context_window: 200000         # 可选，渠道级能力上限（覆盖组默认）
+      - provider: cc
+        model: claude-opus
+        priority: 2
 adapters:
   - name: my-tool
     type: anthropic
     max_tokens: 8192         # 可选，客户端未传时默认
     stream: true             # 可选；undefined=透传 / true=client 未传时默认开 / false=强制关
+    on_failure: hard_fail    # 可选，P2 钉死渠道失败策略：hard_fail（默认）| fallback
     models:
+      # P2 模型为中心：别名 → model（模型组）+ 可选 channel（钉死）+ overrides
+      - source_model_id: deep
+        model: opus                    # 逻辑模型（模型组）引用
+        # channel: kiro               # 可选，钉死单渠道（不填=自动 priority+failover）
+        overrides:                     # 可选，adapter-alias 作用域覆写
+          - when: '{{model}} == "deep"'
+            body: [{ op: set, path: reasoning_effort, value: high }]
+      # legacy 一对一（保留，自动升级为单渠道组）
       - source_model_id: claude-sonnet-4
         provider: deepseek
         target_model_id: deepseek-chat
@@ -187,6 +215,10 @@ adapters:
 - **三协议**: `anthropic` / `openai`（Chat Completions）/ `openai-responses`（`ClientProtocol`）。
 - **reasoning/thinking 归一**: `ReasoningSpec` 统一承载 effort（5 级 `low|medium|high|xhigh|max`）、
   anthropic `budgetTokens`、透传型 `type`、responses `summary`；决策来源 `source: client|route|override`。
+  **P2 集中解析**：`reasoning-resolver.ts` `resolveReasoning` 在 `applyRouteDecision` 内统一仲裁
+  （route>client，共享 effort→budget 表，尊重 client explicit-off）；三个 outbound 适配器降为 IR→wire 投影、
+  无字段仲裁；`max_tokens` 与 `budget_tokens` 解耦（移除 Anthropic `Math.max(max,budget)` 反语义钳制，
+  budget 钳到 `max_tokens-1`）。
 - **流式 SSE**: stream inbound 把上游 SSE 解析为 `CanonicalStreamEvent`（块用稳定 `blockId`，签名独立
   `block_signature` 事件），stream outbound 再渲染为客户端协议 SSE。
 - **content_block 索引**（Anthropic 出站分配）: index 0 = thinking，1 = text，2+ = tool_use 递增；
@@ -197,11 +229,55 @@ adapters:
 - **usage 口径**: 计费输入 = 总输入 − 缓存读 − 缓存创建；Anthropic/Responses 的 `input_tokens` 本身即计费
   部分，Chat 的 `prompt_tokens` 含缓存需扣减（见 `response-decode.ts`）。
 
+## 编排核心（P2）
+
+P2 在 P1 协议核心（IR 中枢 + 三协议适配器）上加路由编排，**不改协议转换**。设计权威：
+`docs/plans/2026-07-28-001-feat-axonhub-parity-orchestration-plan.md`。
+
+### 模型为中心路由
+
+- **逻辑模型 = 模型组**：档位写进名字（`gpt-5.6-1m` / `gpt-5.6-fast` 是两个不同模型），聚合提供它的渠道。
+- **ModelChannel 边**：每个模型-渠道绑定带渠道专属真实模型 ID + `priority` + 能力上限
+  （`context_window` / `max_output_tokens`，结构化列，非开放 JSON）。
+- **路由 API**（`router.ts`）：`routeLogicalModel(store, model) → RouteDecision[]`（解析模型组、按档位过滤
+  候选——丢弃低于组档位的渠道，R5）；`selectRoute(decisions, ctx) → { selected, alternatives }`（priority 序 +
+  策略缝，v1 仅 priority，weight/round-robin/latency 后续插件化）；`resolveAdapterRoute` 把别名解析到模型组
+  再到候选（钉死 `channel` 单候选 / 自动全候选，R8）。
+- **adapter facade**：别名隐藏真实模型 ID + 服务渠道（KD1/KD4）；换渠道客户端零改动（R9）。
+
+### 钳制 + Failover
+
+- **钳制**（R10）：`applyRouteDecision` 把 `generation.maxTokens` 钳到选中渠道 `maxOutputTokens`（`Math.min`）。
+- **Failover**（`forwardPipeline`，KTD2/KTD3）：encode/override/fetch 包成 `forwardOnce → {success|fatal|retryable}`，
+  顶层按 `[route, ...alternatives]` 遍历。**仅首字节发给 client 之前重试**（retryable = 5xx/408/429/网络错误）；
+  mid-stream 失败 surface 错误、不重发 `message_start`；钉死别名按 `on_failure`（`hard_fail` 默认 surface /
+  `fallback` 跨候选）；全耗尽 `ROUTE_ALL_FAILED`。usage 仅成功路径记一次（failover 不改基数）。
+
+### 声明式覆写引擎
+
+- **应用点**（KTD8）：`override-engine.ts` `applyOverrides` 在 `outbound.encode` 后、`fetch` 前（pipeline 接在
+  `buildUpstreamRequest` 与 `capture.updateRequest` 之间），抓包反映覆写后 body；请求侧、绝不碰响应流。
+- **操作**（KTD1，可扩展注册表 `registerBodyOp`/`registerHeaderOp`）：body `set` / `set_if_absent` / `delete` +
+  header `set` / `delete`；array/rename/copy 延后。
+- **条件**：轻量模板（`{{var}}` + `==/!=/&&/||/()`），渲染结果 == `"true"` 才应用；白名单变量
+  `model`/`logicalModel`/`provider`/`providerProtocol`/`resolvedModel`。
+- **保护字段**（R12）：`model`/`messages`/`stream`/`system`/`tools` 命中拒整条 rule（配置校验 + 运行时双重）。
+- **失败开放**：渲染/操作错误 → warn 日志 + 跳过，不阻断请求。
+- **作用域**：adapter-alias（`AdapterModelMapping.overrides`）+ channel（`generation_overrides`），route 时解析携带于
+  `RouteDecision.overrides`。
+
+### Reasoning 集中化
+
+见上方「协议转换 / reasoning/thinking 归一」。`resolveReasoning` 替换 P1 三协议散落的字段合并，
+outbound 适配器无字段仲裁（KD6/KTD6）。
+
 ## PG schema
 
 - **4 个 ENUM**（`src/db/schema/enums.ts`）: `protocol_type` / `reasoning_effort` / `thinking_type` / `stream_policy`。
-- **7 张核心表**: `providers` / `provider_models` / `adapters` / `adapter_model_mappings` /
-  `vision_settings` / `proxy_settings`（单例）/ `usage_records`；另有 `requests`（P0 请求日志探针表）。
+- **9 张核心表**: `providers` / `provider_models` / `adapters` / `adapter_model_mappings` /
+  `model_groups` / `model_group_channels`（P2 模型组 + 渠道绑定）/ `vision_settings` / `proxy_settings`（单例）/
+  `usage_records`；另有 `requests`（P0 请求日志探针表）。`adapter_model_mappings` P2 加可空 `model_group_id` FK
+  （`provider_model_id` 改可空，CHECK 至少一非空）。
 - **迁移**: `drizzle/` 目录（合约产物，须提交）。
 
 ```bash
@@ -235,13 +311,13 @@ npm run init-db        # scripts/init-db.sh：幂等创建 llmproxy_dev 库（�
 + e2e（`e2e/`，Playwright）。
 
 ```bash
-# 单测 + 黄金回归（不含 Docker 测试）—— 实测 198 passed + 5 skipped（19 files）
+# 单测 + 黄金回归（不含 Docker 测试）—— 实测 326 passed + 5 skipped（24 files，P2 后）
 npx vitest run --exclude '**/db.test.ts' --exclude '**/config-pg.test.ts'
 
 # 全量单测（等价 npm run test:unit；db/config-pg 需 Docker，否则跳过/失败）
 npm run test:unit
 
-# PG 集成测试（需本机 Docker，Testcontainers 起 postgres）—— 13 个（db 5 + config-pg 8）
+# PG 集成测试（需本机 Docker，Testcontainers 起 postgres）—— 18 个（db 5 + config-pg 13，P2 后）
 npx vitest run test/db.test.ts test/config-pg.test.ts
 
 # e2e（Playwright；默认 webServer 自动起 npm run dev）
