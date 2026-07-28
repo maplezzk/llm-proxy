@@ -23,6 +23,7 @@ import {
   type AdapterRouteResult,
   resolveAdapterRoute,
   routeModel,
+  selectRoute,
 } from './router.ts';
 
 /** 直连端点处理器工厂。 */
@@ -67,7 +68,10 @@ const adapterHandler =
       const message = err instanceof Error ? err.message : String(err);
       const status =
         err instanceof AdapterError &&
-        (err.code === 'ADAPTER_NOT_FOUND' || err.code === 'MODEL_MAPPING_NOT_FOUND')
+        (err.code === 'ADAPTER_NOT_FOUND' ||
+          err.code === 'MODEL_MAPPING_NOT_FOUND' ||
+          err.code === 'ROUTE_GROUP_NOT_FOUND' ||
+          err.code === 'CHANNEL_NOT_FOUND')
           ? 404
           : 502;
       deps.logger?.warn(
@@ -77,11 +81,15 @@ const adapterHandler =
       return jsonError(status, message);
     }
 
+    // U3: selectRoute 从候选中选一个 + 取出 alternatives 透传 forwardPipeline（U6 failover 用）
+    const { selected, alternatives } = selectRoute(resolved.routes);
+
     return forwardPipeline(deps, {
       clientProtocol,
       wireBody: pre.wireBody,
       rawBody,
-      route: resolved.route,
+      route: selected,
+      alternatives,
       adapterName,
       signal: c.req.raw.signal,
     });

@@ -9,8 +9,8 @@
  * - RouteDecision / StreamPolicy / ProxyError / RetryableErrorJudge：路由与重试契约。
  */
 
-import type { CanonicalRequest, ClientProtocol, ReasoningSpec } from '../ir/types.ts';
 import type { CanonicalStreamEvent } from '../ir/stream-events.ts';
+import type { CanonicalRequest, ClientProtocol, ReasoningSpec } from '../ir/types.ts';
 
 /**
  * wire 协议 body（JSON 对象）。inbound 解码前视为不可信，
@@ -24,6 +24,11 @@ export type StreamPolicy = 'default_true' | 'passthrough' | 'force_true' | 'forc
 /**
  * 路由解析产物。apiKey 不入 IR，以受控凭据引用 credentialHandle 表示；
  * thinking 已归一为 ReasoningSpec；stream 三态用 StreamPolicy 枚举。
+ *
+ * U3 扩展：渠道候选 + 能力档位 + failover 备用。
+ * - priority：渠道在所属 model_group 内的优先级（数值越小越优先）；
+ * - contextWindow / maxOutputTokens：渠道能力档位（U3 档位过滤与 U6 clamp 共同消费）；
+ * - alternatives：钉死/自动别名的 failover 候选（U6 主用；U3 通过 selectRoute 挂载）。
  */
 export interface RouteDecision {
   providerId: string;
@@ -36,6 +41,30 @@ export interface RouteDecision {
   thinking: ReasoningSpec;
   streamPolicy: StreamPolicy;
   maxTokensOverride?: number;
+  /** 渠道优先级（数值越小越优先）。U3 routeLogicalModel 显式化以支持 priority 序候选。 */
+  priority: number;
+  /** 渠道上下文窗口上限（token）。U3 档位过滤与 U6 clamp 共同消费。 */
+  contextWindow?: number;
+  /** 渠道最大输出 token 上限。U3 档位过滤与 U6 clamp 共同消费。 */
+  maxOutputTokens?: number;
+  /** 备选渠道（failover 用，U6 消费）。selectRoute 在选中态挂上 alternatives。 */
+  alternatives?: RouteDecision[];
+}
+
+/** 渠道选择策略（KTD2 策略缝：v1=priority，weight/round-robin/latency 后续插件化）。 */
+export type SelectionStrategy = 'priority';
+
+/** selectRoute 上下文（U3 仅做透传，U4+ 扩展）。 */
+export interface RouteSelectContext {
+  clientStream?: boolean;
+  /** 透传额外维度（租户/用户偏好等）；U3 不消费。 */
+  [key: string]: unknown;
+}
+
+/** selectRoute 返回值。selected.alternatives 与 alternatives 字段同步。 */
+export interface SelectionResult {
+  selected: RouteDecision;
+  alternatives: RouteDecision[];
 }
 
 /**

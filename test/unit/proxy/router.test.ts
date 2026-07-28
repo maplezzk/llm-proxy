@@ -1,14 +1,24 @@
 // P1.12 阶段 A：从 legacy-test/adapter/router.test.ts 机械迁移（node:test → vitest）
 // P1.15 切流：被测对象改指 src 新模块（src/proxy/router.ts，合并了直连 + 适配器路由）。
-// 适配说明（新旧契约差异，未改 src 生产逻辑）：
-// - 新 RouteDecision 字段重命名：providerName→providerId、providerType→providerProtocol、modelId→resolvedModel。
-// - 错误码保持不变：ADAPTER_NOT_FOUND / MODEL_MAPPING_NOT_FOUND / PROVIDER_NOT_FOUND / MODEL_NOT_FOUND。
-// - 删除「传递 target model 的 input 模态到 route」用例：新 RouteDecision 不再携带 input 字段
-//   （识图模态改由配置层 Provider.models[].input 承载，validator 负责校验），route.input 契约已移除。
-import { describe, it, expect } from 'vitest'
-import { resolveAdapterRoute, AdapterError } from '../../../src/proxy/router.ts'
-import { ConfigStore } from '../../../src/config/store.ts'
-import type { Config } from '../../../src/config/types.ts'
+// U3（model-centric router）：补充 routeLogicalModel / selectRoute / 重构 resolveAdapterRoute 的用例。
+//
+// 适配说明（U3 新契约）：
+// - resolveAdapterRoute 返回 routes[]（候选列表），不再返回单 route；
+//   入站协议与 onFailure 仍在 AdapterRouteResult 上。
+// - selectRoute(decisions) 返回 { selected, alternatives }，selected.alternatives 也挂载。
+// - RouteDecision 新增 priority / contextWindow / maxOutputTokens / alternatives 字段。
+// - 新错误码：ROUTE_GROUP_NOT_FOUND / ROUTE_NO_ELIGIBLE_CHANNEL / ROUTE_ALL_FAILED。
+//
+// 旧错误码语义保留：ADAPTER_NOT_FOUND / MODEL_MAPPING_NOT_FOUND / PROVIDER_NOT_FOUND / MODEL_NOT_FOUND。
+import { describe, expect, it } from 'vitest';
+import { ConfigStore } from '../../../src/config/store.ts';
+import type { Config } from '../../../src/config/types.ts';
+import {
+  type AdapterError,
+  resolveAdapterRoute,
+  routeLogicalModel,
+  selectRoute,
+} from '../../../src/proxy/router.ts';
 
 function createStore(): ConfigStore {
   const config: Config = {
@@ -17,18 +27,14 @@ function createStore(): ConfigStore {
         name: 'anthropic-main',
         type: 'anthropic',
         apiKey: 'sk-ant-1',
-        models: [
-          { id: 'claude-sonnet-4-20250514' },
-        ],
+        models: [{ id: 'claude-sonnet-4-20250514' }],
       },
       {
         name: 'openai-main',
         type: 'openai',
         apiKey: 'sk-openai-1',
         apiBase: 'https://api.openai.com',
-        models: [
-          { id: 'gpt-4o' },
-        ],
+        models: [{ id: 'gpt-4o' }],
       },
     ],
     adapters: [
@@ -36,79 +42,526 @@ function createStore(): ConfigStore {
         name: 'claude-code',
         type: 'anthropic',
         models: [
-          { sourceModelId: 'sonnet', provider: 'anthropic-main', targetModelId: 'claude-sonnet-4-20250514' },
+          {
+            sourceModelId: 'sonnet',
+            provider: 'anthropic-main',
+            targetModelId: 'claude-sonnet-4-20250514',
+          },
           { sourceModelId: 'fast', provider: 'openai-main', targetModelId: 'gpt-4o' },
         ],
       },
     ],
-  }
-  return new ConfigStore('/fake', config)
+  };
+  return new ConfigStore('/fake', config);
 }
 
 // 捕获 fn 抛出的错误，便于断言其错误码（等价于原 assert.throws 的 predicate 校验）
 function catchError(fn: () => unknown): unknown {
   try {
-    fn()
+    fn();
   } catch (e) {
-    return e
+    return e;
   }
-  return undefined
+  return undefined;
 }
 
-describe('proxy/router（适配器路由）', () => {
+// ===================== 旧适配器路由回归（U3 适配） =====================
+
+describe('proxy/router（适配器路由 - 回归）', () => {
   it('同协议映射到 Anthropic Provider', () => {
-    const store = createStore()
-    const result = resolveAdapterRoute(store, 'claude-code', 'sonnet')
-    expect(result.route.providerId).toBe('anthropic-main')
-    expect(result.route.providerProtocol).toBe('anthropic')
-    expect(result.route.resolvedModel).toBe('claude-sonnet-4-20250514')
-    expect(result.inboundType).toBe('anthropic')
-  })
+    const store = createStore();
+    const result = resolveAdapterRoute(store, 'claude-code', 'sonnet');
+    expect(result.routes).toHaveLength(1);
+    expect(result.routes[0]?.providerId).toBe('anthropic-main');
+    expect(result.routes[0]?.providerProtocol).toBe('anthropic');
+    expect(result.routes[0]?.resolvedModel).toBe('claude-sonnet-4-20250514');
+    expect(result.inboundType).toBe('anthropic');
+    expect(result.isPinnedChannel).toBe(false);
+  });
 
   it('跨协议映射到 OpenAI Provider（Anthropic 格式 → OpenAI 上游）', () => {
-    const store = createStore()
-    const result = resolveAdapterRoute(store, 'claude-code', 'fast')
-    expect(result.route.providerId).toBe('openai-main')
-    expect(result.route.providerProtocol).toBe('openai')
-    expect(result.route.resolvedModel).toBe('gpt-4o')
-    expect(result.inboundType).toBe('anthropic')  // 适配器格式不变
-  })
+    const store = createStore();
+    const result = resolveAdapterRoute(store, 'claude-code', 'fast');
+    expect(result.routes).toHaveLength(1);
+    expect(result.routes[0]?.providerId).toBe('openai-main');
+    expect(result.routes[0]?.providerProtocol).toBe('openai');
+    expect(result.routes[0]?.resolvedModel).toBe('gpt-4o');
+    expect(result.inboundType).toBe('anthropic'); // 适配器格式不变
+  });
 
   it('适配器名称不存在时抛错', () => {
-    const store = createStore()
-    const err = catchError(() => resolveAdapterRoute(store, 'nonexistent', 'sonnet')) as AdapterError
-    expect(err?.code).toBe('ADAPTER_NOT_FOUND')
-  })
+    const store = createStore();
+    const err = catchError(() =>
+      resolveAdapterRoute(store, 'nonexistent', 'sonnet'),
+    ) as AdapterError;
+    expect(err?.code).toBe('ADAPTER_NOT_FOUND');
+  });
 
   it('工具模型名在适配器映射中不存在时抛错', () => {
-    const store = createStore()
-    const err = catchError(() => resolveAdapterRoute(store, 'claude-code', 'nonexistent')) as AdapterError
-    expect(err?.code).toBe('MODEL_MAPPING_NOT_FOUND')
-  })
+    const store = createStore();
+    const err = catchError(() =>
+      resolveAdapterRoute(store, 'claude-code', 'nonexistent'),
+    ) as AdapterError;
+    expect(err?.code).toBe('MODEL_MAPPING_NOT_FOUND');
+  });
 
   it('映射的 Provider 不存在时抛错', () => {
     const config: Config = {
       providers: [],
       adapters: [
-        { name: 'test-adapter', type: 'openai', models: [{ sourceModelId: 'm', provider: 'nonexistent-provider', targetModelId: 'm' }] },
+        {
+          name: 'test-adapter',
+          type: 'openai',
+          models: [{ sourceModelId: 'm', provider: 'nonexistent-provider', targetModelId: 'm' }],
+        },
       ],
-    }
-    const store = new ConfigStore('/fake', config)
-    const err = catchError(() => resolveAdapterRoute(store, 'test-adapter', 'm')) as AdapterError
-    expect(err?.code).toBe('PROVIDER_NOT_FOUND')
-  })
+    };
+    const store = new ConfigStore('/fake', config);
+    const err = catchError(() => resolveAdapterRoute(store, 'test-adapter', 'm')) as AdapterError;
+    expect(err?.code).toBe('PROVIDER_NOT_FOUND');
+  });
 
   it('映射的 Model 在 Provider 中不存在时抛错', () => {
     const config: Config = {
-      providers: [
-        { name: 'p', type: 'openai', apiKey: 'k', models: [{ id: 'real' }] },
-      ],
+      providers: [{ name: 'p', type: 'openai', apiKey: 'k', models: [{ id: 'real' }] }],
       adapters: [
-        { name: 'a', type: 'openai', models: [{ sourceModelId: 'm', provider: 'p', targetModelId: 'nonexistent-model' }] },
+        {
+          name: 'a',
+          type: 'openai',
+          models: [{ sourceModelId: 'm', provider: 'p', targetModelId: 'nonexistent-model' }],
+        },
       ],
-    }
-    const store = new ConfigStore('/fake', config)
-    const err = catchError(() => resolveAdapterRoute(store, 'a', 'm')) as AdapterError
-    expect(err?.code).toBe('MODEL_NOT_FOUND')
-  })
-})
+    };
+    const store = new ConfigStore('/fake', config);
+    const err = catchError(() => resolveAdapterRoute(store, 'a', 'm')) as AdapterError;
+    expect(err?.code).toBe('MODEL_NOT_FOUND');
+  });
+
+  it('legacy 映射保留：onFailure 默认 hard_fail', () => {
+    const store = createStore();
+    const result = resolveAdapterRoute(store, 'claude-code', 'sonnet');
+    expect(result.onFailure).toBe('hard_fail');
+  });
+
+  it('legacy 映射保留：onFailure 显式 fallback', () => {
+    const config: Config = {
+      providers: [{ name: 'p', type: 'openai', apiKey: 'k', models: [{ id: 'real' }] }],
+      adapters: [
+        {
+          name: 'a',
+          type: 'openai',
+          onFailure: 'fallback',
+          models: [{ sourceModelId: 'm', provider: 'p', targetModelId: 'real' }],
+        },
+      ],
+    };
+    const store = new ConfigStore('/fake', config);
+    const result = resolveAdapterRoute(store, 'a', 'm');
+    expect(result.onFailure).toBe('fallback');
+  });
+});
+
+// ===================== U3: routeLogicalModel =====================
+
+/**
+ * 构造多个 provider + 一个或多个 model groups 的 config。
+ * - provider 默认带 gp1/gp2/kiro/cc 几个 provider
+ * - model groups 通过参数注入
+ */
+function makeModelGroupStore(
+  modelGroups: NonNullable<Config['modelGroups']>,
+  extraAdapters: Config['adapters'] = [],
+): ConfigStore {
+  const config: Config = {
+    providers: [
+      {
+        name: 'gpt',
+        type: 'openai',
+        apiKey: 'sk-gpt',
+        models: [
+          { id: 'gpt-1m', contextWindow: 1_000_000 },
+          { id: 'gpt-255k', contextWindow: 255_000 },
+        ],
+      },
+      {
+        name: 'kiro',
+        type: 'openai',
+        apiKey: 'sk-kiro',
+        models: [{ id: 'kiro-255k', contextWindow: 255_000 }],
+      },
+      {
+        name: 'cc',
+        type: 'anthropic',
+        apiKey: 'sk-cc',
+        models: [{ id: 'cc-255k', contextWindow: 255_000 }],
+      },
+    ],
+    modelGroups,
+    adapters: extraAdapters,
+  };
+  return new ConfigStore('/fake', config);
+}
+
+describe('proxy/router（U3 routeLogicalModel）', () => {
+  it('happy: 多渠道模型按 priority 升序返回候选', () => {
+    const store = makeModelGroupStore([
+      {
+        id: 'gpt-5.6-fast',
+        channels: [
+          { provider: 'kiro', model: 'kiro-255k', priority: 2 },
+          { provider: 'cc', model: 'cc-255k', priority: 1 },
+        ],
+      },
+    ]);
+    const decisions = routeLogicalModel(store, 'gpt-5.6-fast');
+    expect(decisions).toHaveLength(2);
+    expect(decisions[0]?.providerId).toBe('cc');
+    expect(decisions[0]?.priority).toBe(1);
+    expect(decisions[0]?.resolvedModel).toBe('cc-255k');
+    expect(decisions[1]?.providerId).toBe('kiro');
+    expect(decisions[1]?.priority).toBe(2);
+    expect(decisions[1]?.resolvedModel).toBe('kiro-255k');
+  });
+
+  it('AE1: 1M 模型带 1M + 255k 渠道，只路由到 1M 渠道（R5 档位过滤）', () => {
+    const store = makeModelGroupStore([
+      {
+        id: 'gpt-5.6-1m',
+        contextWindow: 1_000_000,
+        channels: [
+          { provider: 'gpt', model: 'gpt-1m', priority: 1, contextWindow: 1_000_000 },
+          { provider: 'kiro', model: 'kiro-255k', priority: 2, contextWindow: 255_000 },
+          { provider: 'cc', model: 'cc-255k', priority: 3, contextWindow: 255_000 },
+        ],
+      },
+    ]);
+    const decisions = routeLogicalModel(store, 'gpt-5.6-1m');
+    expect(decisions).toHaveLength(1);
+    expect(decisions[0]?.providerId).toBe('gpt');
+    expect(decisions[0]?.resolvedModel).toBe('gpt-1m');
+    expect(decisions[0]?.priority).toBe(1);
+    expect(decisions[0]?.contextWindow).toBe(1_000_000);
+  });
+
+  it('渠道无 contextWindow 时回退到模型默认；仍低于组档位的被丢弃', () => {
+    const config: Config = {
+      providers: [
+        {
+          name: 'gpt',
+          type: 'openai',
+          apiKey: 'sk',
+          models: [
+            { id: 'gpt-1m', contextWindow: 1_000_000 },
+            { id: 'gpt-255k', contextWindow: 255_000 },
+          ],
+        },
+      ],
+      modelGroups: [
+        {
+          id: 'gpt-5.6-1m',
+          contextWindow: 500_000,
+          channels: [
+            // 渠道未声明 contextWindow，回退到模型默认 1_000_000 → 保留
+            { provider: 'gpt', model: 'gpt-1m', priority: 1 },
+            // 渠道未声明 contextWindow，回退到模型默认 255_000 → 低于 500k → 丢弃
+            { provider: 'gpt', model: 'gpt-255k', priority: 2 },
+          ],
+        },
+      ],
+    };
+    const store = new ConfigStore('/fake', config);
+    const decisions = routeLogicalModel(store, 'gpt-5.6-1m');
+    expect(decisions).toHaveLength(1);
+    expect(decisions[0]?.resolvedModel).toBe('gpt-1m');
+  });
+
+  it('未找到逻辑模型抛 ROUTE_GROUP_NOT_FOUND', () => {
+    const store = makeModelGroupStore([]);
+    const err = catchError(() => routeLogicalModel(store, 'nonexistent')) as AdapterError;
+    expect(err?.code).toBe('ROUTE_GROUP_NOT_FOUND');
+  });
+
+  it('渠道都低于档位抛 ROUTE_NO_ELIGIBLE_CHANNEL', () => {
+    const store = makeModelGroupStore([
+      {
+        id: 'gpt-5.6-1m',
+        contextWindow: 1_000_000,
+        channels: [
+          { provider: 'kiro', model: 'kiro-255k', priority: 1, contextWindow: 255_000 },
+          { provider: 'cc', model: 'cc-255k', priority: 2, contextWindow: 255_000 },
+        ],
+      },
+    ]);
+    const err = catchError(() => routeLogicalModel(store, 'gpt-5.6-1m')) as AdapterError;
+    expect(err?.code).toBe('ROUTE_NO_ELIGIBLE_CHANNEL');
+  });
+
+  it('档位过滤排除所有低档渠道（edge：单一低档渠道也清空候选）', () => {
+    const store = makeModelGroupStore([
+      {
+        id: 'gpt-5.6-1m',
+        contextWindow: 1_000_000,
+        channels: [{ provider: 'kiro', model: 'kiro-255k', priority: 1, contextWindow: 255_000 }],
+      },
+    ]);
+    const err = catchError(() => routeLogicalModel(store, 'gpt-5.6-1m')) as AdapterError;
+    expect(err?.code).toBe('ROUTE_NO_ELIGIBLE_CHANNEL');
+  });
+
+  it('capacities 透传：contextWindow 与 maxOutputTokens 出现在 RouteDecision 上', () => {
+    const store = makeModelGroupStore([
+      {
+        id: 'gpt-5.6-fast',
+        channels: [
+          {
+            provider: 'kiro',
+            model: 'kiro-255k',
+            priority: 1,
+            contextWindow: 255_000,
+            maxOutputTokens: 8192,
+          },
+        ],
+      },
+    ]);
+    const decisions = routeLogicalModel(store, 'gpt-5.6-fast');
+    expect(decisions[0]?.contextWindow).toBe(255_000);
+    expect(decisions[0]?.maxOutputTokens).toBe(8192);
+  });
+
+  it('priority 缺失时回退到 provider.priority，再回退到 0', () => {
+    const config: Config = {
+      providers: [
+        { name: 'p1', type: 'openai', apiKey: 'k', priority: 5, models: [{ id: 'm1' }] },
+        { name: 'p2', type: 'openai', apiKey: 'k', priority: 1, models: [{ id: 'm2' }] },
+        { name: 'p3', type: 'openai', apiKey: 'k', models: [{ id: 'm3' }] },
+      ],
+      modelGroups: [
+        {
+          id: 'g-fast',
+          channels: [
+            { provider: 'p1', model: 'm1' }, // priority = 5
+            { provider: 'p2', model: 'm2' }, // priority = 1
+            { provider: 'p3', model: 'm3' }, // priority = 0
+          ],
+        },
+      ],
+    };
+    const store = new ConfigStore('/fake', config);
+    const decisions = routeLogicalModel(store, 'g-fast');
+    expect(decisions.map((d) => d.priority)).toEqual([0, 1, 5]);
+    expect(decisions.map((d) => d.providerId)).toEqual(['p3', 'p2', 'p1']);
+  });
+
+  it('provider 被禁用时该渠道被丢弃（enabled=false）', () => {
+    const config: Config = {
+      providers: [
+        { name: 'p1', type: 'openai', apiKey: 'k', models: [{ id: 'm1' }] },
+        { name: 'p2', type: 'openai', apiKey: 'k', enabled: false, models: [{ id: 'm2' }] },
+      ],
+      modelGroups: [
+        {
+          id: 'g',
+          channels: [
+            { provider: 'p1', model: 'm1', priority: 1 },
+            { provider: 'p2', model: 'm2', priority: 2 },
+          ],
+        },
+      ],
+    };
+    const store = new ConfigStore('/fake', config);
+    const decisions = routeLogicalModel(store, 'g');
+    expect(decisions).toHaveLength(1);
+    expect(decisions[0]?.providerId).toBe('p1');
+  });
+});
+
+// ===================== U3: selectRoute =====================
+
+describe('proxy/router（U3 selectRoute）', () => {
+  const makeDecision = (providerId: string, priority: number) => ({
+    providerId,
+    providerProtocol: 'openai' as const,
+    apiBase: 'https://api.example.com',
+    credentialHandle: 'sk',
+    resolvedModel: 'm',
+    thinking: { source: 'route' as const },
+    streamPolicy: 'passthrough' as const,
+    priority,
+  });
+
+  it('选 priority 最小为 selected，其余为 alternatives', () => {
+    const decisions = [makeDecision('p1', 2), makeDecision('p2', 1), makeDecision('p3', 3)];
+    const result = selectRoute(decisions);
+    expect(result.selected.providerId).toBe('p2');
+    expect(result.alternatives).toHaveLength(2);
+    expect(result.alternatives.map((d) => d.providerId)).toEqual(['p1', 'p3']);
+  });
+
+  it('selected 上挂载 alternatives 字段（U6 failover 入口）', () => {
+    const decisions = [makeDecision('p1', 1), makeDecision('p2', 2)];
+    const result = selectRoute(decisions);
+    expect(result.selected.alternatives).toHaveLength(1);
+    expect(result.selected.alternatives?.[0]?.providerId).toBe('p2');
+  });
+
+  it('单候选时 alternatives 为空，selected.alternatives 为 undefined', () => {
+    const decisions = [makeDecision('p1', 1)];
+    const result = selectRoute(decisions);
+    expect(result.selected.providerId).toBe('p1');
+    expect(result.alternatives).toHaveLength(0);
+    expect(result.selected.alternatives).toBeUndefined();
+  });
+
+  it('空候选列表抛 ROUTE_ALL_FAILED', () => {
+    const err = catchError(() => selectRoute([])) as AdapterError;
+    expect(err?.code).toBe('ROUTE_ALL_FAILED');
+  });
+
+  it('不支持的策略抛错（strategy seam 预留）', () => {
+    const err = catchError(() =>
+      selectRoute([makeDecision('p1', 1)], {}, 'weight' as 'priority'),
+    ) as Error;
+    expect(err instanceof Error).toBe(true);
+    expect(err.message).toMatch(/策略/);
+  });
+});
+
+// ===================== U3: resolveAdapterRoute 新形态（model-centric） =====================
+
+describe('proxy/router（U3 resolveAdapterRoute model-centric）', () => {
+  /** 共享 store：包含 gpt-5.6-1m、gpt-5.6-fast 两个 model group。 */
+  function makeStore(): ConfigStore {
+    return makeModelGroupStore(
+      [
+        {
+          id: 'gpt-5.6-1m',
+          contextWindow: 1_000_000,
+          channels: [
+            { provider: 'gpt', model: 'gpt-1m', priority: 1, contextWindow: 1_000_000 },
+            { provider: 'kiro', model: 'kiro-255k', priority: 2, contextWindow: 255_000 },
+          ],
+        },
+        {
+          id: 'gpt-5.6-fast',
+          channels: [
+            { provider: 'kiro', model: 'kiro-255k', priority: 1 },
+            { provider: 'cc', model: 'cc-255k', priority: 2 },
+          ],
+        },
+      ],
+      [
+        {
+          name: 'deep',
+          type: 'anthropic',
+          // AE4：deep 钉死到 kiro
+          onFailure: 'hard_fail',
+          models: [{ sourceModelId: 'deep', model: 'gpt-5.6-1m', channel: 'kiro/kiro-255k' }],
+        },
+        {
+          name: 'opus',
+          type: 'anthropic',
+          // AE4：opus 自动到 gpt-5.6-1m 全渠道集
+          models: [{ sourceModelId: 'opus', model: 'gpt-5.6-1m' }],
+        },
+      ],
+    );
+  }
+
+  it('AE4 钉死：精确返回其钉死渠道（即使该渠道低于档位）', () => {
+    const store = makeStore();
+    const result = resolveAdapterRoute(store, 'deep', 'deep');
+    expect(result.routes).toHaveLength(1);
+    expect(result.routes[0]?.providerId).toBe('kiro');
+    expect(result.routes[0]?.resolvedModel).toBe('kiro-255k');
+    expect(result.isPinnedChannel).toBe(true);
+    expect(result.onFailure).toBe('hard_fail');
+  });
+
+  it('AE4 自动：返回该模型组档位过滤后的全候选列表', () => {
+    const store = makeStore();
+    const result = resolveAdapterRoute(store, 'opus', 'opus');
+    // gpt-5.6-1m 配置里有 1M + 255k，档位过滤后只保留 1M
+    expect(result.routes).toHaveLength(1);
+    expect(result.routes[0]?.providerId).toBe('gpt');
+    expect(result.routes[0]?.resolvedModel).toBe('gpt-1m');
+    expect(result.isPinnedChannel).toBe(false);
+  });
+
+  it('自动别名：候选多的模型组返回多个候选（priority 序）', () => {
+    const store2 = makeModelGroupStore(
+      [
+        {
+          id: 'gpt-5.6-fast',
+          channels: [
+            { provider: 'kiro', model: 'kiro-255k', priority: 2 },
+            { provider: 'cc', model: 'cc-255k', priority: 1 },
+          ],
+        },
+      ],
+      [
+        {
+          name: 'opus',
+          type: 'anthropic',
+          models: [{ sourceModelId: 'fast', model: 'gpt-5.6-fast' }],
+        },
+      ],
+    );
+    const result = resolveAdapterRoute(store2, 'opus', 'fast');
+    expect(result.routes).toHaveLength(2);
+    expect(result.routes[0]?.providerId).toBe('cc');
+    expect(result.routes[1]?.providerId).toBe('kiro');
+    expect(result.isPinnedChannel).toBe(false);
+  });
+
+  it('model 引用指向不存在的 model_group 抛 ROUTE_GROUP_NOT_FOUND', () => {
+    const config: Config = {
+      providers: [{ name: 'p', type: 'openai', apiKey: 'k', models: [{ id: 'm' }] }],
+      modelGroups: [],
+      adapters: [
+        { name: 'a', type: 'openai', models: [{ sourceModelId: 'm', model: 'no-such-group' }] },
+      ],
+    };
+    const store = new ConfigStore('/fake', config);
+    const err = catchError(() => resolveAdapterRoute(store, 'a', 'm')) as AdapterError;
+    expect(err?.code).toBe('ROUTE_GROUP_NOT_FOUND');
+  });
+
+  it('model 引用下钉死的 channel 不在 model_group channels 列表中时抛 CHANNEL_NOT_FOUND', () => {
+    const config: Config = {
+      providers: [
+        { name: 'p1', type: 'openai', apiKey: 'k', models: [{ id: 'm1' }] },
+        { name: 'p2', type: 'openai', apiKey: 'k', models: [{ id: 'm2' }] },
+      ],
+      modelGroups: [{ id: 'g', channels: [{ provider: 'p1', model: 'm1' }] }],
+      adapters: [
+        {
+          name: 'a',
+          type: 'openai',
+          models: [{ sourceModelId: 'm', model: 'g', channel: 'p2/m2' }],
+        },
+      ],
+    };
+    const store = new ConfigStore('/fake', config);
+    const err = catchError(() => resolveAdapterRoute(store, 'a', 'm')) as AdapterError;
+    expect(err?.code).toBe('CHANNEL_NOT_FOUND');
+  });
+
+  it('钉死别名 + onFailure=fallback 透传给 AdapterRouteResult', () => {
+    const config: Config = {
+      providers: [{ name: 'p', type: 'openai', apiKey: 'k', models: [{ id: 'm' }] }],
+      modelGroups: [{ id: 'g', channels: [{ provider: 'p', model: 'm' }] }],
+      adapters: [
+        {
+          name: 'a',
+          type: 'openai',
+          onFailure: 'fallback',
+          models: [{ sourceModelId: 'm', model: 'g', channel: 'p/m' }],
+        },
+      ],
+    };
+    const store = new ConfigStore('/fake', config);
+    const result = resolveAdapterRoute(store, 'a', 'm');
+    expect(result.isPinnedChannel).toBe(true);
+    expect(result.onFailure).toBe('fallback');
+  });
+});

@@ -33,5 +33,6 @@ export const makeRoute = (route: LegacyRouteLike): RouteDecision => ({
   resolvedModel: route.modelId,
   thinking: toReasoningSpec(route.thinking),
   streamPolicy: route.streamPolicy ?? 'passthrough',
+  priority: 0,
   ...(route.max_tokens !== undefined ? { maxTokensOverride: route.max_tokens } : {}),
 });

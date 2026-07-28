@@ -121,6 +121,11 @@ export interface ForwardParams {
   wireBody: WireBody;
   rawBody: string;
   route: RouteDecision;
+  /**
+   * 备选渠道（failover 候选）。U3 由 selectRoute 注入；U6 实际消费。
+   * 直连请求为 undefined（routeModel 一对一，无备选）。
+   */
+  alternatives?: RouteDecision[];
   /** 适配器名；直连请求为 undefined。 */
   adapterName?: string;
   /** 客户端断连信号（c.req.raw.signal）。 */
