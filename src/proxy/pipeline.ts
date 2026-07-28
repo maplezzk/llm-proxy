@@ -52,10 +52,10 @@ import type {
   ClientProtocol,
   UsageRecord,
 } from './ir/types.ts';
-import { resolveReasoning } from './reasoning-resolver.ts';
 import { applyOverrides } from './override-engine.ts';
+import { resolveReasoning } from './reasoning-resolver.ts';
 import { decodeUpstreamResponse, extractWireUsage } from './response-decode.ts';
-import { hasExplicitThinking, resolveStreamPolicy } from './router.ts';
+import { hasExplicitThinking, isRetryableUpstreamError, resolveStreamPolicy } from './router.ts';
 import { anthropicStreamInboundAdapter } from './stream/inbound/anthropic.ts';
 import { openAIChatStreamInboundAdapter } from './stream/inbound/openai-chat.ts';
 import { openAIResponsesStreamInboundAdapter } from './stream/inbound/openai-responses.ts';
@@ -134,6 +134,15 @@ export interface ForwardParams {
   adapterName?: string;
   /** 客户端断连信号（c.req.raw.signal）。 */
   signal?: AbortSignal;
+  /**
+   * U6 错死别名信息（KTD3）：routes 层由 resolveAdapterRoute 透传。
+   * - isPinnedChannel=true 且 onFailure='hard_fail'（默认）：钉死渠道失败不重试，直接 surface；
+   * - onFailure='fallback'：钉死渠道失败可重试到 routes 中其他候选；
+   * - isPinnedChannel=false（自动别名）：始终走完整 failover。
+   * 直连请求无需传递（仍由 route.alternatives 驱动 failover）。
+   */
+  isPinnedChannel?: boolean;
+  onFailure?: 'hard_fail' | 'fallback';
 }
 
 /** JSON 错误响应（与 legacy `{ error: { message } }` 形态一致）。 */
@@ -198,7 +207,8 @@ export const parseAndAuth = (
  * 把 RouteDecision 应用到 canonical 请求（不可变，返回新对象）：
  * - resolvedModel：路由解析结果（不覆盖 logicalModel）；
  * - generation.stream：按 streamPolicy + 客户端原值解析（设计 §7.3 不变量 10）；
- * - generation.maxTokens：0/负数 → 不传（legacy sanitizeMaxTokens）；
+ * - generation.maxTokens：0/负数 → 不传（legacy sanitizeMaxTokens）；渠道 maxOutputTokens
+ *   声明上限时向下钳制（U6 / R10 / KTD4）；
  * - reasoning：由 resolver 统一完成 client / route 字段仲裁、effort→budget 映射与预算钳制。
  */
 export const applyRouteDecision = (
@@ -206,13 +216,19 @@ export const applyRouteDecision = (
   route: RouteDecision,
   clientStream: boolean | undefined,
 ): CanonicalRequest => {
-  const maxTokens =
-    req.generation.maxTokens !== undefined && req.generation.maxTokens <= 0
-      ? undefined
-      : req.generation.maxTokens;
+  const requestedMaxTokens = req.generation.maxTokens;
+  // 0/负数 → 不传（legacy sanitizeMaxTokens 语义）。
+  const normalizedMaxTokens =
+    requestedMaxTokens !== undefined && requestedMaxTokens <= 0 ? undefined : requestedMaxTokens;
+  // U6 / R10 / KTD4：渠道 maxOutputTokens 是类型化能力上限，
+  // 请求超上限时向下钳制到上限，不超则原样使用。
+  const clampedMaxTokens =
+    normalizedMaxTokens !== undefined && route.maxOutputTokens !== undefined
+      ? Math.min(normalizedMaxTokens, route.maxOutputTokens)
+      : normalizedMaxTokens;
   // 路由级 max_tokens 覆盖：仅 client 未传（或传 0 被规整掉）时生效（legacy sanitizeMaxTokens）。
   // 在此层兜底是因为 chat/responses 出站适配器不读 route.maxTokensOverride（anthropic 出站自带同语义兜底，结果一致）。
-  const resolvedMaxTokens = maxTokens ?? route.maxTokensOverride;
+  const resolvedMaxTokens = clampedMaxTokens ?? route.maxTokensOverride;
   const reasoningMaxTokens =
     resolvedMaxTokens ??
     (route.providerProtocol === 'anthropic' ? ANTHROPIC_DEFAULT_MAX_TOKENS : undefined);
@@ -337,93 +353,98 @@ const SSE_HEADERS: Record<string, string> = {
 
 // --- forwardPipeline 主体 ---
 
+/** 单个候选尝试的返回结果（U6 failover 内部状态）。 */
+type ForwardOnceResult =
+  | { kind: 'success'; response: Response }
+  | { kind: 'fatal'; response: Response }
+  | { kind: 'retryable'; status?: number; message: string };
+
 /**
- * 执行代理转发管线，返回应写回客户端的 Response。
- * 不抛异常：所有失败都归一为 JSON 错误响应（流中断除外，见下）。
+ * 一次候选尝试：inbound → IR → 应用路由决策（含钳制）→ outbound → 覆写 → fetch → 响应处理。
+ * 不抛异常：所有错误都归一为 ForwardOnceResult 的三个 kind 之一。
+ *
+ * 关键设计（U6）：
+ * - retryable：上游 5xx/408/429/网络错误 → pipeline 决定是否 failover 到下一个候选；
+ * - fatal：上游 4xx（不含 408/429）/encode 失败/stream 编码失败 → 立即 surface，不重试；
+ * - success：2xx 响应，按 crossProtocol / isStream 走非流式或流式分支。
  */
-export const forwardPipeline = async (
+const forwardOnce = async (
   deps: PipelineDeps,
   params: ForwardParams,
-): Promise<Response> => {
-  const { clientProtocol, wireBody, rawBody, route, adapterName } = params;
-  const startTime = Date.now();
-  const clientModel = typeof wireBody.model === 'string' ? wireBody.model : '';
-  const logLabel = adapterName ? `/${adapterName}` : `/v1/${endpointFor(clientProtocol)}`;
+  candidate: RouteDecision,
+  baseCtx: {
+    clientModel: string;
+    clientStream: boolean | undefined;
+    startTime: number;
+    logLabel: string;
+    normalizedBase: CanonicalRequest;
+  },
+): Promise<ForwardOnceResult> => {
+  const { clientProtocol, rawBody, adapterName, signal } = params;
   const log = deps.logger;
 
-  // 1. inbound decode：wire → CanonicalRequest
-  let canonical: CanonicalRequest;
-  try {
-    canonical = INBOUND_ADAPTERS[clientProtocol].decode(wireBody, {
-      clientProtocol,
-      logicalModel: clientModel,
-    });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    log?.warn({ model: clientModel, clientProtocol, err: message }, 'inbound decode failed');
-    return jsonError(400, `请求解析失败: ${message}`);
-  }
-
-  // 2. IR 归一 + 3. 应用路由决策
-  const clientStream = typeof wireBody.stream === 'boolean' ? wireBody.stream : undefined;
-  const routed = applyRouteDecision(normalizeRequest(canonical), route, clientStream);
+  // 1. 应用路由决策（U6：含渠道 maxOutputTokens 钳制）
+  const routed = applyRouteDecision(baseCtx.normalizedBase, candidate, baseCtx.clientStream);
   const isStream = routed.generation.stream;
 
-  // 4. outbound encode：CanonicalRequest → 上游 wire body
+  // 2. outbound encode：CanonicalRequest → 上游 wire body
   let upstream: UpstreamRequest;
   try {
-    const outBody = OUTBOUND_ADAPTERS[route.providerProtocol].encode(routed, route);
-    upstream = buildUpstreamRequest(route, outBody);
+    const outBody = OUTBOUND_ADAPTERS[candidate.providerProtocol].encode(routed, candidate);
+    upstream = buildUpstreamRequest(candidate, outBody);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    log?.error({ model: clientModel, err: message }, 'outbound encode failed');
-    return jsonError(500, `请求转换失败: ${message}`);
+    log?.error({ model: baseCtx.clientModel, err: message }, 'outbound encode failed');
+    return { kind: 'fatal', response: jsonError(500, `请求转换失败: ${message}`) };
   }
 
-  // 5. 覆写引擎：序列化后、doFetch 前应用（按 KTD8）。
-  // body 操作作用于 upstream.body，header 操作作用于 upstream.headers；
-  // 适用覆写规则由 resolveAdapterRoute 在 route 时解析并携带在 route.overrides。
-  if (route.overrides && route.overrides.length > 0) {
+  // 3. 覆写引擎：序列化后、doFetch 前应用（按 KTD8）
+  if (candidate.overrides && candidate.overrides.length > 0) {
     const overrideCtx = {
-      model: clientModel,
-      logicalModel: clientModel,
-      provider: route.providerId,
-      providerProtocol: route.providerProtocol,
-      resolvedModel: route.resolvedModel,
+      model: baseCtx.clientModel,
+      logicalModel: baseCtx.clientModel,
+      provider: candidate.providerId,
+      providerProtocol: candidate.providerProtocol,
+      resolvedModel: candidate.resolvedModel,
     };
     const overridden = applyOverrides(
       upstream.body,
       upstream.headers,
-      route.overrides,
+      candidate.overrides,
       overrideCtx,
       deps.logger,
     );
     upstream = { ...upstream, body: overridden.body, headers: overridden.headers };
   }
 
-  const crossProtocol = clientProtocol !== route.providerProtocol;
+  const crossProtocol = clientProtocol !== candidate.providerProtocol;
 
-  // 5. capture：记录入站原始 + 出站转换后请求体
+  // 4. capture：记录入站原始 + 出站转换后请求体
   let pairId: number | undefined;
   if (deps.capture?.isEnabled()) {
-    pairId = deps.capture.startRequest(adapterName ?? 'proxy', clientProtocol, clientModel, {
-      ...(adapterName ? { adapterName } : {}),
-      upstreamProvider: route.providerId,
-      upstreamProtocol: route.providerProtocol,
-      upstreamModel: route.resolvedModel,
-    });
+    pairId = deps.capture.startRequest(
+      adapterName ?? 'proxy',
+      clientProtocol,
+      baseCtx.clientModel,
+      {
+        ...(adapterName ? { adapterName } : {}),
+        upstreamProvider: candidate.providerId,
+        upstreamProtocol: candidate.providerProtocol,
+        upstreamModel: candidate.resolvedModel,
+      },
+    );
     deps.capture.updateRequest(pairId, 'requestIn', rawBody);
     deps.capture.updateRequest(pairId, 'requestOut', JSON.stringify(upstream.body));
   }
 
   log?.debug(
     {
-      label: logLabel,
+      label: baseCtx.logLabel,
       clientProtocol,
-      upstreamProvider: route.providerId,
-      upstreamProtocol: route.providerProtocol,
-      model: clientModel,
-      resolvedModel: route.resolvedModel,
+      upstreamProvider: candidate.providerId,
+      upstreamProtocol: candidate.providerProtocol,
+      model: baseCtx.clientModel,
+      resolvedModel: candidate.resolvedModel,
       crossProtocol,
       stream: isStream,
       url: maskUrl(upstream.url),
@@ -432,7 +453,7 @@ export const forwardPipeline = async (
     'upstream request',
   );
 
-  // 6. fetch 上游
+  // 5. fetch 上游
   const doFetch = deps.fetchImpl ?? fetch;
   let response: Response;
   try {
@@ -443,12 +464,13 @@ export const forwardPipeline = async (
         Accept: isStream ? 'text/event-stream' : 'application/json',
       },
       body: JSON.stringify(upstream.body),
-      ...(params.signal ? { signal: params.signal } : {}),
+      ...(signal ? { signal } : {}),
     });
   } catch (err) {
+    // 网络错误（连接拒绝 / DNS / 超时 / 连接重置）一律视为 retryable
     const message = err instanceof Error ? err.message : String(err);
-    log?.error({ url: maskUrl(upstream.url), err: message }, 'upstream fetch failed');
-    return jsonError(502, `上游请求失败: ${message}`);
+    log?.error({ url: maskUrl(upstream.url), err: message }, 'upstream fetch failed (network)');
+    return { kind: 'retryable', message: `网络错误: ${message}` };
   }
 
   if (!response.ok) {
@@ -464,10 +486,16 @@ export const forwardPipeline = async (
       { status: response.status, url: maskUrl(upstream.url), body: errorBody.slice(0, 500) },
       'upstream error response',
     );
-    return jsonError(502, `上游 API 错误 (${response.status}): ${upstreamMessage}`);
+    if (isRetryableUpstreamError({ status: response.status })) {
+      return { kind: 'retryable', status: response.status, message: upstreamMessage };
+    }
+    return {
+      kind: 'fatal',
+      response: jsonError(502, `上游 API 错误 (${response.status}): ${upstreamMessage}`),
+    };
   }
 
-  // 7a. 非流式
+  // 6a. 非流式
   if (!isStream || !response.body) {
     const text = await response.text();
     let parsed: WireBody | undefined;
@@ -479,47 +507,75 @@ export const forwardPipeline = async (
 
     recordUsage(
       deps,
-      route,
-      clientModel,
+      candidate,
+      baseCtx.clientModel,
       adapterName,
-      parsed ? extractWireUsage(route.providerProtocol, parsed) : undefined,
+      parsed ? extractWireUsage(candidate.providerProtocol, parsed) : undefined,
     );
     if (pairId !== undefined) deps.capture?.updateRequest(pairId, 'responseIn', text);
 
     if (!crossProtocol) {
       // 同协议透传（legacy：原文回写）
       if (pairId !== undefined) deps.capture?.updateRequest(pairId, 'responseOut', text);
-      finishLog(log, logLabel, route, clientModel, crossProtocol, isStream, startTime);
-      return new Response(text, {
-        status: 200,
-        headers: {
-          'Content-Type': response.headers.get('content-type') ?? 'application/json',
-          'Access-Control-Allow-Origin': '*',
-        },
-      });
+      finishLog(
+        log,
+        baseCtx.logLabel,
+        candidate,
+        baseCtx.clientModel,
+        crossProtocol,
+        isStream,
+        baseCtx.startTime,
+      );
+      return {
+        kind: 'success',
+        response: new Response(text, {
+          status: 200,
+          headers: {
+            'Content-Type': response.headers.get('content-type') ?? 'application/json',
+            'Access-Control-Allow-Origin': '*',
+          },
+        }),
+      };
     }
 
     if (!parsed) {
-      return jsonError(502, '上游返回非 JSON，无法跨协议转换');
+      return { kind: 'fatal', response: jsonError(502, '上游返回非 JSON，无法跨协议转换') };
     }
-    const canonicalResponse = decodeUpstreamResponse(route.providerProtocol, parsed);
-    const converted = convertResponse(route.providerProtocol, clientProtocol, canonicalResponse);
+    const canonicalResponse = decodeUpstreamResponse(candidate.providerProtocol, parsed);
+    const converted = convertResponse(
+      candidate.providerProtocol,
+      clientProtocol,
+      canonicalResponse,
+    );
     const outText = JSON.stringify(converted);
     if (pairId !== undefined) deps.capture?.updateRequest(pairId, 'responseOut', outText);
-    finishLog(log, logLabel, route, clientModel, crossProtocol, isStream, startTime);
-    return new Response(outText, {
-      status: 200,
-      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
-    });
+    finishLog(
+      log,
+      baseCtx.logLabel,
+      candidate,
+      baseCtx.clientModel,
+      crossProtocol,
+      isStream,
+      baseCtx.startTime,
+    );
+    return {
+      kind: 'success',
+      response: new Response(outText, {
+        status: 200,
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+      }),
+    };
   }
 
-  // 7b. 流式：stream inbound（上游 SSE → IR 事件）→ stream outbound（→ 客户端 SSE）
+  // 6b. 流式：stream inbound（上游 SSE → IR 事件）→ stream outbound（→ 客户端 SSE）
+  // 关键不变量：响应 200 已知（response.ok 为真）后才走到这里，向 client pipe 已不可逆。
+  // mid-stream 上游错误由 stream inbound 透传为截断流，pipeline 不重试（KTD/U6）。
   const rawInChunks: string[] = [];
   const tappedIn =
     pairId !== undefined ? tapStream(response.body, (t) => rawInChunks.push(t)) : response.body;
 
   // 透传客户端断连信号：abort 时提前终止上游 SSE 迭代，且不补发收尾事件（见 StreamInboundAdapter.decode 契约）
-  const events = STREAM_INBOUND_ADAPTERS[route.providerProtocol].decode(tappedIn, params.signal);
+  const events = STREAM_INBOUND_ADAPTERS[candidate.providerProtocol].decode(tappedIn, signal);
 
   // 事件旁路：收集 usage，迭代结束（正常/中断）时落 usage + capture
   let streamUsage: UsageRecord | undefined;
@@ -532,20 +588,28 @@ export const forwardPipeline = async (
         yield event;
       }
     } finally {
-      recordUsage(deps, route, clientModel, adapterName, streamUsage);
+      recordUsage(deps, candidate, baseCtx.clientModel, adapterName, streamUsage);
       if (pairId !== undefined)
         deps.capture?.updateRequest(pairId, 'responseIn', rawInChunks.join(''));
-      finishLog(log, logLabel, route, clientModel, crossProtocol, isStream, startTime);
+      finishLog(
+        log,
+        baseCtx.logLabel,
+        candidate,
+        baseCtx.clientModel,
+        crossProtocol,
+        isStream,
+        baseCtx.startTime,
+      );
     }
   })();
 
   let clientStream_: ReadableStream<Uint8Array>;
   try {
-    clientStream_ = STREAM_OUTBOUND_ADAPTERS[clientProtocol].encode(tracked, route);
+    clientStream_ = STREAM_OUTBOUND_ADAPTERS[clientProtocol].encode(tracked, candidate);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     log?.error({ err: message }, 'stream outbound encode failed');
-    return jsonError(502, `流式转换失败: ${message}`);
+    return { kind: 'fatal', response: jsonError(502, `流式转换失败: ${message}`) };
   }
 
   const outChunks: string[] = [];
@@ -558,7 +622,120 @@ export const forwardPipeline = async (
         })
       : clientStream_;
 
-  return new Response(body, { status: 200, headers: SSE_HEADERS });
+  return { kind: 'success', response: new Response(body, { status: 200, headers: SSE_HEADERS }) };
+};
+
+/**
+ * 执行代理转发管线，返回应写回客户端的 Response。
+ * 不抛异常：所有失败都归一为 JSON 错误响应（流中断除外，见下）。
+ *
+ * U6 failover 行为（KTD2/KTD3）：
+ * - 候选队列 = [route, ...alternatives]（U3 selectRoute 已按 priority 升序排好）；
+ * - 钉死别名 + on_failure='hard_fail'（默认）：i=0 retryable 时 surface 502，不重试；
+ * - 钉死别名 + on_failure='fallback'：i=0 retryable 时继续试 i=1..N；
+ * - 自动别名（isPinnedChannel=false）：始终按 retryable 走完整 failover；
+ * - retryable 判定：5xx/408/429/网络错误（isRetryableUpstreamError 集中判定）；
+ * - 中首字节前是唯一重试判定点：响应 200 一旦产生（response.ok = true 或 body 已构造）即承诺；
+ * - mid-stream 失败由 forwardOnce 流式分支透传为截断流，pipeline 不重试、不重发 message_start。
+ */
+export const forwardPipeline = async (
+  deps: PipelineDeps,
+  params: ForwardParams,
+): Promise<Response> => {
+  const { clientProtocol, wireBody, adapterName, route, alternatives, isPinnedChannel, onFailure } =
+    params;
+  const startTime = Date.now();
+  const clientModel = typeof wireBody.model === 'string' ? wireBody.model : '';
+  const logLabel = adapterName ? `/${adapterName}` : `/v1/${endpointFor(clientProtocol)}`;
+  const log = deps.logger;
+
+  // 1. inbound decode：wire → CanonicalRequest（一次解码，各候选共用）
+  let canonical: CanonicalRequest;
+  try {
+    canonical = INBOUND_ADAPTERS[clientProtocol].decode(wireBody, {
+      clientProtocol,
+      logicalModel: clientModel,
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    log?.warn({ model: clientModel, clientProtocol, err: message }, 'inbound decode failed');
+    return jsonError(400, `请求解析失败: ${message}`);
+  }
+
+  const clientStream = typeof wireBody.stream === 'boolean' ? wireBody.stream : undefined;
+  const normalizedBase = normalizeRequest(canonical);
+
+  // 2. 候选队列：直连 = [route] / 适配器 = [route, ...alternatives]（U3 selectRoute 已排过 priority 序）
+  const candidates: RouteDecision[] = [route, ...(alternatives ?? [])];
+  const isPinned = isPinnedChannel === true;
+  const onFail: 'hard_fail' | 'fallback' = onFailure ?? 'hard_fail';
+
+  const baseCtx = {
+    clientModel,
+    clientStream,
+    startTime,
+    logLabel,
+    normalizedBase,
+  };
+
+  let lastRetryable: { status?: number; message: string } | undefined;
+
+  for (let i = 0; i < candidates.length; i++) {
+    const candidate = candidates[i];
+    if (!candidate) {
+      // 防御性：candidates 不应为 undefined
+      break;
+    }
+    // 钉死 hard_fail：理论上 i=0 之后不应进入此路径（i=0 会 surface）。
+    if (i > 0 && isPinned && onFail === 'hard_fail') {
+      break;
+    }
+
+    const result = await forwardOnce(deps, params, candidate, baseCtx);
+    if (result.kind === 'success') {
+      return result.response;
+    }
+    if (result.kind === 'fatal') {
+      return result.response;
+    }
+    // retryable
+    lastRetryable = { status: result.status, message: result.message };
+
+    // 钉死 hard_fail：i=0 retryable 时 surface 502，不重试到 i=1
+    if (i === 0 && isPinned && onFail === 'hard_fail') {
+      log?.warn(
+        {
+          provider: candidate.providerId,
+          status: result.status,
+          err: result.message,
+        },
+        'pinned channel failed, surfacing error (hard_fail)',
+      );
+      return jsonError(502, `钉死渠道失败 (${result.status ?? 'network'}): ${result.message}`);
+    }
+
+    log?.warn(
+      {
+        provider: candidate.providerId,
+        status: result.status,
+        err: result.message,
+        attempt: i + 1,
+        total: candidates.length,
+      },
+      'upstream retryable error, trying next candidate',
+    );
+  }
+
+  // 所有候选都失败
+  log?.error(
+    {
+      attempts: candidates.length,
+      lastStatus: lastRetryable?.status,
+      err: lastRetryable?.message,
+    },
+    'all channels failed (ROUTE_ALL_FAILED)',
+  );
+  return jsonError(502, `所有渠道失败 (ROUTE_ALL_FAILED): ${lastRetryable?.message ?? 'unknown'}`);
 };
 
 /** 完成日志（与 legacy forwardPipeline 的 done 日志对齐）。 */

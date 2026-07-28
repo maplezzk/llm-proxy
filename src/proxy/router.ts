@@ -18,6 +18,8 @@
  */
 import type { ConfigStore } from '../config/store.ts';
 import type {
+  AdapterConfig,
+  AdapterModelMapping,
   Model,
   ModelChannelRef,
   ModelGroup,
@@ -45,6 +47,51 @@ export class AdapterError extends Error {
     this.code = code;
   }
 }
+
+/**
+ * 钉死别名 + on_failure=fallback 时，拼装模型组其他渠道为备选（U6 / KTD3）。
+ * - hard_fail（默认）：仅返回钉死渠道；
+ * - fallback：钉死渠道放首位，其余按 priority 升序紧接其后。
+ * 其他渠道不应用 tier filter（用户显式 fallback 应保留所有可能）。
+ */
+const appendFallbackAlternatives = (
+  pinnedRoute: RouteDecision,
+  group: ModelGroup | undefined,
+  config: ReturnType<ConfigStore['getConfig']>['config'],
+  streamPolicy: StreamPolicy,
+  adapter: AdapterConfig,
+  mapping: AdapterModelMapping,
+  carryOverrides: OverrideRule[] | undefined,
+): RouteDecision[] => {
+  if (adapter.onFailure !== 'fallback' || !group) {
+    return [pinnedRoute];
+  }
+  const pinnedKey = `${pinnedRoute.providerId}/${pinnedRoute.resolvedModel}`;
+  const others: RouteDecision[] = [];
+  for (const ch of group.channels) {
+    if (`${ch.provider}/${ch.model}` === pinnedKey) continue;
+    const provider = config.providers.find((p) => p.name === ch.provider);
+    if (!provider || provider.enabled === false) continue;
+    const m = provider.models.find((mm) => mm.id === ch.model);
+    if (!m) continue;
+    others.push(
+      buildRouteDecision({
+        provider,
+        modelId: m.id,
+        // 映射级 thinking 优先，否则继承目标模型。
+        thinking: mapping.thinking ?? m.thinking,
+        streamPolicy,
+        priority: effectiveChannelPriority(ch, provider),
+        contextWindow: effectiveChannelContextWindow(ch, m),
+        maxOutputTokens: ch.maxOutputTokens,
+        maxTokensOverride: adapter.max_tokens,
+        ...(carryOverrides ? { overrides: carryOverrides } : {}),
+      }),
+    );
+  }
+  others.sort((a, b) => a.priority - b.priority);
+  return [pinnedRoute, ...others];
+};
 
 /**
  * YAML ThinkingConfig → ReasoningSpec（source='route'）。
@@ -198,6 +245,27 @@ export const routeModelInProvider = (
 };
 
 // ===================== U3: 候选列表 + 选择 =====================
+
+/**
+ * 上游错误 retryable 判定（U6 / KTD2）。
+ * 网络错误（fetch 抛）一律视为可重试；HTTP 状态码中 5xx / 408 / 429 可重试；
+ * 其余（4xx 不含 408/429）按 fatal 处理。
+ *
+ * 独立于具体协议，由 pipeline 在拿到 fetch 响应后调用。
+ */
+export const isRetryableUpstreamError = (params: {
+  status?: number;
+  /** fetch 抛的异常（网络/DNS/超时/连接重置）。 */
+  networkError?: Error;
+}): boolean => {
+  if (params.networkError) return true;
+  const s = params.status;
+  if (s === undefined) return false;
+  if (s === 408) return true; // Request Timeout
+  if (s === 429) return true; // Too Many Requests
+  if (s >= 500 && s < 600) return true; // 5xx
+  return false;
+};
 
 /** 渠道的有效上下文窗口：channel 自身 → model 默认 → undefined。 */
 const effectiveChannelContextWindow = (
@@ -373,7 +441,8 @@ export const resolveAdapterRoute = (
   const onFailure = adapter.onFailure ?? 'hard_fail';
   const streamPolicy = adapterStreamToPolicy(adapter.stream);
   // U5: 适用覆写规则随路由决策携带，供 pipeline 在 outbound.encode 后、doFetch 前调用 applyOverrides。
-  const carryOverrides = mapping.overrides && mapping.overrides.length > 0 ? mapping.overrides : undefined;
+  const carryOverrides =
+    mapping.overrides && mapping.overrides.length > 0 ? mapping.overrides : undefined;
 
   // --- Model-centric 模式：mapping.model ---
   if (mapping.model) {
@@ -404,36 +473,51 @@ export const resolveAdapterRoute = (
           );
         }
         // 构造钉死决策（不应用 tier filter，尊重用户显式声明）
+        const pinnedRoute = buildRouteDecision({
+          provider,
+          modelId: model.id,
+          // 映射级 thinking 优先，否则继承目标模型。
+          thinking: mapping.thinking ?? model.thinking,
+          streamPolicy,
+          priority: effectiveChannelPriority(ch, provider),
+          contextWindow: effectiveChannelContextWindow(ch, model),
+          maxOutputTokens: ch.maxOutputTokens,
+          maxTokensOverride: adapter.max_tokens,
+          ...(carryOverrides ? { overrides: carryOverrides } : {}),
+        });
         return {
-          routes: [
-            buildRouteDecision({
-              provider,
-              modelId: model.id,
-              // 映射级 thinking 优先，否则继承目标模型。
-              thinking: mapping.thinking ?? model.thinking,
-              streamPolicy,
-              priority: effectiveChannelPriority(ch, provider),
-              contextWindow: effectiveChannelContextWindow(ch, model),
-              maxOutputTokens: ch.maxOutputTokens,
-              maxTokensOverride: adapter.max_tokens,
-              ...(carryOverrides ? { overrides: carryOverrides } : {}),
-            }),
-          ],
+          routes: appendFallbackAlternatives(
+            pinnedRoute,
+            group,
+            config,
+            streamPolicy,
+            adapter,
+            mapping,
+            carryOverrides,
+          ),
           inboundType: adapter.type as ClientProtocol,
           onFailure,
           isPinnedChannel: true,
         };
       }
+      const decorated: RouteDecision = {
+        ...matched,
+        thinking: mapping.thinking ? toReasoningSpec(mapping.thinking) : matched.thinking,
+        ...(adapter.max_tokens !== undefined ? { maxTokensOverride: adapter.max_tokens } : {}),
+        streamPolicy,
+        ...(carryOverrides ? { overrides: carryOverrides } : {}),
+      };
+      const group = config.modelGroups?.find((g) => g.id === mapping.model);
       return {
-        routes: [
-          {
-            ...matched,
-            thinking: mapping.thinking ? toReasoningSpec(mapping.thinking) : matched.thinking,
-            ...(adapter.max_tokens !== undefined ? { maxTokensOverride: adapter.max_tokens } : {}),
-            streamPolicy,
-            ...(carryOverrides ? { overrides: carryOverrides } : {}),
-          },
-        ],
+        routes: appendFallbackAlternatives(
+          decorated,
+          group,
+          config,
+          streamPolicy,
+          adapter,
+          mapping,
+          carryOverrides,
+        ),
         inboundType: adapter.type as ClientProtocol,
         onFailure,
         isPinnedChannel: true,

@@ -92,6 +92,9 @@ const adapterHandler =
       alternatives,
       adapterName,
       signal: c.req.raw.signal,
+      // U6 / KTD3：错死别名 + on_failure 透传到 pipeline，驱动 failover 决策
+      isPinnedChannel: resolved.isPinnedChannel,
+      onFailure: resolved.onFailure,
     });
   };
 

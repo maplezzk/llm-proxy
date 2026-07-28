@@ -15,7 +15,7 @@ import type { AddressInfo } from 'node:net';
 import { Hono } from 'hono';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { ConfigStore } from '../src/config/store.ts';
-import type { Config, OverrideRule } from '../src/config/types.ts';
+import type { Config, ModelChannelRef, OverrideRule } from '../src/config/types.ts';
 import { CaptureBuffer } from '../src/proxy/capture-store.ts';
 import {
   adapterStreamToPolicy,
@@ -761,5 +761,522 @@ describe('router（RouteDecision 解析）', () => {
     const s = store();
     expect(() => resolveAdapterRoute(s, 'ghost', 'GPT')).toThrow(/未找到/);
     expect(() => resolveAdapterRoute(s, 'mytool', 'OTHER')).toThrow(/未找到模型映射/);
+  });
+});
+
+// ===================== U6: 渠道钳制 + failover 循环 =====================
+//
+// 设计依据：docs/plans/2026-07-28-001-feat-axonhub-parity-orchestration-plan.md §U6。
+// 覆盖场景：
+// - AE2：priority-1 渠道返回 retryable 错误 → 网关重试 priority-2 渠道，client 收到成功
+// - F3：max_tokens 超渠道 maxOutputTokens → 钳到上限
+// - 钉死 hard-fail：钉死渠道 503 → surface 错误，无 fallback
+// - 钉死 fallback：钉死渠道 503 + on_failure=fallback → 降级到模型其他渠道
+// - 非 retryable 400 → 不重试，立即 surface
+// - 所有渠道失败 → ROUTE_ALL_FAILED
+// - mid-stream 失败 → surface 错误（不重试、不重发）
+// - usage 基数：failover 后仍只记一次
+
+import type { AdapterConfig, ModelGroup } from '../src/config/types.ts';
+
+/** mock fetch 单次响应配置。 */
+type MockResponse = {
+  status: number;
+  /** 非流式 JSON 响应（status=2xx 时使用）。 */
+  jsonBody?: unknown;
+  /** 非流式原始 body（优先级高于 jsonBody）。 */
+  rawBody?: string;
+  /** 流式响应：分块字符串。emit 后行为由 streamError 决定。 */
+  streamChunks?: string[];
+  /** 流式：在 emit 所有 streamChunks 后调用 controller.error() 而非 close。 */
+  isStreamError?: boolean;
+  /** 网络错误：fetch 直接抛。 */
+  throw?: Error;
+  /** 响应延迟（ms）。 */
+  delayMs?: number;
+};
+
+const buildMockedFetch = (
+  responses: MockResponse[],
+): { fetchImpl: typeof fetch; calls: Array<{ url: string; body: unknown }> } => {
+  const calls: Array<{ url: string; body: unknown }> = [];
+  let i = 0;
+  const fetchImpl: typeof fetch = async (url, init) => {
+    const u = typeof url === 'string' ? url : (url as URL).toString();
+    const bodyStr = typeof init?.body === 'string' ? init.body : '';
+    let bodyParsed: unknown;
+    try {
+      bodyParsed = JSON.parse(bodyStr);
+    } catch {
+      bodyParsed = bodyStr;
+    }
+    calls.push({ url: u, body: bodyParsed });
+    const r = responses[i] ?? responses[responses.length - 1];
+    if (!r) throw new Error('no mock response configured');
+    if (responses[i] === undefined) {
+      // 溢出回退：与已有测试语义一致（最后一次响应被复用）。i 仍要 +1。
+    }
+    i++;
+    if (r.delayMs) await new Promise((resolve) => setTimeout(resolve, r.delayMs));
+    if (r.throw) throw r.throw;
+    if (r.streamChunks) {
+      const encoder = new TextEncoder();
+      const stream = new ReadableStream<Uint8Array>({
+        start(controller) {
+          for (const chunk of r.streamChunks ?? []) {
+            controller.enqueue(encoder.encode(chunk));
+          }
+          if (r.isStreamError) {
+            controller.error(new Error('mid-stream failure'));
+          } else {
+            controller.close();
+          }
+        },
+      });
+      return new Response(stream, {
+        status: r.status,
+        headers: { 'Content-Type': 'text/event-stream' },
+      });
+    }
+    const body = r.rawBody ?? (r.jsonBody !== undefined ? JSON.stringify(r.jsonBody) : '');
+    return new Response(body, {
+      status: r.status,
+      headers: { 'Content-Type': r.status >= 400 ? 'application/json' : 'application/json' },
+    });
+  };
+  return { fetchImpl, calls };
+};
+
+const buildTestAppWithFetch = (
+  config: Config,
+  fetchImpl: typeof fetch,
+): { app: Hono; usage: UsageStore; capture: CaptureBuffer; store: ConfigStore } => {
+  const store = ConfigStore.fromMemory(config);
+  const usage = new UsageStore();
+  const capture = new CaptureBuffer(10);
+  const app = new Hono();
+  app.route('/', createProxyRoutes({ store, usage, capture, fetchImpl }));
+  return { app, usage, capture, store };
+};
+
+/** 构造一个含 kiro + cc 双 provider + model group + adapter 的 U6 测试配置。 */
+const buildFailoverConfig = (opts: {
+  onFailure?: 'hard_fail' | 'fallback';
+  pinnedChannel?: `${string}/${string}` | undefined;
+  channels?: ModelChannelRef[];
+  modelGroupId?: string;
+  adapterName?: string;
+  adapterType?: 'openai' | 'anthropic' | 'openai-responses';
+  adapterMaxTokens?: number;
+}): Config => {
+  const groupId = opts.modelGroupId ?? 'opus';
+  const adapterName = opts.adapterName ?? 'mytool';
+  const adapterType = opts.adapterType ?? 'openai';
+  const channels: ModelChannelRef[] = opts.channels ?? [
+    { provider: 'kiro', model: 'kiro-fast', priority: 1 },
+    { provider: 'cc', model: 'cc-fast', priority: 2 },
+  ];
+  const adapterConfig: AdapterConfig = {
+    name: adapterName,
+    type: adapterType,
+    ...(opts.adapterMaxTokens !== undefined ? { max_tokens: opts.adapterMaxTokens } : {}),
+    ...(opts.onFailure ? { onFailure: opts.onFailure } : {}),
+    models: [
+      {
+        sourceModelId: 'GPT',
+        model: groupId,
+        ...(opts.pinnedChannel ? { channel: opts.pinnedChannel } : {}),
+      },
+    ],
+  };
+  const modelGroups: ModelGroup[] = [
+    {
+      id: groupId,
+      channels,
+    },
+  ];
+  return {
+    providers: [
+      {
+        name: 'kiro',
+        type: 'openai',
+        apiKey: 'sk-kiro',
+        apiBase: 'http://kiro.local',
+        models: [{ id: 'kiro-fast' }],
+      },
+      {
+        name: 'cc',
+        type: 'anthropic',
+        apiKey: 'sk-cc',
+        apiBase: 'http://cc.local',
+        models: [{ id: 'cc-fast' }],
+      },
+    ],
+    modelGroups,
+    adapters: [adapterConfig],
+  };
+};
+
+describe('pipeline e2e（U6 渠道钳制 + failover 循环）', () => {
+  it('AE2：priority-1 渠道 503 → failover 到 priority-2，client 收到成功', async () => {
+    const config = buildFailoverConfig({});
+    const { fetchImpl, calls } = buildMockedFetch([
+      { status: 503, jsonBody: { error: { message: 'kiro unavailable' } } },
+      {
+        // cc 是 anthropic 渠道，返回 anthropic wire 格式；pipeline 会跨协议转为 openai。
+        status: 200,
+        jsonBody: {
+          id: 'msg_cc',
+          type: 'message',
+          role: 'assistant',
+          model: 'cc-fast',
+          content: [{ type: 'text', text: 'fallback success' }],
+          stop_reason: 'end_turn',
+          stop_sequence: null,
+          usage: { input_tokens: 10, output_tokens: 2 },
+        },
+      },
+    ]);
+    const { app } = buildTestAppWithFetch(config, fetchImpl);
+    const res = await post(app, '/mytool/v1/chat/completions', {
+      model: 'GPT',
+      stream: false,
+      messages: [{ role: 'user', content: 'hi' }],
+    });
+    expect(res.status).toBe(200);
+    // client 只看到 cc 的成功响应，看不到切换
+    const json = (await res.json()) as Record<string, unknown>;
+    const choices = json.choices as Array<Record<string, unknown>>;
+    const message = choices[0]?.message as Record<string, unknown>;
+    expect(message.content).toBe('fallback success');
+    // 两次上游调用：先 kiro(503) 再 cc(200)
+    expect(calls).toHaveLength(2);
+    expect(calls[0]?.url).toContain('kiro.local');
+    expect(calls[1]?.url).toContain('cc.local');
+  });
+
+  it('F3：max_tokens 超渠道 maxOutputTokens → 钳到上限', async () => {
+    const config = buildFailoverConfig({
+      channels: [{ provider: 'kiro', model: 'kiro-fast', priority: 1, maxOutputTokens: 100 }],
+    });
+    const { fetchImpl, calls } = buildMockedFetch([
+      {
+        status: 200,
+        jsonBody: {
+          id: 'chatcmpl-kiro',
+          object: 'chat.completion',
+          created: 1_700_000_000,
+          model: 'kiro-fast',
+          choices: [
+            { index: 0, message: { role: 'assistant', content: 'ok' }, finish_reason: 'stop' },
+          ],
+          usage: { prompt_tokens: 5, completion_tokens: 1, total_tokens: 6 },
+        },
+      },
+    ]);
+    const { app } = buildTestAppWithFetch(config, fetchImpl);
+    const res = await post(app, '/mytool/v1/chat/completions', {
+      model: 'GPT',
+      stream: false,
+      max_tokens: 5000, // 超渠道上限
+      messages: [{ role: 'user', content: 'hi' }],
+    });
+    expect(res.status).toBe(200);
+    // 上游收到的 max_tokens 被钳到 100
+    expect(calls[0]?.body).toMatchObject({ max_tokens: 100 });
+  });
+
+  it('钉死 hard-fail：钉死渠道 503 → surface 502，无 fallback（默认）', async () => {
+    const config = buildFailoverConfig({
+      onFailure: 'hard_fail',
+      pinnedChannel: 'kiro/kiro-fast',
+    });
+    const { fetchImpl, calls } = buildMockedFetch([
+      { status: 503, jsonBody: { error: { message: 'kiro down' } } },
+    ]);
+    const { app } = buildTestAppWithFetch(config, fetchImpl);
+    const res = await post(app, '/mytool/v1/chat/completions', {
+      model: 'GPT',
+      stream: false,
+      messages: [{ role: 'user', content: 'hi' }],
+    });
+    // 钉死 hard-fail：503 surface 错误，1 次上游调用
+    expect(res.status).toBe(502);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.url).toContain('kiro.local');
+  });
+
+  it('钉死 fallback：钉死渠道 503 + on_failure=fallback → 降级到模型其他渠道', async () => {
+    const config = buildFailoverConfig({
+      onFailure: 'fallback',
+      pinnedChannel: 'kiro/kiro-fast',
+    });
+    const { fetchImpl, calls } = buildMockedFetch([
+      { status: 503, jsonBody: { error: { message: 'kiro down' } } },
+      {
+        // cc 是 anthropic 渠道，返回 anthropic wire 格式
+        status: 200,
+        jsonBody: {
+          id: 'msg_cc',
+          type: 'message',
+          role: 'assistant',
+          model: 'cc-fast',
+          content: [{ type: 'text', text: 'fallback ok' }],
+          stop_reason: 'end_turn',
+          stop_sequence: null,
+          usage: { input_tokens: 3, output_tokens: 1 },
+        },
+      },
+    ]);
+    const { app } = buildTestAppWithFetch(config, fetchImpl);
+    const res = await post(app, '/mytool/v1/chat/completions', {
+      model: 'GPT',
+      stream: false,
+      messages: [{ role: 'user', content: 'hi' }],
+    });
+    expect(res.status).toBe(200);
+    const json = (await res.json()) as Record<string, unknown>;
+    const choices = json.choices as Array<Record<string, unknown>>;
+    const message = choices[0]?.message as Record<string, unknown>;
+    expect(message.content).toBe('fallback ok');
+    expect(calls).toHaveLength(2);
+    expect(calls[0]?.url).toContain('kiro.local');
+    expect(calls[1]?.url).toContain('cc.local');
+  });
+
+  it('非 retryable 400 → 不重试，立即 surface 错误', async () => {
+    const config = buildFailoverConfig({});
+    const { fetchImpl, calls } = buildMockedFetch([
+      { status: 400, jsonBody: { error: { message: 'bad request' } } },
+    ]);
+    const { app } = buildTestAppWithFetch(config, fetchImpl);
+    const res = await post(app, '/mytool/v1/chat/completions', {
+      model: 'GPT',
+      stream: false,
+      messages: [{ role: 'user', content: 'hi' }],
+    });
+    expect(res.status).toBe(502);
+    // 400 是 fatal，1 次上游调用，不重试
+    expect(calls).toHaveLength(1);
+  });
+
+  it('所有渠道 retryable 失败 → ROUTE_ALL_FAILED（502）', async () => {
+    const config = buildFailoverConfig({});
+    const { fetchImpl, calls } = buildMockedFetch([
+      { status: 503, jsonBody: { error: { message: 'kiro down' } } },
+      { status: 502, jsonBody: { error: { message: 'cc bad gateway' } } },
+    ]);
+    const { app } = buildTestAppWithFetch(config, fetchImpl);
+    const res = await post(app, '/mytool/v1/chat/completions', {
+      model: 'GPT',
+      stream: false,
+      messages: [{ role: 'user', content: 'hi' }],
+    });
+    expect(res.status).toBe(502);
+    // 两个渠道都试了
+    expect(calls).toHaveLength(2);
+  });
+
+  it('429 限流是 retryable：触发 failover', async () => {
+    const config = buildFailoverConfig({});
+    const { fetchImpl, calls } = buildMockedFetch([
+      { status: 429, jsonBody: { error: { message: 'rate limited' } } },
+      {
+        status: 200,
+        jsonBody: {
+          id: 'chatcmpl-cc',
+          object: 'chat.completion',
+          created: 1_700_000_000,
+          model: 'cc-fast',
+          choices: [
+            { index: 0, message: { role: 'assistant', content: 'ok' }, finish_reason: 'stop' },
+          ],
+          usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+        },
+      },
+    ]);
+    const { app } = buildTestAppWithFetch(config, fetchImpl);
+    const res = await post(app, '/mytool/v1/chat/completions', {
+      model: 'GPT',
+      stream: false,
+      messages: [{ role: 'user', content: 'hi' }],
+    });
+    expect(res.status).toBe(200);
+    expect(calls).toHaveLength(2);
+  });
+
+  it('网络错误（fetch 抛）是 retryable：触发 failover', async () => {
+    const config = buildFailoverConfig({});
+    const { fetchImpl, calls } = buildMockedFetch([
+      { status: 0, throw: new Error('ECONNREFUSED') },
+      {
+        status: 200,
+        jsonBody: {
+          id: 'chatcmpl-cc',
+          object: 'chat.completion',
+          created: 1_700_000_000,
+          model: 'cc-fast',
+          choices: [
+            { index: 0, message: { role: 'assistant', content: 'ok' }, finish_reason: 'stop' },
+          ],
+          usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+        },
+      },
+    ]);
+    const { app } = buildTestAppWithFetch(config, fetchImpl);
+    const res = await post(app, '/mytool/v1/chat/completions', {
+      model: 'GPT',
+      stream: false,
+      messages: [{ role: 'user', content: 'hi' }],
+    });
+    expect(res.status).toBe(200);
+    expect(calls).toHaveLength(2);
+  });
+
+  it('mid-stream 失败（首字节后）→ surface 错误，不重试', async () => {
+    // 流式场景：kiro 返回首个 SSE 事件后 stream error；failover 决策已完成
+    // （response.status=200 已知，尚未向 client pipe 出错字节），按 KTD/U6 规则
+    // 不重试。client 看到流被截断。
+    const config = buildFailoverConfig({});
+    const chatChunk = (delta: unknown, finishReason: string | null): string =>
+      `data: ${JSON.stringify({
+        id: 'chatcmpl-kiro',
+        object: 'chat.completion.chunk',
+        created: 1_700_000_000,
+        model: 'kiro-fast',
+        choices: [{ index: 0, delta, finish_reason: finishReason }],
+      })}\n\n`;
+    const { fetchImpl, calls } = buildMockedFetch([
+      {
+        status: 200,
+        streamChunks: [
+          chatChunk({ role: 'assistant', content: '' }, null),
+          chatChunk({ content: 'partial' }, null),
+        ],
+        isStreamError: true, // emit 完后 controller.error()
+      },
+      // 即便配置了第二个响应，也不应被调用（已发首字节，failover 决策结束）
+      {
+        status: 200,
+        jsonBody: { id: 'unused', object: 'chat.completion', choices: [], usage: {} },
+      },
+    ]);
+    const { app } = buildTestAppWithFetch(config, fetchImpl);
+    const res = await post(app, '/mytool/v1/chat/completions', {
+      model: 'GPT',
+      stream: true,
+      messages: [{ role: 'user', content: 'hi' }],
+    });
+    expect(res.status).toBe(200);
+    // 读取 body 触发流消费 + mid-stream error
+    const text = await res.text();
+    expect(text).toContain('data:'); // 至少发出了首字节
+    // 关键断言：mid-stream 失败不重试
+    expect(calls).toHaveLength(1);
+  });
+
+  it('usage 基数：failover 后仍只记一次（compat）', async () => {
+    const config = buildFailoverConfig({});
+    const { fetchImpl } = buildMockedFetch([
+      { status: 503, jsonBody: { error: { message: 'kiro down' } } },
+      {
+        // cc 是 anthropic 渠道，返回 anthropic wire 格式
+        status: 200,
+        jsonBody: {
+          id: 'msg_cc',
+          type: 'message',
+          role: 'assistant',
+          model: 'cc-fast',
+          content: [{ type: 'text', text: 'ok' }],
+          stop_reason: 'end_turn',
+          stop_sequence: null,
+          usage: { input_tokens: 7, output_tokens: 3 },
+        },
+      },
+    ]);
+    const { app, usage } = buildTestAppWithFetch(config, fetchImpl);
+    const res = await post(app, '/mytool/v1/chat/completions', {
+      model: 'GPT',
+      stream: false,
+      messages: [{ role: 'user', content: 'hi' }],
+    });
+    expect(res.status).toBe(200);
+    // failover 后 usage 仍只记一次（来自最终成功的 cc）
+    const today = usage.getToday();
+    expect(today.request_count).toBe(1);
+    expect(today.input_tokens).toBe(7);
+    expect(today.output_tokens).toBe(3);
+  });
+
+  it('resolveAdapterRoute 钉死 + fallback：候选含模型组其他渠道', () => {
+    const config = buildFailoverConfig({
+      onFailure: 'fallback',
+      pinnedChannel: 'kiro/kiro-fast',
+    });
+    const store = ConfigStore.fromMemory(config);
+    const { routes, isPinnedChannel, onFailure } = resolveAdapterRoute(store, 'mytool', 'GPT');
+    // 钉死 + fallback：routes 含钉死渠道 + 模型组其他渠道
+    expect(routes.length).toBeGreaterThanOrEqual(2);
+    expect(isPinnedChannel).toBe(true);
+    expect(onFailure).toBe('fallback');
+    // pinned 在 routes[0]（priority=1 < 2）
+    expect(routes[0]?.providerId).toBe('kiro');
+    expect(routes[1]?.providerId).toBe('cc');
+  });
+
+  it('resolveAdapterRoute 钉死 + hard_fail：候选仅钉死渠道', () => {
+    const config = buildFailoverConfig({
+      onFailure: 'hard_fail',
+      pinnedChannel: 'kiro/kiro-fast',
+    });
+    const store = ConfigStore.fromMemory(config);
+    const { routes, isPinnedChannel } = resolveAdapterRoute(store, 'mytool', 'GPT');
+    expect(routes).toHaveLength(1);
+    expect(isPinnedChannel).toBe(true);
+  });
+
+  it('直连（无 adapter）无 failover：503 surface 502，1 次上游调用', async () => {
+    // 直连场景：route.alternatives 为空，候选队列仅 [route]，
+    // 503 retryable 但没有备选 → 502
+    const config: Config = {
+      providers: [
+        {
+          name: 'kiro',
+          type: 'openai',
+          apiKey: 'sk-kiro',
+          apiBase: 'http://kiro.local',
+          models: [{ id: 'kiro-fast' }],
+        },
+      ],
+    };
+    const { fetchImpl, calls } = buildMockedFetch([
+      { status: 503, jsonBody: { error: { message: 'kiro down' } } },
+    ]);
+    const { app } = buildTestAppWithFetch(config, fetchImpl);
+    const res = await post(app, '/v1/chat/completions', {
+      model: 'kiro-fast',
+      stream: false,
+      messages: [{ role: 'user', content: 'hi' }],
+    });
+    expect(res.status).toBe(502);
+    expect(calls).toHaveLength(1);
+  });
+
+  it('钉死 hard-fail + fatal 错误：surface 502（不重试）', async () => {
+    const config = buildFailoverConfig({
+      onFailure: 'hard_fail',
+      pinnedChannel: 'kiro/kiro-fast',
+    });
+    const { fetchImpl, calls } = buildMockedFetch([
+      { status: 400, jsonBody: { error: { message: 'bad request' } } },
+    ]);
+    const { app } = buildTestAppWithFetch(config, fetchImpl);
+    const res = await post(app, '/mytool/v1/chat/completions', {
+      model: 'GPT',
+      stream: false,
+      messages: [{ role: 'user', content: 'hi' }],
+    });
+    expect(res.status).toBe(502);
+    expect(calls).toHaveLength(1);
   });
 });
