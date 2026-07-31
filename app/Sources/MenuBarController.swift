@@ -1288,10 +1288,6 @@ class MenuBarController: NSObject, NSMenuDelegate {
             setTransientStatus(loc("status.reloadingConfig"))
             do {
                 try await client.reloadConfig()
-                // 先同步 locale，再统一刷新（避免两次 rebuildMenu）
-                if let serverLocale = try? await client.fetchLocale() {
-                    UserDefaults.standard.set(serverLocale, forKey: "llm-proxy-lang")
-                }
                 await refresh()
             } catch {
                 showError(loc("error.reloadFailed", error.localizedDescription))
@@ -1299,17 +1295,17 @@ class MenuBarController: NSObject, NSMenuDelegate {
         }
     }
 
-    @objc func openAdmin() {
-        NSWorkspace.shared.open(URL(string: "\(client.baseURL)/admin")!)
+    @MainActor @objc func openAdmin() {
+        let coordinator = WebUIOpenCoordinator(client: client)
+        Task { @MainActor in
+            guard let result = await coordinator.makeOpenResult() else { return }
+            NSWorkspace.shared.open(result.url)
+        }
     }
 
     @MainActor @objc func toggleLanguage(_ sender: NSMenuItem) {
         guard let lang = sender.representedObject as? String else { return }
         switchLang(lang)
-        // 同步到服务端
-        Task { @MainActor in
-            try? await client.setLocale(lang)
-        }
         rebuildMenu()
     }
 

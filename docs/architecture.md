@@ -149,7 +149,7 @@ POST /{name}/v1/messages 或 POST /{name}/v1/chat/completions
 
 ### 3. 管理 API
 
-当配置 `adminKey` 时，HTTP Server 在路由分发前统一校验 Bearer 或 `x-api-key`。仅静态 `GET /admin` 页面外壳免鉴权，以便 Web UI 首次录入管理密钥；其余 `/admin*` API（含抓包 SSE）均受保护。
+当配置 `adminKey` 时，HTTP Server 在路由分发前统一校验 Bearer 或 `x-api-key`。静态 `GET /admin` 页面外壳保持公开；`POST /admin/auth/handoff` 经过正常管理鉴权后签发 60 秒、单次有效的内存交接码，`POST /admin/auth/handoff/exchange` 使用该交接码完成同源浏览器凭据导入。除页面外壳和交接码兑换外，其余 `/admin*` API（含抓包 SSE）均受保护。
 
 | 端点 | 方法 | 功能 |
 |------|------|------|

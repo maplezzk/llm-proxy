@@ -15,13 +15,18 @@
       "switchLang": "Switch Language",
       "port": "Port",
       "portPlaceholder": "Leave empty for default 9000",
-      "portSetSuccess": "Port saved (restart to take effect)",
+      "portSetSuccess": "Port saved and applied",
       "portSetSuccessWithRestart": "Port saved, please restart the service",
       "portRestartHint": "restart to take effect"
     },
     "general": {
       "title": "General",
       "desc": "Language, theme, port and config reload",
+      "clientTitle": "Browser Preferences",
+      "clientDesc": "Only affects this browser and does not modify the service",
+      "serviceTitle": "Current Service Runtime",
+      "serviceDesc": "These actions directly modify the currently connected service",
+      "portChangeConfirm": "Changing the listening port may disconnect this page. Continue?",
       "language": "Language",
       "theme": "Theme",
       "themeSystem": "System",
@@ -34,6 +39,8 @@
       "placeholder": "Enter the same key as the server admin_key",
       "set": "A management key is saved in this browser",
       "notSet": "No management key is saved in this browser",
+      "currentService": "Current service",
+      "sessionOnly": "Persistent browser storage is unavailable; the key is valid only for this page session",
       "saved": "Management API key saved",
       "removed": "Management API key removed"
     },

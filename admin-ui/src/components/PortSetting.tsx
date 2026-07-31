@@ -4,6 +4,7 @@ import { Button } from '@appica/ui-react/button'
 import { Input } from '@appica/ui-react/input'
 import { fetchJson } from '../lib/api'
 import { useToast } from '../lib/toast'
+import { useConfirm } from '../lib/confirm'
 
 /**
  * 端口设置行（设置页-通用卡片）。
@@ -13,6 +14,7 @@ import { useToast } from '../lib/toast'
 export default function PortSetting() {
   const { t } = useTranslation()
   const { toast } = useToast()
+  const { confirm } = useConfirm()
   const [port, setPort] = useState('')
   const [configPort, setConfigPort] = useState<number | null>(null)
   const [editing, setEditing] = useState(false)
@@ -43,13 +45,14 @@ export default function PortSetting() {
 
   // 校验并保存端口；空值表示恢复默认（port=null）。
   const save = async () => {
-    setSaving(true)
     const portVal = port ? parseInt(port, 10) : null
     if (port && (Number.isNaN(portVal as number) || (portVal as number) < 1 || (portVal as number) > 65535)) {
       toast('Port must be between 1 and 65535', 'error')
-      setSaving(false)
       return
     }
+    const approved = await confirm(t('admin.general.portChangeConfirm'))
+    if (!approved) return
+    setSaving(true)
     const res = await fetchJson<any>('/admin/port', {
       method: 'PUT',
       body: JSON.stringify({ port: portVal }),

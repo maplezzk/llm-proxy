@@ -9,3 +9,4 @@ export { handleGetConfig, handleReload, handleHealth, handleStatus, handleGetLog
 export { handleCreateProvider, handleUpdateProvider, handleDeleteProvider } from './provider-crud.js'
 export { handleGetAdapters, handleCreateAdapter, handleUpdateAdapter, handleDeleteAdapter } from './adapter-crud.js'
 export { handleTestModel, handleTestAdapter, handleListModels, handlePullModels } from './model-handlers.js'
+export { AdminHandoffStore, handleCreateAdminHandoff, handleExchangeAdminHandoff } from './admin-handoff.js'

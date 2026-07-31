@@ -300,8 +300,10 @@ event: message_stop
 
 ### 5.2 API Key 认证
 
-- `admin_key` 配置在 `config.yaml` 中；若设置，除用于首次录入密钥的 `GET /admin` Web UI 外壳外，所有 `/admin*` 请求须携带 `Authorization: Bearer <key>` 或 `x-api-key: <key>`
-- Web 管理页可在“设置 → 管理 API Key”中将密钥保存到当前浏览器，之后普通管理请求和抓包 SSE 流都会自动携带 Bearer 密钥
+- `admin_key` 配置在 `config.yaml` 中；若设置，除 `GET /admin` Web UI 外壳和 `POST /admin/auth/handoff/exchange` 外，所有 `/admin*` 请求须携带 `Authorization: Bearer <key>` 或 `x-api-key: <key>`
+- `POST /admin/auth/handoff` 需要当前管理密钥，返回 60 秒、单次有效的高熵交接码；兑换接口只接受请求体中的交接码，返回禁止缓存且不开放跨域读取
+- Web 管理页按 origin + 反向代理 base path 保存密钥，之后普通管理请求和抓包 SSE 流都会自动携带 Bearer 密钥
+- macOS App 仅在 HTTPS 或本机 loopback HTTP 上自动使用交接码打开 Web UI；旧服务、远程 HTTP 或纯反向代理鉴权场景回退为手动输入
 - 热重载轮换或删除 `admin_key` 时，新配置中的密钥尚未生效；使用 `llm-proxy reload --admin-key <当前密钥>`，或通过 `LLM_PROXY_ADMIN_KEY` 提供当前运行密钥
 - `proxy_key` 配置在 `config.yaml` 中
 - 若设置，所有 `/v1/*` 请求须携带 `Authorization: Bearer <key>` 或 `x-api-key: <key>`

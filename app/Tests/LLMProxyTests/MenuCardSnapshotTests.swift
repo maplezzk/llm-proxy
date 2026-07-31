@@ -122,7 +122,6 @@ final class MenuCardSnapshotTests: XCTestCase {
         let defaults = UserDefaults.standard
         let savedURL = defaults.object(forKey: APIClient.managementURLDefaultsKey)
         let savedLanguage = defaults.object(forKey: "llm-proxy-lang")
-        defaults.set("https://45.76.76.29:9000", forKey: APIClient.managementURLDefaultsKey)
         defaults.set("zh", forKey: "llm-proxy-lang")
         defer {
             if let savedURL {
@@ -137,14 +136,21 @@ final class MenuCardSnapshotTests: XCTestCase {
             }
         }
 
-        for (scheme, suffix) in [(ColorScheme.light, "light"), (.dark, "dark")] {
-            let settings = SettingsView()
-                .frame(height: 620)
-                .environment(\.colorScheme, scheme)
-                .background(Color(nsColor: .windowBackgroundColor))
+        for mode in ["remote", "local"] {
+            if mode == "remote" {
+                defaults.set("https://45.76.76.29:9000", forKey: APIClient.managementURLDefaultsKey)
+            } else {
+                defaults.removeObject(forKey: APIClient.managementURLDefaultsKey)
+            }
+            for (scheme, suffix) in [(ColorScheme.light, "light"), (.dark, "dark")] {
+                let settings = SettingsView()
+                    .frame(height: 620)
+                    .environment(\.colorScheme, scheme)
+                    .background(Color(nsColor: .windowBackgroundColor))
 
-            render(settings, width: 1_000, name: "settings-wide-\(suffix)")
-            render(settings, width: 700, name: "settings-compact-\(suffix)")
+                render(settings, width: 1_000, name: "settings-\(mode)-wide-\(suffix)")
+                render(settings, width: 700, name: "settings-\(mode)-compact-\(suffix)")
+            }
         }
     }
 }

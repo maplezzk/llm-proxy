@@ -78,7 +78,7 @@ llm-proxy start
 - **Provider 管理**：增删改 AI 服务商、拉取远程模型列表、声明输入模态（文本/图片）
 - **适配器配置**：创建带模型重映射和协议转换的虚拟端点
 - **识图设置**：为不支持图片的模型启用外挂识图、查看缓存命中率
-- **管理密钥**：在当前浏览器保存独立的管理 API 密钥，用于访问受保护的管理接口
+- **管理密钥**：按当前服务地址保存独立的管理 API 密钥，用于访问受保护的管理接口
 - **代理密钥**：设置 API 认证密钥
 - **连通性测试**：直接发送测试请求验证配置
 - **协议抓包**：实时查看请求/响应原文
@@ -178,8 +178,10 @@ llm-proxy status    # 查看状态
 | `/admin/logs/stats` | GET | 日志统计 |
 | `/admin/token-stats` | GET | Token 统计 |
 | `/admin/log-level` | GET / PUT | 查看 / 修改日志级别 |
-| `/admin/locale` | GET / PUT | 查看 / 修改界面语言（zh / en） |
-| `/admin/port` | GET / PUT | 查看 / 修改监听端口（需重启生效） |
+| `/admin/locale` | GET / PUT | 查看 / 修改服务端消息语言（zh / en） |
+| `/admin/port` | GET / PUT | 查看 / 修改监听端口（运行时热切换） |
+| `/admin/auth/handoff` | POST | 使用当前管理密钥签发一次性 Web UI 交接码 |
+| `/admin/auth/handoff/exchange` | POST | Web UI 兑换一次性交接码 |
 | `/admin/proxy-key` | GET / PUT | 查看 / 修改代理认证密钥 |
 | `/admin/vision` | GET / PUT | 查看 / 修改外挂识图配置 |
 | `/admin/vision-cache/stats` | GET | 识图缓存命中率 / 容量 |
@@ -191,7 +193,9 @@ llm-proxy status    # 查看状态
 | `/admin/test-adapter` | POST | 通过适配器发送测试请求 |
 | `/admin/debug/captures/*` | GET / POST | 协议抓包环形缓冲 + SSE 推送 |
 
-配置 `admin_key` 后，所有管理 API 都必须携带 `Authorization: Bearer <key>` 或 `x-api-key: <key>`；静态 `GET /admin` 页面外壳保持公开，以便在 **设置 → 管理 API Key** 中首次录入密钥。热重载轮换或删除密钥时，需用当前运行密钥鉴权：`llm-proxy reload --admin-key <当前密钥>`（也可设置 `LLM_PROXY_ADMIN_KEY`）。
+配置 `admin_key` 后，除静态 `GET /admin` 页面外壳和一次性交接码兑换接口外，管理 API 都必须携带 `Authorization: Bearer <key>` 或 `x-api-key: <key>`。Web UI 会按 origin 和反向代理路径隔离密钥；macOS App 通过 HTTPS 或本机 HTTP 打开 Web UI 时，可使用 60 秒、单次有效的交接码自动导入密钥，原始密钥不会进入 URL。热重载轮换或删除密钥时，需用当前运行密钥鉴权：`llm-proxy reload --admin-key <当前密钥>`（也可设置 `LLM_PROXY_ADMIN_KEY`）。
+
+macOS App 与 Web UI 的界面语言分别保存在本机和当前浏览器，不再修改服务端 `locale`。服务端 `locale` 仅控制服务日志和后端消息语言。
 
 ## 协议转换矩阵
 

@@ -57,7 +57,38 @@ struct SettingsView: View {
                     .padding(.bottom, 12)
                 }
 
-                // 管理服务地址
+                settingsGroupHeader(loc("settings.group.app"))
+
+                // 语言只属于当前 macOS App，不再同步到服务端。
+                settingsSection {
+                    settingsRow(
+                        icon: "globe",
+                        iconColor: .purple,
+                        title: loc("settings.language"),
+                        subtitle: selectedLang == "zh" ? "中文" : "English"
+                    ) {
+                        Picker("", selection: $selectedLang) {
+                            Text("中文").tag("zh")
+                            Text("English").tag("en")
+                        }
+                        .pickerStyle(.segmented)
+                        .labelsHidden()
+                        .frame(width: 160)
+                        .onChange(of: selectedLang) { _, newLang in
+                            switchLang(newLang)
+                            NotificationCenter.default.post(name: .configDidChange, object: nil)
+                        }
+                    }
+                }
+
+                Divider().padding(.horizontal, 24)
+
+                settingsSection {
+                    AutoUpdateToggleRow()
+                }
+
+                settingsGroupHeader(loc("settings.group.connection"))
+
                 settingsSection {
                     settingsRow(
                         icon: "externaldrive.connected.to.line.below",
@@ -138,29 +169,37 @@ struct SettingsView: View {
 
                 Divider().padding(.horizontal, 24)
 
-                // 端口
-                settingsSection {
-                    settingsRow(
-                        icon: "network",
-                        iconColor: .blue,
-                        title: loc("settings.port"),
-                        subtitle: port.isEmpty ? loc("settings.notSet") : port
-                    ) {
-                        HStack(spacing: 8) {
-                            TextField(loc("settings.portPlaceholder"), text: $port)
-                                .textFieldStyle(.roundedBorder)
-                                .frame(width: 100)
-                                .onSubmit { Task { await savePort() } }
-                            Button(loc("action.save")) {
-                                Task { await savePort() }
+                if APIClient.configuredManagementURL() == nil {
+                    settingsGroupHeader(loc("settings.group.localService"))
+
+                    settingsSection {
+                        settingsRow(
+                            icon: "network",
+                            iconColor: .blue,
+                            title: loc("settings.port"),
+                            subtitle: port.isEmpty ? loc("settings.notSet") : port
+                        ) {
+                            HStack(spacing: 8) {
+                                TextField(loc("settings.portPlaceholder"), text: $port)
+                                    .textFieldStyle(.roundedBorder)
+                                    .frame(width: 100)
+                                    .onSubmit { Task { await savePort() } }
+                                Button(loc("action.save")) {
+                                    Task { await savePort() }
+                                }
+                                .buttonStyle(.borderedProminent)
+                                .controlSize(.small)
                             }
-                            .buttonStyle(.borderedProminent)
-                            .controlSize(.small)
                         }
                     }
                 }
 
-                Divider().padding(.horizontal, 24)
+                settingsGroupHeader(
+                    loc("settings.group.currentService"),
+                    subtitle: loc(APIClient.configuredManagementURL() == nil
+                        ? "settings.managementURLLocal"
+                        : "settings.managementURLRemote")
+                )
 
                 // 代理密钥
                 settingsSection {
@@ -219,37 +258,6 @@ struct SettingsView: View {
 
                 Divider().padding(.horizontal, 24)
 
-                // 自动检查更新
-                settingsSection {
-                    AutoUpdateToggleRow()
-                }
-
-                Divider().padding(.horizontal, 24)
-
-                // 语言
-                settingsSection {
-                    settingsRow(
-                        icon: "globe",
-                        iconColor: .purple,
-                        title: loc("action.language"),
-                        subtitle: selectedLang == "zh" ? "中文" : "English"
-                    ) {
-                        Picker("", selection: $selectedLang) {
-                            Text("中文").tag("zh")
-                            Text("English").tag("en")
-                        }
-                        .pickerStyle(.segmented)
-                        .labelsHidden()
-                        .frame(width: 160)
-                        .onChange(of: selectedLang) { _, newLang in
-                            switchLang(newLang)
-                            NotificationCenter.default.post(name: .configDidChange, object: nil)
-                        }
-                    }
-                }
-
-                Divider().padding(.horizontal, 24)
-
                 // 配置重载
                 settingsSection {
                     HStack(spacing: 12) {
@@ -297,6 +305,24 @@ struct SettingsView: View {
         VStack(alignment: .leading, spacing: 0) {
             content()
         }
+    }
+
+    private func settingsGroupHeader(_ title: String, subtitle: String? = nil) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+                .font(.headline)
+            if let subtitle {
+                Text(subtitle)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .help(subtitle)
+            }
+        }
+        .padding(.horizontal, 24)
+        .padding(.top, 18)
+        .padding(.bottom, 6)
     }
 
     private func settingsRow<Controls: View>(
@@ -426,12 +452,17 @@ struct SettingsView: View {
     private func loadSettings() async {
         managementURL = APIClient.storedManagementURL()
         hasManagementAPIKey = APIClient.configuredManagementAPIKey() != nil
-        do {
-            if let p = try await api.fetchPort() {
-                originalPort = p
-                port = String(p)
-            }
-        } catch {}
+        if APIClient.configuredManagementURL() == nil {
+            do {
+                if let p = try await api.fetchPort() {
+                    originalPort = p
+                    port = String(p)
+                }
+            } catch {}
+        } else {
+            originalPort = nil
+            port = ""
+        }
         do {
             hasProxyKey = try await api.fetchProxyKey()
             proxyKeyLoadState = .loaded
@@ -454,6 +485,8 @@ struct SettingsView: View {
             return
         }
         managementURL = APIClient.storedManagementURL()
+        managementAPIKey = ""
+        hasManagementAPIKey = APIClient.configuredManagementAPIKey() != nil
         showToast(loc("settings.managementURLSaved"), type: "success")
         NotificationCenter.default.post(name: .configDidChange, object: nil)
     }
@@ -461,6 +494,8 @@ struct SettingsView: View {
     private func resetManagementURL() {
         _ = api.updateManagementURL("")
         managementURL = APIClient.storedManagementURL()
+        managementAPIKey = ""
+        hasManagementAPIKey = APIClient.configuredManagementAPIKey() != nil
         showToast(loc("settings.managementURLResetDone"), type: "success")
         NotificationCenter.default.post(name: .configDidChange, object: nil)
     }
@@ -468,7 +503,10 @@ struct SettingsView: View {
     // MARK: - Management API Key
 
     private func saveManagementAPIKey() {
-        api.updateManagementAPIKey(managementAPIKey)
+        guard api.updateManagementAPIKey(managementAPIKey) else {
+            showToast(loc("settings.managementAPIKeySaveFailed"), type: "error")
+            return
+        }
         managementAPIKey = ""
         hasManagementAPIKey = APIClient.configuredManagementAPIKey() != nil
         showToast(loc("settings.managementAPIKeySaved"), type: "success")
@@ -476,7 +514,10 @@ struct SettingsView: View {
     }
 
     private func removeManagementAPIKey() {
-        api.updateManagementAPIKey("")
+        guard api.updateManagementAPIKey("") else {
+            showToast(loc("settings.managementAPIKeySaveFailed"), type: "error")
+            return
+        }
         managementAPIKey = ""
         hasManagementAPIKey = false
         showToast(loc("settings.managementAPIKeyRemoved"), type: "success")
@@ -486,6 +527,7 @@ struct SettingsView: View {
     // MARK: - Port
 
     private func savePort() async {
+        guard APIClient.configuredManagementURL() == nil else { return }
         guard let portNum = Int(port), portNum >= 1, portNum <= 65535 else {
             showToast(loc("settings.portInvalid"), type: "error")
             return

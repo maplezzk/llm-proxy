@@ -10,7 +10,7 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import { timingSafeEqual } from 'node:crypto'
-import { handleGetConfig, handleReload, handleHealth, handleStatus, handleGetLogs, handleGetLogLevel, handleSetLogLevel, handleGetLocale, handleSetLocale, handleGetPort, handleSetPort, handleGetAdapters, handleCreateProvider, handleUpdateProvider, handleDeleteProvider, handleCreateAdapter, handleUpdateAdapter, handleDeleteAdapter, handleTestModel, handleTestAdapter, handleListModels, handlePullModels, handleGetProxyKey, handleSetProxyKey, handleGetTokenStats, handleGetTokenTimeline, handleGetTokenBreakdown, handleGetTokenDbInfo, handlePostTokenCleanup, handleDebugCapturesStatus, handleDebugCaptures, handleDebugCapturesControl, handleDebugCapturesStream, handleGetVision, handleSetVision, handleGetVisionCacheStats, handleClearVisionCache } from './handlers/index.js'
+import { AdminHandoffStore, handleCreateAdminHandoff, handleExchangeAdminHandoff, handleGetConfig, handleReload, handleHealth, handleStatus, handleGetLogs, handleGetLogLevel, handleSetLogLevel, handleGetLocale, handleSetLocale, handleGetPort, handleSetPort, handleGetAdapters, handleCreateProvider, handleUpdateProvider, handleDeleteProvider, handleCreateAdapter, handleUpdateAdapter, handleDeleteAdapter, handleTestModel, handleTestAdapter, handleListModels, handlePullModels, handleGetProxyKey, handleSetProxyKey, handleGetTokenStats, handleGetTokenTimeline, handleGetTokenBreakdown, handleGetTokenDbInfo, handlePostTokenCleanup, handleDebugCapturesStatus, handleDebugCaptures, handleDebugCapturesControl, handleDebugCapturesStream, handleGetVision, handleSetVision, handleGetVisionCacheStats, handleClearVisionCache } from './handlers/index.js'
 import { handleAnthropicMessages, handleOpenAIChat, handleOpenAIResponses } from '../proxy/handlers.js'
 import { handleAdapterRequest, handleAdapterModels } from '../adapter/handlers.js'
 
@@ -25,6 +25,7 @@ export interface ServerContext {
   rebindPort?: (port: number) => Promise<void>
   /** 配置语言变化后的后端运行时同步。 */
   changeLocale?: (locale: string) => void
+  adminHandoffs: AdminHandoffStore
 }
 
 export interface ServerOptions {
@@ -67,12 +68,17 @@ function getAdminUIHtml(): string {
 }
 
 const handleAdminUI: RouteHandler = (_ctx, _req, res) => {
-  res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
+  res.writeHead(200, {
+    'Content-Type': 'text/html; charset=utf-8',
+    'Referrer-Policy': 'no-referrer',
+  })
   res.end(getAdminUIHtml())
 }
 
 const ROUTES: Route[] = [
   { method: 'GET', pattern: /^\/admin\/?(\?.*)?$/, handler: handleAdminUI },
+  { method: 'POST', pattern: /^\/admin\/auth\/handoff$/, handler: handleCreateAdminHandoff },
+  { method: 'POST', pattern: /^\/admin\/auth\/handoff\/exchange$/, handler: handleExchangeAdminHandoff },
   { method: 'GET', pattern: /^\/admin\/config$/, handler: handleGetConfig },
   { method: 'POST', pattern: /^\/admin\/config\/reload$/, handler: handleReload },
   { method: 'GET', pattern: /^\/admin\/health$/, handler: handleHealth },
@@ -129,6 +135,10 @@ function isAdminRequest(url: string): boolean {
 
 function isAdminUIShellRequest(url: string, method: string): boolean {
   return method === 'GET' && /^\/admin\/?(\?.*)?$/.test(url)
+}
+
+function isAdminHandoffExchangeRequest(url: string, method: string): boolean {
+  return method === 'POST' && url === '/admin/auth/handoff/exchange'
 }
 
 function hasValidAdminKey(req: IncomingMessage, expectedKey: string): boolean {
@@ -200,6 +210,7 @@ export function createProxyServer(opts: ServerOptions): Server {
     visionCache: opts.visionCache,
     rebindPort,
     changeLocale: opts.changeLocale,
+    adminHandoffs: new AdminHandoffStore(),
   }
 
   server = createHttpServer(async (req: IncomingMessage, res: ServerResponse) => {
@@ -222,8 +233,11 @@ export function createProxyServer(opts: ServerOptions): Server {
     const method = req.method ?? 'GET'
 
     const { config } = ctx.store.getConfig()
-    // Web UI 外壳不包含管理数据，保持公开才能让首次访问者输入管理密钥；其余管理 API 均鉴权。
-    const requiresAdminAuth = isAdminRequest(url) && !isAdminUIShellRequest(url, method)
+    // Web UI 外壳不包含管理数据，保持公开才能让首次访问者输入管理密钥；
+    // 一次性交接码兑换自身即为认证过程，其余管理 API 均鉴权。
+    const requiresAdminAuth = isAdminRequest(url)
+      && !isAdminUIShellRequest(url, method)
+      && !isAdminHandoffExchangeRequest(url, method)
     if (requiresAdminAuth && config.adminKey && !hasValidAdminKey(req, config.adminKey)) {
       ctx.logger.log('request', 'Admin API auth failed', { url, method }, 'warn')
       res.writeHead(401, { 'Content-Type': 'application/json' })

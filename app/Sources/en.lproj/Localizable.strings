@@ -264,6 +264,11 @@
 "common.cancel" = "Cancel";
 "common.loading" = "Loading...";
 "settings.title" = "Settings";
+"settings.language" = "Language";
+"settings.group.app" = "App Settings";
+"settings.group.connection" = "Management Connection";
+"settings.group.localService" = "Local Service";
+"settings.group.currentService" = "Current Service";
 "settings.managementURL" = "Management Service";
 "settings.managementURLLocal" = "Local service (default)";
 "settings.managementURLRemote" = "Remote service";
@@ -279,6 +284,7 @@
 "settings.managementAPIKeyHint" = "Sent as an Authorization: Bearer header to a management service configured with admin_key or an authenticating reverse proxy; separate from the proxy key.";
 "settings.managementAPIKeySaved" = "Management API key saved";
 "settings.managementAPIKeyRemoved" = "Management API key removed";
+"settings.managementAPIKeySaveFailed" = "The management API key could not be saved to Keychain";
 "settings.port" = "Port";
 "settings.proxyKey" = "Proxy Key";
 "settings.set" = "Set";

@@ -2,13 +2,34 @@ import XCTest
 @testable import LLMProxy
 
 final class APIClientTests: XCTestCase {
+    private final class InMemoryCredentialStore: ManagementCredentialStoring {
+        var values: [String: String] = [:]
+
+        func credential(for managementURL: String) -> String? {
+            values[managementURL]
+        }
+
+        func setCredential(_ credential: String?, for managementURL: String) -> Bool {
+            values[managementURL] = credential
+            return true
+        }
+    }
+
     var client: APIClient!
+    private var savedConnectionStore: ManagementConnectionStore!
+    private var credentialStore: InMemoryCredentialStore!
     private var savedPort: Any?
     private var savedManagementURL: Any?
     private var savedLastRemoteManagementURL: Any?
     private var savedManagementAPIKey: Any?
 
     override func setUp() {
+        savedConnectionStore = APIClient.connectionStore
+        credentialStore = InMemoryCredentialStore()
+        APIClient.connectionStore = ManagementConnectionStore(
+            defaults: .standard,
+            credentials: credentialStore
+        )
         savedPort = UserDefaults.standard.object(forKey: "llm-proxy-port")
         savedManagementURL = UserDefaults.standard.object(forKey: APIClient.managementURLDefaultsKey)
         savedLastRemoteManagementURL = UserDefaults.standard.object(forKey: APIClient.lastRemoteManagementURLDefaultsKey)
@@ -25,6 +46,9 @@ final class APIClientTests: XCTestCase {
         restore(savedManagementURL, forKey: APIClient.managementURLDefaultsKey)
         restore(savedLastRemoteManagementURL, forKey: APIClient.lastRemoteManagementURLDefaultsKey)
         restore(savedManagementAPIKey, forKey: APIClient.managementAPIKeyDefaultsKey)
+        APIClient.connectionStore = savedConnectionStore
+        credentialStore = nil
+        savedConnectionStore = nil
         client = nil
     }
 
@@ -132,6 +156,7 @@ final class APIClientTests: XCTestCase {
     }
 
     func testPersistsManagementAPIKeyAndAddsBearerAuthorization() {
+        XCTAssertTrue(client.updateManagementURL("http://proxy.example.com"))
         client.updateManagementAPIKey("  admin-secret  ")
 
         XCTAssertEqual(APIClient.configuredManagementAPIKey(), "admin-secret")
@@ -143,5 +168,70 @@ final class APIClientTests: XCTestCase {
         XCTAssertNil(APIClient.configuredManagementAPIKey())
         let unauthenticated = APIClient.managementRequest(url: URL(string: "http://proxy.example.com/admin/health")!)
         XCTAssertNil(unauthenticated.value(forHTTPHeaderField: "Authorization"))
+    }
+
+    func testManagementAPIKeyIsNeverAttachedToAnotherService() {
+        XCTAssertTrue(client.updateManagementURL("https://one.example.com/base"))
+        XCTAssertTrue(client.updateManagementAPIKey("one-secret"))
+
+        let matching = APIClient.managementRequest(
+            url: URL(string: "https://one.example.com/base/admin/health")!
+        )
+        XCTAssertEqual(matching.value(forHTTPHeaderField: "Authorization"), "Bearer one-secret")
+
+        let otherHost = APIClient.managementRequest(
+            url: URL(string: "https://two.example.com/base/admin/health")!
+        )
+        XCTAssertNil(otherHost.value(forHTTPHeaderField: "Authorization"))
+
+        let siblingPath = APIClient.managementRequest(
+            url: URL(string: "https://one.example.com/other/admin/health")!
+        )
+        XCTAssertNil(siblingPath.value(forHTTPHeaderField: "Authorization"))
+
+        let proxyRoute = APIClient.managementRequest(
+            url: URL(string: "https://one.example.com/base/v1/models")!
+        )
+        XCTAssertNil(proxyRoute.value(forHTTPHeaderField: "Authorization"))
+    }
+
+    func testManagementAPIKeysAreIsolatedByManagementURL() {
+        XCTAssertTrue(client.updateManagementURL("https://one.example.com/base"))
+        XCTAssertTrue(client.updateManagementAPIKey("one-secret"))
+
+        XCTAssertTrue(client.updateManagementURL("https://two.example.com/base"))
+        XCTAssertNil(APIClient.configuredManagementAPIKey())
+        XCTAssertTrue(client.updateManagementAPIKey("two-secret"))
+
+        XCTAssertTrue(client.updateManagementURL("https://one.example.com/base"))
+        XCTAssertEqual(APIClient.configuredManagementAPIKey(), "one-secret")
+
+        XCTAssertTrue(client.updateManagementURL("https://two.example.com/base"))
+        XCTAssertEqual(APIClient.configuredManagementAPIKey(), "two-secret")
+    }
+
+    func testLegacyManagementAPIKeyMigratesOnlyToCurrentURL() {
+        XCTAssertTrue(client.updateManagementURL("https://one.example.com"))
+        UserDefaults.standard.set("legacy-secret", forKey: APIClient.managementAPIKeyDefaultsKey)
+
+        XCTAssertEqual(APIClient.configuredManagementAPIKey(), "legacy-secret")
+        XCTAssertNil(UserDefaults.standard.string(forKey: APIClient.managementAPIKeyDefaultsKey))
+        XCTAssertEqual(credentialStore.values["https://one.example.com"], "legacy-secret")
+
+        XCTAssertTrue(client.updateManagementURL("https://two.example.com"))
+        XCTAssertNil(APIClient.configuredManagementAPIKey())
+    }
+
+    func testLocalCredentialMovesWhenLocalPortChanges() {
+        client.baseURL = APIClient.storedManagementURL()
+        XCTAssertTrue(client.updateManagementAPIKey("local-secret"))
+        let oldURL = APIClient.storedManagementURL()
+
+        client.baseURL = APIClient.storedManagementURL()
+        client.updatePort(9443)
+
+        XCTAssertNotEqual(APIClient.storedManagementURL(), oldURL)
+        XCTAssertEqual(APIClient.configuredManagementAPIKey(), "local-secret")
+        XCTAssertNil(credentialStore.values[oldURL])
     }
 }

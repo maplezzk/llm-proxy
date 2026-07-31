@@ -15,13 +15,18 @@
       "switchLang": "切换语言",
       "port": "端口",
       "portPlaceholder": "留空使用默认 9000",
-      "portSetSuccess": "端口已保存（重启后生效）",
+      "portSetSuccess": "端口已保存并已生效",
       "portSetSuccessWithRestart": "端口已保存，请重启服务生效",
       "portRestartHint": "重启后生效"
     },
     "general": {
       "title": "通用",
       "desc": "语言、主题、端口与配置重载",
+      "clientTitle": "浏览器偏好",
+      "clientDesc": "仅影响当前浏览器，不修改服务端配置",
+      "serviceTitle": "当前服务运行配置",
+      "serviceDesc": "这些操作会直接修改当前连接的服务",
+      "portChangeConfirm": "修改监听端口可能导致当前页面断开连接，确定继续吗？",
       "language": "语言",
       "theme": "主题",
       "themeSystem": "跟随系统",
@@ -34,6 +39,8 @@
       "placeholder": "输入与服务端 admin_key 相同的密钥",
       "set": "当前浏览器已保存管理密钥",
       "notSet": "当前浏览器未保存管理密钥",
+      "currentService": "当前服务",
+      "sessionOnly": "浏览器禁止持久化存储，密钥仅在本次页面会话中有效",
       "saved": "管理 API Key 已保存",
       "removed": "管理 API Key 已移除"
     },
