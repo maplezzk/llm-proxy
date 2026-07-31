@@ -71,6 +71,16 @@ export class CaptureBuffer {
     this.clear()
   }
 
+  /** 更新缓冲区上限，并立即淘汰超出的旧记录。 */
+  setMaxSize(maxSize: number): void {
+    this.maxSize = Math.max(1, Math.floor(maxSize))
+    if (this.buffer.length <= this.maxSize) return
+    const removed = this.buffer.splice(0, this.buffer.length - this.maxSize)
+    for (const entry of removed) {
+      this.entryMap.delete(entry.pairId)
+    }
+  }
+
   clear(): void {
     this.buffer = []
     this.entryMap.clear()

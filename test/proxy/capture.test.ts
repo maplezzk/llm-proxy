@@ -136,6 +136,17 @@ describe('proxy/capture', () => {
   })
 
   describe('maxSize', () => {
+    it('setMaxSize 热更新上限并立即淘汰旧记录', () => {
+      const cap = new CaptureBuffer(4)
+      cap.startRequest('proxy', 'a', 'm1')
+      cap.startRequest('proxy', 'b', 'm2')
+      cap.startRequest('proxy', 'c', 'm3')
+
+      cap.setMaxSize(2)
+
+      assert.deepStrictEqual(cap.getAll().map((entry) => entry.model), ['m2', 'm3'])
+    })
+
     it('超过 maxSize 时淘汰旧记录', () => {
       const cap = new CaptureBuffer(3)
       cap.startRequest('proxy', 'a', 'm1')

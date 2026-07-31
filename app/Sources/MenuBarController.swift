@@ -1187,16 +1187,10 @@ class MenuBarController: NSObject, NSMenuDelegate {
         currentPort = newPort
         client.updatePort(newPort)
 
-        // 如果服务正在运行，自动重启让新端口生效
+        // 服务运行中由后端直接重绑定端口，无需重启进程。
         if isRunning {
             rebuildMenu()
-            setTransientStatus(loc("status.restarting"))
-            let error = await startCLIWithPort("restart", port: newPort)
-            if let err = error {
-                showError(err)
-                await refresh()
-                return
-            }
+            setTransientStatus(loc("status.reloadingConfig"))
             await waitForReadyAndRefresh()
         } else {
             rebuildMenu()

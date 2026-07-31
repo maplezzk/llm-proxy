@@ -163,6 +163,10 @@ function writeConfigErrorLog(configPath: string, error: string): void {
 export async function cmdStart(opts: StartOptions): Promise<void> {
   // Default to English; config file's locale field can override to 'zh'
   let { t } = createI18n('en')
+  const changeLocale = (locale: string): void => {
+    const result = createI18n(locale)
+    t = result.t
+  }
 
   const configPath = opts.config ?? DEFAULT_CONFIG_PATH
 
@@ -190,8 +194,7 @@ export async function cmdStart(opts: StartOptions): Promise<void> {
   // Re-init i18n if config specifies a locale
   const configLocale = store.getConfig().config.locale
   if (configLocale && ['zh', 'en'].includes(configLocale)) {
-    const result = createI18n(configLocale)
-    t = result.t
+    changeLocale(configLocale)
   }
 
   const tracker = new StatusTracker()
@@ -223,6 +226,10 @@ export async function cmdStart(opts: StartOptions): Promise<void> {
     capture,
     logger,
     visionCache,
+    changeLocale,
+    onPortChanged: (newPort) => {
+      writeFileSync(DEFAULT_PID_PATH, JSON.stringify({ pid: process.pid, port: newPort, startedAt: Date.now() }))
+    },
   })
 
 // Node.js 文档：注册 SIGTERM/SIGINT listener 后，默认自动退出行为被移除，
@@ -233,14 +240,17 @@ export async function cmdStart(opts: StartOptions): Promise<void> {
 
   logger.log('system', t('cli.start.started', { host, port, config: configPath }), { host, port, config: configPath })
 
-  server.once('error', (err: NodeJS.ErrnoException) => {
+  const onInitialServerError = (err: NodeJS.ErrnoException) => {
     if (err.code === 'EADDRINUSE') {
       console.error(`\n  ❌ 端口 ${port} 已被占用`)
       console.error(`  请用 --port 参数指定其他端口，或在配置文件中设置 port 字段\n`)
       process.exit(1)
     }
-  })
+  }
+  server.once('error', onInitialServerError)
   server.listen(port, host, () => {
+    // 后续热重绑由 createProxyServer 自己处理，不能复用启动阶段错误处理器。
+    server.off('error', onInitialServerError)
     writeFileSync(DEFAULT_PID_PATH, JSON.stringify({ pid: process.pid, port, startedAt: Date.now() }))
     console.error(t('cli.start.started', { host, port }))
     console.error(t('cli.start.adminApi', { host, port }))

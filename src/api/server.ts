@@ -20,6 +20,10 @@ export interface ServerContext {
   logger: Logger
   capture?: CaptureBuffer
   visionCache?: VisionCache
+  /** 配置端口变化后的服务内重绑定。 */
+  rebindPort?: (port: number) => Promise<void>
+  /** 配置语言变化后的后端运行时同步。 */
+  changeLocale?: (locale: string) => void
 }
 
 export interface ServerOptions {
@@ -33,6 +37,8 @@ export interface ServerOptions {
   logger: Logger
   capture?: CaptureBuffer
   visionCache?: VisionCache
+  onPortChanged?: (port: number) => void
+  changeLocale?: (locale: string) => void
 }
 
 type RouteHandler = (
@@ -117,9 +123,69 @@ function corsHeaders(res: ServerResponse): void {
 }
 
 export function createProxyServer(opts: ServerOptions): Server {
-  const ctx: ServerContext = { store: opts.store, tracker: opts.tracker, usageStore: opts.usageStore, logger: opts.logger, capture: opts.capture, visionCache: opts.visionCache }
+  let server: Server
+  let currentPort = opts.proxyPort
+  let rebindQueue: Promise<void> = Promise.resolve()
 
-  const server = createHttpServer(async (req: IncomingMessage, res: ServerResponse) => {
+  const listen = (port: number): Promise<void> => new Promise((resolve, reject) => {
+    const onError = (err: Error) => {
+      server.off('listening', onListening)
+      reject(err)
+    }
+    const onListening = () => {
+      server.off('error', onError)
+      resolve()
+    }
+    server.once('error', onError)
+    server.once('listening', onListening)
+    server.listen(port, opts.proxyHost)
+  })
+
+  const close = (): Promise<void> => new Promise((resolve, reject) => {
+    if (!server.listening) {
+      resolve()
+      return
+    }
+    server.close((err) => err ? reject(err) : resolve())
+    server.closeIdleConnections?.()
+  })
+
+  const rebindPort = (port: number): Promise<void> => {
+    const task = rebindQueue.then(async () => {
+      if (currentPort === port && server.listening) return
+      const previousPort = currentPort
+      await close()
+      try {
+        await listen(port)
+        currentPort = port
+        opts.onPortChanged?.(port)
+      } catch (error) {
+        // 新端口不可用时尽力恢复旧端口，避免服务因配置错误完全离线。
+        try {
+          await listen(previousPort)
+          currentPort = previousPort
+        } catch {
+          // 保留原始错误，交由调用方记录。
+        }
+        throw error
+      }
+    })
+    rebindQueue = task.catch(() => {})
+    return task
+  }
+
+  const ctx: ServerContext = {
+    store: opts.store,
+    tracker: opts.tracker,
+    usageStore: opts.usageStore,
+    logger: opts.logger,
+    capture: opts.capture,
+    visionCache: opts.visionCache,
+    rebindPort,
+    changeLocale: opts.changeLocale,
+  }
+
+  server = createHttpServer(async (req: IncomingMessage, res: ServerResponse) => {
     corsHeaders(res)
 
     if (req.method === 'OPTIONS') {
