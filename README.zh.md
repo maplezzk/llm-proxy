@@ -78,6 +78,7 @@ llm-proxy start
 - **Provider 管理**：增删改 AI 服务商、拉取远程模型列表、声明输入模态（文本/图片）
 - **适配器配置**：创建带模型重映射和协议转换的虚拟端点
 - **识图设置**：为不支持图片的模型启用外挂识图、查看缓存命中率
+- **管理密钥**：在当前浏览器保存独立的管理 API 密钥，用于访问受保护的管理接口
 - **代理密钥**：设置 API 认证密钥
 - **连通性测试**：直接发送测试请求验证配置
 - **协议抓包**：实时查看请求/响应原文
@@ -90,6 +91,7 @@ llm-proxy start
 log_level: debug          # debug | info | warn | error
 port: 9000                # 可选：默认 9000
 max_body_size: 10485760   # 可选：请求体大小上限（字节，默认 10MB）
+admin_key: ${ADMIN_KEY}   # 可选：保护管理 API；/admin 页面外壳保持公开
 proxy_key: sk-xxx         # 可选：设置后 /v1/* 需认证
 
 providers:
@@ -188,6 +190,8 @@ llm-proxy status    # 查看状态
 | `/admin/test-model` | POST | 向 Provider/Model 发送测试请求 |
 | `/admin/test-adapter` | POST | 通过适配器发送测试请求 |
 | `/admin/debug/captures/*` | GET / POST | 协议抓包环形缓冲 + SSE 推送 |
+
+配置 `admin_key` 后，所有管理 API 都必须携带 `Authorization: Bearer <key>` 或 `x-api-key: <key>`；静态 `GET /admin` 页面外壳保持公开，以便在 **设置 → 管理 API Key** 中首次录入密钥。热重载轮换或删除密钥时，需用当前运行密钥鉴权：`llm-proxy reload --admin-key <当前密钥>`（也可设置 `LLM_PROXY_ADMIN_KEY`）。
 
 ## 协议转换矩阵
 

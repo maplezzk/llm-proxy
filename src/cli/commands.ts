@@ -371,15 +371,18 @@ export async function cmdRestart(opts: StartOptions): Promise<void> {
   await cmdStart(opts)
 }
 
-export async function cmdReload(opts: { port?: number; config?: string }): Promise<void> {
+export async function cmdReload(opts: { port?: number; config?: string; adminKey?: string }): Promise<void> {
   const { t } = createI18n('en')
 
   const state = getState()
   const port = opts.port ?? state?.port ?? DEFAULT_PORT
   const url = `http://${DEFAULT_HOST}:${port}/admin/config/reload`
   const configPath = opts.config ?? DEFAULT_CONFIG_PATH
-  let adminKey: string | undefined
-  if (existsSync(configPath)) {
+  // 轮换或删除 admin_key 时，新配置中的 key 无法通过运行中服务的旧 key 校验。
+  // 调用方可通过 --admin-key 或 LLM_PROXY_ADMIN_KEY 显式提供当前运行密钥；
+  // 未提供时继续从配置读取，保持普通 reload 的原有体验。
+  let adminKey = opts.adminKey?.trim() || process.env.LLM_PROXY_ADMIN_KEY?.trim()
+  if (!adminKey && existsSync(configPath)) {
     try {
       adminKey = loadConfigFromYaml(configPath).adminKey
     } catch {
