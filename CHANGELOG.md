@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.27.0](https://github.com/maplezzk/llm-proxy/compare/v0.26.0...v0.27.0) (2026-07-31)
+
+
+### Features
+
+* 完善远程管理与 macOS 菜单交互 ([dbcc314](https://github.com/maplezzk/llm-proxy/commit/dbcc31445db81ba1a9a033531d5aa659688cccfc))
+* 支持用量分类悬停切换 ([36c80c9](https://github.com/maplezzk/llm-proxy/commit/36c80c95622939940dbb69748f979d3f0b988aad))
+* 支持菜单切换管理模式 ([c504304](https://github.com/maplezzk/llm-proxy/commit/c504304e407accf3be484037f31617e76122a527))
+
+
+### Bug Fixes
+
+* 优化管理设置值回显 ([cbb3e4f](https://github.com/maplezzk/llm-proxy/commit/cbb3e4fac86bddbf2f980e2514c263faabc8ca0c))
+* 支持管理密钥热重载轮换 ([1738ca9](https://github.com/maplezzk/llm-proxy/commit/1738ca9d6dda0933ecb5eeb3c34303a96cc14662))
+* 支持管理密钥热重载轮换 ([28ca468](https://github.com/maplezzk/llm-proxy/commit/28ca4684bcb649b4f77497888606e07256d6b511))
+* 防止设置页保存按钮被压缩 ([cce6821](https://github.com/maplezzk/llm-proxy/commit/cce68216192b4a9b99a262e71659e079faff03b4))
+
 ## [0.26.0](https://github.com/maplezzk/llm-proxy/compare/v0.25.0...v0.26.0) (2026-07-31)
 
 
