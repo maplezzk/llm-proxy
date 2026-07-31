@@ -149,6 +149,8 @@ POST /{name}/v1/messages 或 POST /{name}/v1/chat/completions
 
 ### 3. 管理 API
 
+当配置 `adminKey` 时，HTTP Server 在路由分发前统一校验 Bearer 或 `x-api-key`。仅静态 `GET /admin` 页面外壳免鉴权，以便 Web UI 首次录入管理密钥；其余 `/admin*` API（含抓包 SSE）均受保护。
+
 | 端点 | 方法 | 功能 |
 |------|------|------|
 | `/admin/` | GET | Admin UI 页面 |
@@ -196,7 +198,7 @@ POST /{name}/v1/messages 或 POST /{name}/v1/chat/completions
 | `llm-proxy start` | 加载配置 → 创建 ConfigStore/StatusTracker/Logger → 启动 HTTP Server |
 | `llm-proxy stop` | 读取 PID 文件 → kill SIGTERM |
 | `llm-proxy status` | 检查 PID 文件 + process.kill(pid, 0) |
-| `llm-proxy reload` | `fetch POST /admin/config/reload` |
+| `llm-proxy reload` | 携带当前管理密钥请求 `POST /admin/config/reload`；轮换时通过 `--admin-key` 或 `LLM_PROXY_ADMIN_KEY` 提供旧密钥 |
 
 ## 配置模型
 
@@ -204,6 +206,7 @@ POST /{name}/v1/messages 或 POST /{name}/v1/chat/completions
 Config {
   providers: Provider[]    // 上游 LLM 提供商
   adapters?: AdapterConfig[]  // 虚拟适配器端点
+  adminKey?: string        // 可选，独立的管理 API 密钥
   proxyKey?: string        // 可选，代理 API 密钥
   logLevel?: string        // 可选，日志级别 (debug/info/warn/error)
 }

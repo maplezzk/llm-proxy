@@ -302,6 +302,7 @@ event: message_stop
 
 - `admin_key` 配置在 `config.yaml` 中；若设置，除用于首次录入密钥的 `GET /admin` Web UI 外壳外，所有 `/admin*` 请求须携带 `Authorization: Bearer <key>` 或 `x-api-key: <key>`
 - Web 管理页可在“设置 → 管理 API Key”中将密钥保存到当前浏览器，之后普通管理请求和抓包 SSE 流都会自动携带 Bearer 密钥
+- 热重载轮换或删除 `admin_key` 时，新配置中的密钥尚未生效；使用 `llm-proxy reload --admin-key <当前密钥>`，或通过 `LLM_PROXY_ADMIN_KEY` 提供当前运行密钥
 - `proxy_key` 配置在 `config.yaml` 中
 - 若设置，所有 `/v1/*` 请求须携带 `Authorization: Bearer <key>` 或 `x-api-key: <key>`
 - 两个密钥相互独立；未配置对应密钥时保持原有免认证行为

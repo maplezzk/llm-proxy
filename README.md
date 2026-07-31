@@ -78,6 +78,7 @@ The admin UI supports:
 - **Provider management**: Add/edit/delete AI providers, pull model lists from APIs, declare input modalities (text/image)
 - **Adapter config**: Create virtual endpoints with model remapping and protocol adaptation
 - **Vision settings**: Enable external vision (image-to-text) for non-multimodal models, view cache stats
+- **Management key**: Store an independent admin API key in this browser for protected management endpoints
 - **Proxy key**: Set API authentication key
 - **Live test**: Send test requests directly to verify configuration
 - **Protocol capture**: Real-time request/response inspection
@@ -203,6 +204,8 @@ llm-proxy status    # Show status
 | `/admin/test-model` | POST | Send a test request to a provider/model |
 | `/admin/test-adapter` | POST | Send a test request through an adapter |
 | `/admin/debug/captures/*` | GET / POST | Protocol capture ring buffer + SSE stream |
+
+When `admin_key` is configured, all management APIs require `Authorization: Bearer <key>` or `x-api-key: <key>`. The static `GET /admin` shell stays public so the browser can save its key under **Settings → Management API Key**. To rotate or remove the key with hot reload, authenticate with the currently running key: `llm-proxy reload --admin-key <current-key>` (or set `LLM_PROXY_ADMIN_KEY`).
 
 ## Protocol Translation Matrix
 

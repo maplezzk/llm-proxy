@@ -12,6 +12,7 @@ import { createProxyServer } from '../../src/api/server.js'
 import type { Config } from '../../src/config/types.js'
 import { serializeConfigToYaml } from '../../src/config/parser.js'
 import { CaptureBuffer } from '../../src/proxy/capture.js'
+import { cmdReload } from '../../src/cli/commands.js'
 
 function listen(server: Server, port: number): Promise<void> {
   return new Promise((resolve) => server.listen(port, '127.0.0.1', resolve))
@@ -125,6 +126,48 @@ describe('config hot reload', () => {
       assert.deepStrictEqual(changedLocales, ['zh'])
       assert.strictEqual(capture.getAll().length, 1)
     } finally {
+      await close(server)
+      usageStore.close()
+    }
+  })
+
+  it('CLI reload 可使用当前密钥轮换并删除 admin_key', async () => {
+    const port = await freePort()
+    const configPath = join(mkdtempSync(join(tmpdir(), 'hot-reload-auth-')), 'config.yaml')
+    const usageStore = new UsageStore(join(mkdtempSync(join(tmpdir(), 'hot-reload-auth-')), 'usage.db'))
+    const initialConfig: Config = { ...config(), port, adminKey: 'old-secret' }
+    const savedReloadAdminKey = process.env.LLM_PROXY_ADMIN_KEY
+    writeFileSync(configPath, serializeConfigToYaml(initialConfig), 'utf-8')
+    const store = new ConfigStore(configPath, initialConfig)
+    const server = createProxyServer({
+      adminHost: '127.0.0.1',
+      adminPort: port,
+      proxyHost: '127.0.0.1',
+      proxyPort: port,
+      store,
+      tracker: new StatusTracker(),
+      usageStore,
+      logger: new Logger(),
+    })
+
+    await listen(server, port)
+    try {
+      writeFileSync(
+        configPath,
+        serializeConfigToYaml({ ...initialConfig, adminKey: 'new-secret' }),
+        'utf-8',
+      )
+      await cmdReload({ port, config: configPath, adminKey: 'old-secret' })
+      assert.strictEqual(store.getConfig().config.adminKey, 'new-secret')
+
+      const { adminKey: _removed, ...withoutAdminKey } = initialConfig
+      writeFileSync(configPath, serializeConfigToYaml(withoutAdminKey), 'utf-8')
+      process.env.LLM_PROXY_ADMIN_KEY = 'new-secret'
+      await cmdReload({ port, config: configPath })
+      assert.strictEqual(store.getConfig().config.adminKey, undefined)
+    } finally {
+      if (savedReloadAdminKey === undefined) delete process.env.LLM_PROXY_ADMIN_KEY
+      else process.env.LLM_PROXY_ADMIN_KEY = savedReloadAdminKey
       await close(server)
       usageStore.close()
     }

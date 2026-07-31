@@ -35,7 +35,9 @@ const COMMANDS: Record<string, () => Promise<void>> = {
     const config = configIndex !== -1 ? process.argv[configIndex + 1] : undefined
     const portIndex = process.argv.indexOf('--port')
     const port = portIndex !== -1 ? parseInt(process.argv[portIndex + 1], 10) : undefined
-    return cmdReload({ config, port: isNaN(port as number) ? undefined : port })
+    const adminKeyIndex = process.argv.indexOf('--admin-key')
+    const adminKey = adminKeyIndex !== -1 ? process.argv[adminKeyIndex + 1] : undefined
+    return cmdReload({ config, port: isNaN(port as number) ? undefined : port, adminKey })
   },
 }
 
@@ -56,6 +58,7 @@ llm-proxy — 本地统一 LLM 模型代理
   --host <host>        绑定地址 (默认: 127.0.0.1)
   --port <port>        端口 (默认: 9000，也可在 config.yaml 中设置 port)
   --log-level <level>  日志级别: debug, info, warn, error (默认: info)
+  --admin-key <key>    reload 使用的当前管理密钥（轮换密钥时使用）
 `)
 }
 
