@@ -71,7 +71,9 @@ class MenuBarController: NSObject, NSMenuDelegate {
         self.menuCardState = MenuCardState(
             model: StatusCardModel(
                 state: .starting,
-                port: APIClient.storedPort(),
+                managementURL: APIClient.storedManagementURL(),
+                usesRemoteManagement: APIClient.configuredManagementURL() != nil,
+                canSwitchManagementMode: APIClient.lastRemoteManagementURL() != nil,
                 todayTokensText: nil,
                 hitRateText: nil,
                 isOperationInProgress: false,
@@ -210,17 +212,16 @@ class MenuBarController: NSObject, NSMenuDelegate {
 
         // 状态、用量图、服务控制拆成独立菜单项。只有用量图项挂详情子菜单，
         // 因此 AppKit 的 hover 命中不会扩散到整张顶部卡片。
-        let statusModel = StatusCardModel(
-            state: serviceState,
-            port: currentPort,
-            todayTokensText: todayTokensText,
-            hitRateText: todayHitRateText,
-            isOperationInProgress: isServiceOperationInProgress,
-            transientText: transientStatus
-        )
+        let statusModel = makeStatusCardModel()
         menuCardState.model = statusModel
         menuCardState.usagePoints = recentUsage
-        menu.addItem(makeCardItem(LiveServiceStatusCardView(state: menuCardState), interactive: false))
+        menu.addItem(makeCardItem(
+            LiveServiceStatusCardView(
+                state: menuCardState,
+                onToggleManagementMode: { [weak self] in self?.toggleManagementMode() }
+            ),
+            interactive: statusModel.canSwitchManagementMode
+        ))
 
         if !recentUsage.isEmpty {
             let usageItem = makeCardItem(
@@ -455,6 +456,33 @@ class MenuBarController: NSObject, NSMenuDelegate {
         usageInteraction.hoveredDate = nil
         usageInteraction.buckets = []
         usageInteraction.isLoading = false
+    }
+
+    private func makeStatusCardModel() -> StatusCardModel {
+        let usesRemote = client.usesCustomManagementURL
+        return StatusCardModel(
+            state: serviceState,
+            managementURL: client.baseURL,
+            usesRemoteManagement: usesRemote,
+            canSwitchManagementMode: usesRemote || APIClient.lastRemoteManagementURL() != nil,
+            todayTokensText: todayTokensText,
+            hitRateText: todayHitRateText,
+            isOperationInProgress: isServiceOperationInProgress,
+            transientText: transientStatus
+        )
+    }
+
+    @MainActor
+    private func toggleManagementMode() {
+        if client.usesCustomManagementURL {
+            client.switchToLocalManagement()
+        } else if !client.switchToRemoteManagement() {
+            return
+        }
+
+        // 先即时更新仍在屏幕上的菜单卡片，再异步从新地址刷新完整数据。
+        menuCardState.model = makeStatusCardModel()
+        NotificationCenter.default.post(name: .configDidChange, object: nil)
     }
 
     @MainActor

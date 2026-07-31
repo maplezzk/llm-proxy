@@ -2,6 +2,7 @@ import Foundation
 
 class APIClient {
     static let managementURLDefaultsKey = "llm-proxy-management-url"
+    static let lastRemoteManagementURLDefaultsKey = "llm-proxy-last-remote-management-url"
     static let managementAPIKeyDefaultsKey = "llm-proxy-management-api-key"
 
     /// Tests and one-off callers can override the resolved URL without changing
@@ -32,6 +33,16 @@ class APIClient {
             return nil
         }
         return normalizedManagementURL(stored)
+    }
+
+    /// 最近一次配置的远程管理地址。切换到本地模式时继续保留，供菜单栏一键恢复。
+    static func lastRemoteManagementURL() -> String? {
+        if let stored = UserDefaults.standard.string(forKey: lastRemoteManagementURLDefaultsKey),
+           let normalized = normalizedManagementURL(stored) {
+            return normalized
+        }
+        // 兼容升级前已经启用远程管理、但尚未写入“最近地址”的用户。
+        return configuredManagementURL()
     }
 
     /// 所有管理 API 的实际 base URL。未配置时保持原有本机端口行为。
@@ -92,12 +103,30 @@ class APIClient {
     func updateManagementURL(_ input: String) -> Bool {
         let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.isEmpty {
+            if let current = Self.configuredManagementURL() {
+                UserDefaults.standard.set(current, forKey: Self.lastRemoteManagementURLDefaultsKey)
+            }
             UserDefaults.standard.removeObject(forKey: Self.managementURLDefaultsKey)
             baseURLOverride = nil
             return true
         }
         guard let normalized = Self.normalizedManagementURL(trimmed) else { return false }
         UserDefaults.standard.set(normalized, forKey: Self.managementURLDefaultsKey)
+        UserDefaults.standard.set(normalized, forKey: Self.lastRemoteManagementURLDefaultsKey)
+        baseURLOverride = nil
+        return true
+    }
+
+    /// 切换到本地管理，但保留当前远程地址以便稍后恢复。
+    func switchToLocalManagement() {
+        _ = updateManagementURL("")
+    }
+
+    /// 恢复最近一次远程管理地址。没有历史远程地址时返回 false。
+    @discardableResult
+    func switchToRemoteManagement() -> Bool {
+        guard let remoteURL = Self.lastRemoteManagementURL() else { return false }
+        UserDefaults.standard.set(remoteURL, forKey: Self.managementURLDefaultsKey)
         baseURLOverride = nil
         return true
     }

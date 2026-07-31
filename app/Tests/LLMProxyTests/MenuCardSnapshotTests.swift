@@ -42,7 +42,9 @@ final class MenuCardSnapshotTests: XCTestCase {
             ]
             let statusModel = StatusCardModel(
                 state: .running,
-                port: 9000,
+                managementURL: "https://proxy.example.com/llm-proxy",
+                usesRemoteManagement: true,
+                canSwitchManagementMode: true,
                 todayTokensText: "52M",
                 hitRateText: "78%",
                 isOperationInProgress: false,
@@ -68,7 +70,9 @@ final class MenuCardSnapshotTests: XCTestCase {
 
             let stoppedModel = StatusCardModel(
                 state: .stopped,
-                port: 9000,
+                managementURL: "http://127.0.0.1:9000",
+                usesRemoteManagement: false,
+                canSwitchManagementMode: true,
                 todayTokensText: nil,
                 hitRateText: nil,
                 isOperationInProgress: false,

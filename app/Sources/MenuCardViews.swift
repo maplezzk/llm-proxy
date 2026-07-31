@@ -12,7 +12,11 @@ enum MenuCardMetrics {
 
 struct StatusCardModel {
     let state: ServiceState
-    let port: Int
+    /// 当前实际生效的管理服务地址。
+    let managementURL: String
+    let usesRemoteManagement: Bool
+    /// 远程模式始终可以切回本地；本地模式仅在保存过远程地址时可以恢复。
+    let canSwitchManagementMode: Bool
     /// 今日用量摘要（格式化后的 "52M"），nil 表示不可用/未运行
     let todayTokensText: String?
     /// 缓存命中率（"78%"），nil 表示不可用
@@ -23,14 +27,18 @@ struct StatusCardModel {
 
     init(
         state: ServiceState,
-        port: Int,
+        managementURL: String,
+        usesRemoteManagement: Bool,
+        canSwitchManagementMode: Bool,
         todayTokensText: String?,
         hitRateText: String?,
         isOperationInProgress: Bool,
         transientText: String?
     ) {
         self.state = state
-        self.port = port
+        self.managementURL = managementURL
+        self.usesRemoteManagement = usesRemoteManagement
+        self.canSwitchManagementMode = canSwitchManagementMode
         self.todayTokensText = todayTokensText
         self.hitRateText = hitRateText
         self.isOperationInProgress = isOperationInProgress
@@ -103,6 +111,13 @@ final class MenuUsageInteraction: ObservableObject {
 
 struct ServiceStatusCardView: View {
     let model: StatusCardModel
+    let onToggleManagementMode: () -> Void
+    @State private var isModeButtonHovered = false
+
+    init(model: StatusCardModel, onToggleManagementMode: @escaping () -> Void = {}) {
+        self.model = model
+        self.onToggleManagementMode = onToggleManagementMode
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -123,19 +138,50 @@ struct ServiceStatusCardView: View {
                     .foregroundStyle(.secondary)
             }
 
-            HStack {
-                if let tokens = model.todayTokensText {
-                    Text(loc("menu.todayUsage", tokens, model.hitRateText ?? "–"))
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
-                Text(verbatim: ":\(model.port)")
-                    .font(.system(size: 11, weight: .medium, design: .monospaced))
+            if let tokens = model.todayTokensText {
+                Text(loc("menu.todayUsage", tokens, model.hitRateText ?? "–"))
+                    .font(.system(size: 11))
                     .foregroundStyle(.secondary)
+            }
+
+            HStack(spacing: 7) {
+                Label(
+                    loc(model.usesRemoteManagement ? "menu.management.remote" : "menu.management.local"),
+                    systemImage: model.usesRemoteManagement ? "network" : "desktopcomputer"
+                )
+                .font(.system(size: 9.5, weight: .medium))
+                .foregroundStyle(model.usesRemoteManagement ? Color.purple : Color.blue)
+                .fixedSize()
+
+                Text(verbatim: model.managementURL)
+                    .font(.system(size: 9.5, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .help(model.managementURL)
+
+                Spacer(minLength: 2)
+
+                if model.canSwitchManagementMode {
+                    Button(
+                        loc(model.usesRemoteManagement
+                            ? "menu.management.switchToLocal"
+                            : "menu.management.switchToRemote"),
+                        action: onToggleManagementMode
+                    )
+                    .buttonStyle(.plain)
+                    .font(.system(size: 9.5, weight: .medium))
+                    .foregroundStyle(Color.accentColor)
                     .padding(.horizontal, 7)
-                    .padding(.vertical, 2)
-                    .background(Capsule().fill(Color.secondary.opacity(0.12)))
+                    .padding(.vertical, 3)
+                    .background(
+                        Capsule().fill(Color.accentColor.opacity(isModeButtonHovered ? 0.2 : 0.12))
+                    )
+                    .onHover { isModeButtonHovered = $0 }
+                    .help(loc(model.usesRemoteManagement
+                        ? "menu.management.switchToLocal"
+                        : "menu.management.switchToRemote"))
+                }
             }
         }
         .padding(.horizontal, 14)
@@ -202,9 +248,13 @@ struct ServiceControlCardView: View {
 /// 让旧实例中的 SwiftUI 内容也能随服务操作和轮询结果立即更新。
 struct LiveServiceStatusCardView: View {
     @ObservedObject var state: MenuCardState
+    let onToggleManagementMode: () -> Void
 
     var body: some View {
-        ServiceStatusCardView(model: state.model)
+        ServiceStatusCardView(
+            model: state.model,
+            onToggleManagementMode: onToggleManagementMode
+        )
     }
 }
 
@@ -502,6 +552,11 @@ struct MenuUsagePopoverView: View {
                         RoundedRectangle(cornerRadius: 5, style: .continuous)
                             .fill(interaction.dimension == dimension ? Color.accentColor : Color.secondary.opacity(0.1))
                     )
+                    .contentShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
+                    .onHover { isActive in
+                        guard isActive, interaction.dimension != dimension else { return }
+                        onDimensionChange(dimension)
+                    }
                 }
             }
 
