@@ -105,9 +105,9 @@ struct SettingsView: View {
                                 .textFieldStyle(.roundedBorder)
                                 .frame(minWidth: 140, idealWidth: 280, maxWidth: 360)
                                 .help(loc("settings.managementURLHint"))
-                                .onSubmit { saveManagementURL() }
+                                .onSubmit { Task { await saveManagementURL() } }
                             Button(loc("action.save")) {
-                                saveManagementURL()
+                                Task { await saveManagementURL() }
                             }
                             .buttonStyle(.borderedProminent)
                             .controlSize(.small)
@@ -116,11 +116,19 @@ struct SettingsView: View {
 
                             if APIClient.configuredManagementURL() != nil {
                                 Button(loc("settings.managementURLReset")) {
-                                    resetManagementURL()
+                                    Task { await switchToLocalManagement() }
                                 }
                                 .buttonStyle(.bordered)
                                 .controlSize(.small)
                                 .fixedSize(horizontal: true, vertical: false)
+                            } else if let remoteURL = APIClient.lastRemoteManagementURL() {
+                                Button(loc("settings.managementURLUseRemote")) {
+                                    Task { await switchToRemoteManagement() }
+                                }
+                                .buttonStyle(.bordered)
+                                .controlSize(.small)
+                                .fixedSize(horizontal: true, vertical: false)
+                                .help(remoteURL)
                             }
                         }
                     }
@@ -452,6 +460,12 @@ struct SettingsView: View {
     private func loadSettings() async {
         managementURL = APIClient.storedManagementURL()
         hasManagementAPIKey = APIClient.configuredManagementAPIKey() != nil
+        originalPort = nil
+        port = ""
+        hasProxyKey = false
+        proxyKeyLoadState = .loading
+        visionConfig = nil
+        visionProviders = []
         if APIClient.configuredManagementURL() == nil {
             do {
                 if let p = try await api.fetchPort() {
@@ -459,9 +473,6 @@ struct SettingsView: View {
                     port = String(p)
                 }
             } catch {}
-        } else {
-            originalPort = nil
-            port = ""
         }
         do {
             hasProxyKey = try await api.fetchProxyKey()
@@ -479,25 +490,33 @@ struct SettingsView: View {
 
     // MARK: - Management URL
 
-    private func saveManagementURL() {
+    private func saveManagementURL() async {
         guard api.updateManagementURL(managementURL) else {
             showToast(loc("settings.managementURLInvalid"), type: "error")
             return
         }
-        managementURL = APIClient.storedManagementURL()
-        managementAPIKey = ""
-        hasManagementAPIKey = APIClient.configuredManagementAPIKey() != nil
+        await refreshManagementConnection()
         showToast(loc("settings.managementURLSaved"), type: "success")
         NotificationCenter.default.post(name: .configDidChange, object: nil)
     }
 
-    private func resetManagementURL() {
-        _ = api.updateManagementURL("")
-        managementURL = APIClient.storedManagementURL()
-        managementAPIKey = ""
-        hasManagementAPIKey = APIClient.configuredManagementAPIKey() != nil
+    private func switchToLocalManagement() async {
+        api.switchToLocalManagement()
+        await refreshManagementConnection()
         showToast(loc("settings.managementURLResetDone"), type: "success")
         NotificationCenter.default.post(name: .configDidChange, object: nil)
+    }
+
+    private func switchToRemoteManagement() async {
+        guard api.switchToRemoteManagement() else { return }
+        await refreshManagementConnection()
+        showToast(loc("settings.managementURLUseRemoteDone"), type: "success")
+        NotificationCenter.default.post(name: .configDidChange, object: nil)
+    }
+
+    private func refreshManagementConnection() async {
+        managementAPIKey = ""
+        await loadSettings()
     }
 
     // MARK: - Management API Key

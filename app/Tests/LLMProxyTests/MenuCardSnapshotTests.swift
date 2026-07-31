@@ -121,6 +121,7 @@ final class MenuCardSnapshotTests: XCTestCase {
     func testRenderSettingsLayout() {
         let defaults = UserDefaults.standard
         let savedURL = defaults.object(forKey: APIClient.managementURLDefaultsKey)
+        let savedLastRemoteURL = defaults.object(forKey: APIClient.lastRemoteManagementURLDefaultsKey)
         let savedLanguage = defaults.object(forKey: "llm-proxy-lang")
         defaults.set("zh", forKey: "llm-proxy-lang")
         defer {
@@ -128,6 +129,11 @@ final class MenuCardSnapshotTests: XCTestCase {
                 defaults.set(savedURL, forKey: APIClient.managementURLDefaultsKey)
             } else {
                 defaults.removeObject(forKey: APIClient.managementURLDefaultsKey)
+            }
+            if let savedLastRemoteURL {
+                defaults.set(savedLastRemoteURL, forKey: APIClient.lastRemoteManagementURLDefaultsKey)
+            } else {
+                defaults.removeObject(forKey: APIClient.lastRemoteManagementURLDefaultsKey)
             }
             if let savedLanguage {
                 defaults.set(savedLanguage, forKey: "llm-proxy-lang")
@@ -137,8 +143,10 @@ final class MenuCardSnapshotTests: XCTestCase {
         }
 
         for mode in ["remote", "local"] {
+            let remoteURL = "https://45.76.76.29:9000"
+            defaults.set(remoteURL, forKey: APIClient.lastRemoteManagementURLDefaultsKey)
             if mode == "remote" {
-                defaults.set("https://45.76.76.29:9000", forKey: APIClient.managementURLDefaultsKey)
+                defaults.set(remoteURL, forKey: APIClient.managementURLDefaultsKey)
             } else {
                 defaults.removeObject(forKey: APIClient.managementURLDefaultsKey)
             }

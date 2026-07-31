@@ -278,6 +278,8 @@
 "settings.managementURLSaved" = "Management service saved";
 "settings.managementURLReset" = "Use Local";
 "settings.managementURLResetDone" = "Switched to the local service";
+"settings.managementURLUseRemote" = "Use Remote";
+"settings.managementURLUseRemoteDone" = "Switched to the remote service";
 "settings.managementAPIKey" = "Management API Key";
 "settings.managementAPIKeyPlaceholder" = "Enter management API key";
 "settings.managementAPIKeyConfiguredPlaceholder" = "•••••••• (enter a new key to replace)";

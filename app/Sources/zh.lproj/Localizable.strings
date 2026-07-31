@@ -300,6 +300,8 @@
 "settings.managementURLSaved" = "管理服务地址已保存";
 "settings.managementURLReset" = "使用本地";
 "settings.managementURLResetDone" = "已切换到本地服务";
+"settings.managementURLUseRemote" = "使用远程";
+"settings.managementURLUseRemoteDone" = "已切换到远程服务";
 "settings.managementAPIKey" = "管理 API 密钥";
 "settings.managementAPIKeyPlaceholder" = "输入管理 API 密钥";
 "settings.managementAPIKeyConfiguredPlaceholder" = "••••••••（输入新密钥可替换）";
