@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.28.1](https://github.com/maplezzk/llm-proxy/compare/v0.28.0...v0.28.1) (2026-07-31)
+
+
+### Bug Fixes
+
+* 完善远程管理切换与本地进程控制 ([2756a81](https://github.com/maplezzk/llm-proxy/commit/2756a81f81194f59906c2b006abdbf6985d434fd))
+* 支持设置页切换到远程服务 ([cc74348](https://github.com/maplezzk/llm-proxy/commit/cc743481465e71928f5288ce4d48d9e81552af2a))
+* 隔离远程管理与本地进程控制 ([66061b2](https://github.com/maplezzk/llm-proxy/commit/66061b27f166f0710bccbe34a8e2ade56994593e))
+
 ## [0.28.0](https://github.com/maplezzk/llm-proxy/compare/v0.27.0...v0.28.0) (2026-07-31)
 
 
