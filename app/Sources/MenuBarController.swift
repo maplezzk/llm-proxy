@@ -233,14 +233,18 @@ class MenuBarController: NSObject, NSMenuDelegate {
             menu.addItem(usageItem)
         }
 
-        let controlsCard = LiveServiceControlCardView(
-            state: menuCardState,
-            onStart: { [weak self] in self?.startService() },
-            onStop: { [weak self] in self?.stopService() },
-            onRestart: { [weak self] in self?.restartService() },
-            onReload: { [weak self] in self?.reloadConfig() }
-        )
-        menu.addItem(makeCardItem(controlsCard, interactive: true))
+        // 自定义管理地址只负责远程管理，绝不能把远端健康状态映射为本机
+        // CLI 的启停操作。远程配置重载仍可从控制台 Settings 执行。
+        if !client.usesCustomManagementURL {
+            let controlsCard = LiveServiceControlCardView(
+                state: menuCardState,
+                onStart: { [weak self] in self?.startService() },
+                onStop: { [weak self] in self?.stopService() },
+                onRestart: { [weak self] in self?.restartService() },
+                onReload: { [weak self] in self?.reloadConfig() }
+            )
+            menu.addItem(makeCardItem(controlsCard, interactive: true))
+        }
         menu.addItem(.separator())
 
         // 界面组：控制台 + Web UI
@@ -269,26 +273,27 @@ class MenuBarController: NSObject, NSMenuDelegate {
 
         let settingsMenu = NSMenu()
 
-        // 端口设置（子菜单）
-        let portItem = NSMenuItem(title: loc("action.port", String(currentPort)), action: nil, keyEquivalent: "")
-        if #available(macOS 11.0, *) {
-            portItem.image = coloredIcon("number", .systemIndigo)
+        if !client.usesCustomManagementURL {
+            // 端口快捷设置会调用本机 CLI 重启，仅在本机管理模式提供。
+            let portItem = NSMenuItem(title: loc("action.port", String(currentPort)), action: nil, keyEquivalent: "")
+            if #available(macOS 11.0, *) {
+                portItem.image = coloredIcon("number", .systemIndigo)
+            }
+            let portMenu = NSMenu()
+            for p in [9000, 9001, 9002, 8080, 3000] {
+                let item = NSMenuItem(title: String(p), action: #selector(changePort(_:)), keyEquivalent: "")
+                item.target = self
+                item.representedObject = p
+                if p == currentPort { item.state = .on }
+                portMenu.addItem(item)
+            }
+            portMenu.addItem(.separator())
+            let customItem = NSMenuItem(title: loc("action.customPort"), action: #selector(showCustomPortDialog), keyEquivalent: "")
+            customItem.target = self
+            portMenu.addItem(customItem)
+            portItem.submenu = portMenu
+            settingsMenu.addItem(portItem)
         }
-        let portMenu = NSMenu()
-        // 常用端口快捷选项
-        for p in [9000, 9001, 9002, 8080, 3000] {
-            let item = NSMenuItem(title: String(p), action: #selector(changePort(_:)), keyEquivalent: "")
-            item.target = self
-            item.representedObject = p
-            if p == currentPort { item.state = .on }
-            portMenu.addItem(item)
-        }
-        portMenu.addItem(.separator())
-        let customItem = NSMenuItem(title: loc("action.customPort"), action: #selector(showCustomPortDialog), keyEquivalent: "")
-        customItem.target = self
-        portMenu.addItem(customItem)
-        portItem.submenu = portMenu
-        settingsMenu.addItem(portItem)
 
         let logLevelItem = NSMenuItem(title: loc("action.logLevel", currentLogLevel), action: nil, keyEquivalent: "")
         if #available(macOS 11.0, *) {
@@ -662,6 +667,7 @@ class MenuBarController: NSObject, NSMenuDelegate {
     }
 
     @MainActor @objc func stopService() {
+        guard !client.usesCustomManagementURL else { return }
         guard !isServiceOperationInProgress else { return }
         isServiceOperationInProgress = true
         setTransientStatus(loc("status.stopping"))
@@ -684,6 +690,7 @@ class MenuBarController: NSObject, NSMenuDelegate {
     }
 
     @MainActor @objc func restartService() {
+        guard !client.usesCustomManagementURL else { return }
         guard !isServiceOperationInProgress else { return }
         isServiceOperationInProgress = true
         setTransientStatus(loc("status.restarting"))
@@ -706,6 +713,7 @@ class MenuBarController: NSObject, NSMenuDelegate {
     }
 
     @MainActor @objc func startService() {
+        guard !client.usesCustomManagementURL else { return }
         guard !isServiceOperationInProgress else { return }
         isServiceOperationInProgress = true
         setTransientStatus(loc("status.starting"))
@@ -736,6 +744,11 @@ class MenuBarController: NSObject, NSMenuDelegate {
             // 服务已在跑：拉取完整数据并重建菜单（“启动中” → “运行中” + 适配器列表）
             serviceState = .running
             await refresh()
+            return
+        }
+        if client.usesCustomManagementURL {
+            serviceState = .stopped
+            rebuildMenu()
             return
         }
         // 服务未运行：保持“启动中”，调 CLI 启动，由轮询检测到后切换为“运行中”
@@ -1085,6 +1098,12 @@ class MenuBarController: NSObject, NSMenuDelegate {
     @MainActor @objc func quitApp() {
         guard !isQuitting else { return }
         isQuitting = true
+
+        // 远程管理模式下退出 App 只结束本地 UI，不触碰任何服务进程。
+        if client.usesCustomManagementURL {
+            finishQuit()
+            return
+        }
 
         // 服务已经停止时不再调用 stop CLI。旧路径会等待一个没有目标进程的
         // stop 流程，导致菜单项高亮但应用迟迟不退出。

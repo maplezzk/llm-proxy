@@ -264,6 +264,14 @@
 "common.cancel" = "Cancel";
 "common.loading" = "Loading...";
 "settings.title" = "Settings";
+"settings.managementURL" = "Management Service";
+"settings.managementURLLocal" = "Local service (default)";
+"settings.managementURLPlaceholder" = "https://proxy.example.com";
+"settings.managementURLHint" = "Remote services require HTTPS. You may include a reverse-proxy path or paste a URL ending in /admin.";
+"settings.managementURLInvalid" = "Enter an HTTPS remote URL or an HTTP loopback URL without query parameters or credentials";
+"settings.managementURLSaved" = "Management service saved";
+"settings.managementURLReset" = "Use Local";
+"settings.managementURLResetDone" = "Switched to the local service";
 "settings.port" = "Port";
 "settings.proxyKey" = "Proxy Key";
 "settings.set" = "Set";

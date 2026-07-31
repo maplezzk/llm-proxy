@@ -1,17 +1,103 @@
 import Foundation
 
 class APIClient {
-    var baseURL: String
+    static let managementURLDefaultsKey = "llm-proxy-management-url"
 
-    init() {
-        let port = Self.storedPort()
-        self.baseURL = "http://127.0.0.1:\(port)"
+    /// Tests and one-off callers can override the resolved URL without changing
+    /// the persisted app setting. Normal app clients keep this nil so every
+    /// request observes Settings changes immediately.
+    private var baseURLOverride: String?
+
+    var baseURL: String {
+        get { baseURLOverride ?? Self.storedManagementURL() }
+        set { baseURLOverride = newValue }
     }
+
+    var usesCustomManagementURL: Bool {
+        Self.configuredManagementURL() != nil
+    }
+
+    init() {}
 
     /// 从 UserDefaults 读取端口，默认 9000
     static func storedPort() -> Int {
         let stored = UserDefaults.standard.integer(forKey: "llm-proxy-port")
         return stored > 0 ? stored : 9000
+    }
+
+    /// 用户显式配置的管理服务地址；nil 表示继续管理本机服务。
+    static func configuredManagementURL() -> String? {
+        guard let stored = UserDefaults.standard.string(forKey: managementURLDefaultsKey) else {
+            return nil
+        }
+        return normalizedManagementURL(stored)
+    }
+
+    /// 所有管理 API 的实际 base URL。未配置时保持原有本机端口行为。
+    static func storedManagementURL() -> String {
+        configuredManagementURL() ?? "http://127.0.0.1:\(storedPort())"
+    }
+
+    static func adapterAPIBaseURL(_ adapterName: String) -> String {
+        "\(storedManagementURL())/\(adapterName)/v1/"
+    }
+
+    /// 规范化用户输入：允许粘贴 Web UI 的 `/admin` 地址，也允许反向代理前缀。
+    /// 远程 HTTP 会被拒绝，避免打包 App 的 ATS 拦截及明文管理流量。
+    static func normalizedManagementURL(_ input: String) -> String? {
+        let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty,
+              var components = URLComponents(string: trimmed),
+              let scheme = components.scheme?.lowercased(),
+              let host = components.host?.lowercased(),
+              !host.isEmpty,
+              components.user == nil,
+              components.password == nil,
+              components.query == nil,
+              components.fragment == nil,
+              scheme == "https" || (scheme == "http" && isLoopbackHost(host)) else {
+            return nil
+        }
+
+        components.scheme = scheme
+        components.host = host
+
+        var path = components.percentEncodedPath
+        while path.count > 1 && path.hasSuffix("/") {
+            path.removeLast()
+        }
+        if path == "/admin" {
+            path = ""
+        } else if path.hasSuffix("/admin") {
+            path.removeLast("/admin".count)
+        }
+        components.percentEncodedPath = path
+
+        guard let normalized = components.url?.absoluteString else { return nil }
+        return normalized.hasSuffix("/") ? String(normalized.dropLast()) : normalized
+    }
+
+    private static func isLoopbackHost(_ host: String) -> Bool {
+        if host == "localhost" || host == "::1" { return true }
+        let octets = host.split(separator: ".", omittingEmptySubsequences: false)
+        guard octets.count == 4,
+              octets[0] == "127" else { return false }
+        return octets.allSatisfy { UInt8($0) != nil }
+    }
+
+    /// 保存自定义管理地址。空字符串等价于恢复本机默认地址。
+    @discardableResult
+    func updateManagementURL(_ input: String) -> Bool {
+        let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty {
+            UserDefaults.standard.removeObject(forKey: Self.managementURLDefaultsKey)
+            baseURLOverride = nil
+            return true
+        }
+        guard let normalized = Self.normalizedManagementURL(trimmed) else { return false }
+        UserDefaults.standard.set(normalized, forKey: Self.managementURLDefaultsKey)
+        baseURLOverride = nil
+        return true
     }
 
     // MARK: - 统一错误解析
@@ -63,10 +149,12 @@ class APIClient {
         }
     }
 
-    /// 更新 baseURL（端口变更时调用）
+    /// 更新本机服务端口。自定义管理地址下，远端服务端口与连接地址是两套配置，
+    /// 因此不能把 baseURL 重写回 127.0.0.1。
     func updatePort(_ port: Int) {
+        guard !usesCustomManagementURL else { return }
         UserDefaults.standard.set(port, forKey: "llm-proxy-port")
-        baseURL = "http://127.0.0.1:\(port)"
+        baseURLOverride = nil
     }
 
     func fetchLogLevel() async throws -> String {

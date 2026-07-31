@@ -286,6 +286,14 @@
 
 // Settings
 "settings.title" = "设置";
+"settings.managementURL" = "管理服务地址";
+"settings.managementURLLocal" = "本地服务（默认）";
+"settings.managementURLPlaceholder" = "https://proxy.example.com";
+"settings.managementURLHint" = "远程服务必须使用 HTTPS；可以包含反向代理路径，也可以直接粘贴以 /admin 结尾的地址。";
+"settings.managementURLInvalid" = "请输入不含查询参数和凭据的 HTTPS 远程地址，或 HTTP 本机回环地址";
+"settings.managementURLSaved" = "管理服务地址已保存";
+"settings.managementURLReset" = "使用本地";
+"settings.managementURLResetDone" = "已切换到本地服务";
 "settings.port" = "端口";
 "settings.proxyKey" = "代理密钥";
 "settings.set" = "已设置";

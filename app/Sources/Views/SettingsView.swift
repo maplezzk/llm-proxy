@@ -2,6 +2,7 @@ import SwiftUI
 
 /// 设置页面——侧边栏独立 tab，完整详情区域展示
 struct SettingsView: View {
+    @State private var managementURL: String = APIClient.configuredManagementURL() ?? ""
     @State private var port: String = ""
     @State private var originalPort: Int?
     @State private var hasProxyKey: Bool = false
@@ -45,6 +46,39 @@ struct SettingsView: View {
                     .padding(.horizontal, 24)
                     .padding(.bottom, 12)
                 }
+
+                // 管理服务地址
+                settingsSection {
+                    settingsRow(
+                        icon: "externaldrive.connected.to.line.below",
+                        iconColor: .indigo,
+                        title: loc("settings.managementURL"),
+                        subtitle: APIClient.configuredManagementURL() ?? loc("settings.managementURLLocal")
+                    ) {
+                        HStack(spacing: 8) {
+                            TextField(loc("settings.managementURLPlaceholder"), text: $managementURL)
+                                .textFieldStyle(.roundedBorder)
+                                .frame(width: 300)
+                                .help(loc("settings.managementURLHint"))
+                                .onSubmit { saveManagementURL() }
+                            Button(loc("action.save")) {
+                                saveManagementURL()
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .controlSize(.small)
+
+                            if APIClient.configuredManagementURL() != nil {
+                                Button(loc("settings.managementURLReset")) {
+                                    resetManagementURL()
+                                }
+                                .buttonStyle(.bordered)
+                                .controlSize(.small)
+                            }
+                        }
+                    }
+                }
+
+                Divider().padding(.horizontal, 24)
 
                 // 端口
                 settingsSection {
@@ -282,6 +316,7 @@ struct SettingsView: View {
     // MARK: - Load
 
     private func loadSettings() async {
+        managementURL = APIClient.configuredManagementURL() ?? ""
         do {
             if let p = try await api.fetchPort() {
                 originalPort = p
@@ -297,6 +332,25 @@ struct SettingsView: View {
         do {
             visionProviders = try await api.fetchProviders()
         } catch {}
+    }
+
+    // MARK: - Management URL
+
+    private func saveManagementURL() {
+        guard api.updateManagementURL(managementURL) else {
+            showToast(loc("settings.managementURLInvalid"), type: "error")
+            return
+        }
+        managementURL = APIClient.configuredManagementURL() ?? ""
+        showToast(loc("settings.managementURLSaved"), type: "success")
+        NotificationCenter.default.post(name: .configDidChange, object: nil)
+    }
+
+    private func resetManagementURL() {
+        _ = api.updateManagementURL("")
+        managementURL = ""
+        showToast(loc("settings.managementURLResetDone"), type: "success")
+        NotificationCenter.default.post(name: .configDidChange, object: nil)
     }
 
     // MARK: - Port
