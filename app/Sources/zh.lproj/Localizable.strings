@@ -300,6 +300,8 @@
 "settings.managementURLSaved" = "管理服务地址已保存";
 "settings.managementURLReset" = "使用本地";
 "settings.managementURLResetDone" = "已切换到本地服务";
+"settings.managementURLUseRemote" = "使用远程";
+"settings.managementURLUseRemoteDone" = "已切换到远程服务";
 "settings.managementAPIKey" = "管理 API 密钥";
 "settings.managementAPIKeyPlaceholder" = "输入管理 API 密钥";
 "settings.managementAPIKeyConfiguredPlaceholder" = "••••••••（输入新密钥可替换）";
@@ -373,6 +375,7 @@
 "menu.management.remote" = "远程";
 "menu.management.switchToLocal" = "切到本地";
 "menu.management.switchToRemote" = "切到远程";
+"menu.management.remoteProcessHint" = "远程进程请在服务器端管理";
 "menu.usage.last30Total" = "近 30 天总量";
 "menu.usage.requests" = "%d 次请求";
 "menu.usage.input" = "输入";

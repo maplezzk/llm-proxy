@@ -197,6 +197,22 @@ llm-proxy status    # 查看状态
 
 macOS App 与 Web UI 的界面语言分别保存在本机和当前浏览器，不再修改服务端 `locale`。服务端 `locale` 仅控制服务日志和后端消息语言。
 
+### 反向代理路径
+
+Web UI 会根据当前 `/admin` 页面路径自动解析反向代理前缀。例如将服务发布到 `/llm-proxy/` 时，Nginx 只需正常转发路径：
+
+```nginx
+location /llm-proxy/ {
+    proxy_pass http://127.0.0.1:9000/;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header Authorization $http_authorization;
+    proxy_buffering off;
+}
+```
+
+不要使用 `sub_filter` 全局替换 `/admin`。它会同时改写内联 JavaScript 的正则表达式，导致 Web UI 在加载时出现语法错误。
+
 ## 协议转换矩阵
 
 | 源 | 目标 | 非流式 | 流式 (SSE) |

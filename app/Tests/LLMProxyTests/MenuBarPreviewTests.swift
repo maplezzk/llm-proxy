@@ -58,4 +58,48 @@ final class MenuBarPreviewTests: XCTestCase {
     func testAdapterCardModelsEmptyAdapters() {
         XCTAssertEqual(makeAdapterCardModels(adapters: []).count, 0)
     }
+
+    func testRemoteManagementDoesNotAllowLocalServiceControl() {
+        let remote = StatusCardModel(
+            state: .running,
+            managementURL: "https://proxy.example.com/llm-proxy",
+            usesRemoteManagement: true,
+            canSwitchManagementMode: true,
+            todayTokensText: nil,
+            hitRateText: nil,
+            isOperationInProgress: false,
+            transientText: nil
+        )
+        let local = StatusCardModel(
+            state: .running,
+            managementURL: "http://127.0.0.1:9000",
+            usesRemoteManagement: false,
+            canSwitchManagementMode: true,
+            todayTokensText: nil,
+            hitRateText: nil,
+            isOperationInProgress: false,
+            transientText: nil
+        )
+
+        XCTAssertFalse(remote.allowsLocalServiceControl)
+        XCTAssertTrue(local.allowsLocalServiceControl)
+    }
+
+    func testLocalServiceControlIgnoresRemoteManagementAddress() {
+        XCTAssertEqual(
+            LocalServiceControl.resolvedPort(
+                pidFileContents: #"{"pid":123,"port":9123}"#,
+                storedPort: 9000
+            ),
+            9123
+        )
+        XCTAssertEqual(
+            LocalServiceControl.resolvedPort(pidFileContents: "invalid", storedPort: 9000),
+            9000
+        )
+        XCTAssertEqual(
+            LocalServiceControl.healthURL(port: 9123).absoluteString,
+            "http://127.0.0.1:9123/admin/health"
+        )
+    }
 }

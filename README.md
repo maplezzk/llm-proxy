@@ -211,6 +211,22 @@ When `admin_key` is configured, management APIs require `Authorization: Bearer <
 
 The macOS App and Web UI keep their interface language preferences locally and no longer modify the server `locale`. The server locale controls server logs and backend messages only.
 
+### Reverse-proxy paths
+
+The Web UI derives its reverse-proxy prefix from the current `/admin` page URL. For example, publishing the service below `/llm-proxy/` only requires ordinary Nginx path forwarding:
+
+```nginx
+location /llm-proxy/ {
+    proxy_pass http://127.0.0.1:9000/;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header Authorization $http_authorization;
+    proxy_buffering off;
+}
+```
+
+Do not use `sub_filter` to globally replace `/admin`. It also rewrites regular expressions inside the inline JavaScript bundle and causes a syntax error before the Web UI can start.
+
 ## Protocol Translation Matrix
 
 | Source | Target | Non-streaming | Streaming (SSE) |
