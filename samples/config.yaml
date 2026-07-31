@@ -1,7 +1,8 @@
 # llm-proxy 配置示例
 
 # 远程暴露管理服务时建议通过环境变量配置独立密钥。
-# 设置后管理 API 需要 Authorization: Bearer 或 x-api-key；GET /admin 页面外壳保持公开，便于首次录入密钥。
+# 设置后管理 API 需要 Authorization: Bearer 或 x-api-key；GET /admin 页面外壳保持公开。
+# macOS App 可通过短期、单次交接码把密钥安全导入 HTTPS 或本机 Web UI。
 admin_key: ${ADMIN_KEY}
 
 providers:

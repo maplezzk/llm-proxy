@@ -17,6 +17,8 @@ import {
   ADMIN_KEY_CHANGED_EVENT,
   fetchJson,
   getAdminKey,
+  getAdminKeyStorageMode,
+  getManagementServiceURL,
   setAdminKey,
 } from '../lib/api'
 import type { ApiRes } from '../lib/api-types'
@@ -76,26 +78,19 @@ function Card({
   )
 }
 
-/* ────────────────────────── 通用卡片（语言/主题/端口/重载配置） ────────────────────────── */
+/* ────────────────────────── 浏览器偏好（语言/主题） ────────────────────────── */
 
-function GeneralCard() {
+function ClientPreferencesCard() {
   const { t, i18n } = useTranslation()
-  const { toast } = useToast()
-  const { reloadConfig, switchLang } = useApp()
+  const { switchLang } = useApp()
   const { theme, setTheme, mounted } = useTheme()
   const lang = i18n.language?.startsWith('zh') ? 'zh' : 'en'
-
-  // reload 后由此处弹 toast（AppProvider 位于 ToastProvider 之上，无法内部弹）。
-  const handleReload = async () => {
-    const res = await reloadConfig()
-    if (res) toast(res.message, res.type)
-  }
 
   const rowCls = 'flex items-center justify-between gap-3'
   const labelCls = 'text-[13px] text-foreground'
 
   return (
-    <Card icon="⚙️" title={t('admin.general.title')} desc={t('admin.general.desc')}>
+    <Card icon="⚙️" title={t('admin.general.clientTitle')} desc={t('admin.general.clientDesc')}>
       <div className="flex flex-col gap-3">
         {/* 语言 */}
         <div className={rowCls}>
@@ -127,12 +122,29 @@ function GeneralCard() {
           </div>
         </div>
 
-        {/* 端口 */}
-        <PortSetting />
+      </div>
+    </Card>
+  )
+}
 
-        {/* 重载配置 */}
-        <div className={rowCls}>
-          <span className={labelCls}>{t('admin.common.reloadConfig')}</span>
+/* ────────────────────────── 当前服务运行配置 ────────────────────────── */
+
+function ServiceRuntimeCard() {
+  const { t } = useTranslation()
+  const { toast } = useToast()
+  const { reloadConfig } = useApp()
+
+  const handleReload = async () => {
+    const res = await reloadConfig()
+    if (res) toast(res.message, res.type)
+  }
+
+  return (
+    <Card icon="🖥️" title={t('admin.general.serviceTitle')} desc={t('admin.general.serviceDesc')}>
+      <div className="flex flex-col gap-3">
+        <PortSetting />
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-[13px] text-foreground">{t('admin.common.reloadConfig')}</span>
           <Button variant="ghost" size="sm" onClick={() => void handleReload()}>
             <Refresh data-icon="start" className="size-3.5" />
             {t('admin.common.reloadConfig')}
@@ -150,11 +162,12 @@ function AdminKeyCard() {
   const { toast } = useToast()
   const [key, setKey] = useState('')
   const [hasKey, setHasKey] = useState(() => !!getAdminKey())
+  const [storageMode, setStorageMode] = useState(() => getAdminKeyStorageMode())
   const [showKey, setShowKey] = useState(false)
 
   const save = (value: string) => {
     const normalized = value.trim()
-    setAdminKey(normalized)
+    setStorageMode(setAdminKey(normalized))
     setHasKey(!!normalized)
     setKey('')
     toast(
@@ -172,6 +185,14 @@ function AdminKeyCard() {
       <p className="mb-3 text-[11px] text-muted-foreground">
         {t('admin.managementKey.desc')}
       </p>
+      <p className="mb-3 truncate font-mono text-[11px] text-muted-foreground" title={getManagementServiceURL()}>
+        {t('admin.managementKey.currentService')}: {getManagementServiceURL()}
+      </p>
+      {storageMode === 'session' && (
+        <p className="mb-3 rounded-md bg-warning-soft px-2.5 py-1.5 text-[11px] text-warning-emphasis">
+          {t('admin.managementKey.sessionOnly')}
+        </p>
+      )}
       <div className="flex items-center gap-2">
         <Input
           type={showKey ? 'text' : 'password'}
@@ -543,8 +564,9 @@ function VisionCard() {
 
 /**
  * Settings 页 — 移植自旧版 proxy-key.ts + vision-setting.ts，并收纳原侧栏页脚的通用设置：
- * - 通用卡片（语言/主题/端口/重载配置）
+ * - 浏览器偏好（语言/主题）
  * - Management API Key 卡片（仅保存到当前浏览器，统一用于 /admin API 请求）
+ * - 当前服务运行配置（端口/重载配置）
  * - Proxy Key 卡片（设置/移除 /admin/proxy-key）
  * - Vision 卡片（启用/供应商/模型/提示词 + 缓存统计与清除）
  */
@@ -559,8 +581,9 @@ export default function SettingsPage() {
 
   return (
     <div className="flex max-w-220 flex-col gap-4 p-6">
-      <GeneralCard />
+      <ClientPreferencesCard />
       <AdminKeyCard />
+      <ServiceRuntimeCard />
       <ProxyKeyCard key={`proxy-key-${adminKeyVersion}`} />
       <VisionCard key={`vision-${adminKeyVersion}`} />
     </div>

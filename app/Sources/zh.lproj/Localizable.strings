@@ -286,6 +286,11 @@
 
 // Settings
 "settings.title" = "设置";
+"settings.language" = "语言";
+"settings.group.app" = "App 设置";
+"settings.group.connection" = "管理连接";
+"settings.group.localService" = "本地服务";
+"settings.group.currentService" = "当前服务";
 "settings.managementURL" = "管理服务地址";
 "settings.managementURLLocal" = "本地服务（默认）";
 "settings.managementURLRemote" = "远程服务";
@@ -301,6 +306,7 @@
 "settings.managementAPIKeyHint" = "以 Authorization: Bearer 请求头发送给配置了 admin_key 的管理服务或鉴权反向代理；不同于代理密钥。";
 "settings.managementAPIKeySaved" = "管理 API 密钥已保存";
 "settings.managementAPIKeyRemoved" = "管理 API 密钥已移除";
+"settings.managementAPIKeySaveFailed" = "管理 API 密钥无法写入钥匙串";
 "settings.port" = "端口";
 "settings.proxyKey" = "代理密钥";
 "settings.set" = "已设置";
