@@ -63,7 +63,11 @@ struct SettingsView: View {
                         icon: "externaldrive.connected.to.line.below",
                         iconColor: .indigo,
                         title: loc("settings.managementURL"),
-                        subtitle: APIClient.configuredManagementURL() ?? loc("settings.managementURLLocal")
+                        subtitle: loc(
+                            APIClient.configuredManagementURL() == nil
+                                ? "settings.managementURLLocal"
+                                : "settings.managementURLRemote"
+                        )
                     ) {
                         HStack(spacing: 8) {
                             TextField(loc("settings.managementURLPlaceholder"), text: $managementURL)
