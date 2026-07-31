@@ -8,6 +8,23 @@ enum ServiceState {
     case stopped    // 未运行
 }
 
+enum LocalServiceControl {
+    static func resolvedPort(pidFileContents: String?, storedPort: Int) -> Int {
+        guard let pidFileContents,
+              let data = pidFileContents.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let port = json["port"] as? Int,
+              (1...65535).contains(port) else {
+            return storedPort
+        }
+        return port
+    }
+
+    static func healthURL(port: Int) -> URL {
+        URL(string: "http://127.0.0.1:\(port)/admin/health")!
+    }
+}
+
 class MenuBarController: NSObject, NSMenuDelegate {
     let statusItem: NSStatusItem
     let client = APIClient()
@@ -22,9 +39,17 @@ class MenuBarController: NSObject, NSMenuDelegate {
     private var currentLogLevel: String = "info"
     /// 菜单栏显示的端口（从 UserDefaults 读取，用户意图端口）
     private var currentPort: Int = APIClient.storedPort()
-    /// 用于 stop 兜底查找的实际连接端口；PID 文件冲突时可能与显示端口不同。
-    private var serviceControlPort: Int {
-        URL(string: client.baseURL)?.port ?? currentPort
+    /// 生命周期控制始终指向本机代理，与当前管理连接（本地或远程）无关。
+    /// PID 文件记录端口冲突自动递增后的真实端口；读取失败时回退到本地配置端口。
+    private var localServiceControlPort: Int {
+        let pidFileContents = try? String(
+            contentsOfFile: "/tmp/llm-proxy.pid",
+            encoding: .utf8
+        ).trimmingCharacters(in: .whitespacesAndNewlines)
+        return LocalServiceControl.resolvedPort(
+            pidFileContents: pidFileContents,
+            storedPort: APIClient.storedPort()
+        )
     }
     private var pollTimer: Timer?
     private var updateCheckTimer: Timer?
@@ -191,13 +216,16 @@ class MenuBarController: NSObject, NSMenuDelegate {
             todayHitRateText = nil
             recentUsage = []
         }
-        // 从服务端同步端口（仅当服务端可达时才更新，不覆盖用户意图）
-        if let sp = try? await client.fetchPort() {
-            currentPort = sp
-            client.updatePort(sp)
-        } else {
-            // 服务端连不上 → 可能是端口冲突递增了，尝试从 PID 文件发现实际端口，但只更新连接不更新显示
-            discoverActualPort()
+        // currentPort 仅表示本机代理端口。远程服务的 /admin/port 不得进入
+        // 本地生命周期缓存，否则切回本地后启动/重启可能误用远端端口。
+        if !client.usesCustomManagementURL {
+            if let sp = try? await client.fetchPort() {
+                currentPort = sp
+                client.updatePort(sp)
+            } else {
+                // 服务端连不上 → 可能是端口冲突递增了，尝试从 PID 文件发现实际端口，但只更新连接不更新显示
+                discoverActualPort()
+            }
         }
         rebuildMenu()
     }
@@ -234,18 +262,16 @@ class MenuBarController: NSObject, NSMenuDelegate {
             menu.addItem(usageItem)
         }
 
-        // 自定义管理地址只负责远程管理，绝不能把远端健康状态映射为本机
-        // CLI 的启停操作。远程配置重载仍可从控制台 Settings 执行。
-        if !client.usesCustomManagementURL {
-            let controlsCard = LiveServiceControlCardView(
-                state: menuCardState,
-                onStart: { [weak self] in self?.startService() },
-                onStop: { [weak self] in self?.stopService() },
-                onRestart: { [weak self] in self?.restartService() },
-                onReload: { [weak self] in self?.reloadConfig() }
-            )
-            menu.addItem(makeCardItem(controlsCard, interactive: true))
-        }
+        // 始终保留同一张响应式控制卡：切换到远程连接时，已经展开的菜单
+        // 会立即移除本地生命周期按钮并显示服务器端管理提示。
+        let controlsCard = LiveServiceControlCardView(
+            state: menuCardState,
+            onStart: { [weak self] in self?.startService() },
+            onStop: { [weak self] in self?.stopService() },
+            onRestart: { [weak self] in self?.restartService() },
+            onReload: { [weak self] in self?.reloadConfig() }
+        )
+        menu.addItem(makeCardItem(controlsCard, interactive: statusModel.allowsLocalServiceControl))
         menu.addItem(.separator())
 
         // 界面组：控制台 + Web UI
@@ -701,7 +727,7 @@ class MenuBarController: NSObject, NSMenuDelegate {
         setTransientStatus(loc("status.stopping"))
         serviceOperationTask = Task { @MainActor [weak self] in
             guard let self else { return }
-            let result = await self.runCLIAndWait("stop", port: self.serviceControlPort)
+            let result = await self.runCLIAndWait("stop", port: self.localServiceControlPort)
             if result.exitCode != 0 {
                 NSLog("[LLMProxy] ❌ 菜单栏停止服务失败 (exit=\(result.exitCode)): \(result.output)")
                 self.isServiceOperationInProgress = false
@@ -1150,7 +1176,7 @@ class MenuBarController: NSObject, NSMenuDelegate {
                 await operation.value
             }
 
-            let result = await self.runCLIAndWait("stop", port: self.serviceControlPort)
+            let result = await self.runCLIAndWait("stop", port: self.localServiceControlPort)
             if result.exitCode != 0 {
                 self.isQuitting = false
                 let alert = NSAlert()
@@ -1505,9 +1531,10 @@ class MenuBarController: NSObject, NSMenuDelegate {
         if let operation = serviceOperationTask {
             await operation.value
         }
-        // 安装前沿用与菜单栏退出相同的可等待停止流程，不能只发信号后
-        // 立即让 helper 替换 app，否则旧服务可能继续占用端口。
-        let stopResult = await runCLIAndWait("stop", port: serviceControlPort)
+        // 更新 App 只停止本机代理。当前管理连接可能指向远程服务，因此端口
+        // 和停止确认都必须使用独立的 loopback 路径，不能读取 client.baseURL。
+        let localPort = localServiceControlPort
+        let stopResult = await runCLIAndWait("stop", port: localPort)
         guard stopResult.exitCode == 0 else {
             let alert = NSAlert()
             alert.messageText = loc("app.title")
@@ -1518,8 +1545,7 @@ class MenuBarController: NSObject, NSMenuDelegate {
             alert.runModal()
             return
         }
-        await waitForStoppedAndRefresh()
-        if (try? await client.fetchHealth()) == true {
+        if !(await waitForLocalServiceStopped(port: localPort)) {
             let alert = NSAlert()
             alert.messageText = loc("app.title")
             alert.informativeText = loc("quit.serviceStopFailed.body")
@@ -1543,6 +1569,29 @@ class MenuBarController: NSObject, NSMenuDelegate {
         // 且后台服务已经确认停止，这里直接强退进程。
         // NSApplication.shared.terminate 在 LSUIElement 菜单栏应用 + async 上下文不可靠。
         exit(0)
+    }
+
+    /// 只探测本机 loopback。任何 HTTP 响应（包括管理 API 的 401）都说明
+    /// 端口上的进程仍在；连接失败才表示本机代理已经退出。
+    private func isLocalServiceRunning(port: Int) async -> Bool {
+        var request = URLRequest(url: LocalServiceControl.healthURL(port: port))
+        request.timeoutInterval = 1
+        do {
+            let (_, response) = try await URLSession.shared.data(for: request)
+            return response is HTTPURLResponse
+        } catch {
+            return false
+        }
+    }
+
+    private func waitForLocalServiceStopped(port: Int) async -> Bool {
+        for _ in 0..<20 {
+            if !(await isLocalServiceRunning(port: port)) {
+                return true
+            }
+            try? await Task.sleep(nanoseconds: 250_000_000)
+        }
+        return !(await isLocalServiceRunning(port: port))
     }
 
 

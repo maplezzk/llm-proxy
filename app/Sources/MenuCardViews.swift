@@ -62,6 +62,11 @@ struct StatusCardModel {
         case .stopped: return .secondary
         }
     }
+
+    /// 远程管理连接只允许操作管理 API；进程生命周期始终由服务器端负责。
+    var allowsLocalServiceControl: Bool {
+        !usesRemoteManagement
+    }
 }
 
 /// 菜单栏迷你用量图的数据点。
@@ -226,17 +231,26 @@ struct ServiceControlCardView: View {
     let onReload: () -> Void
 
     var body: some View {
-        HStack(spacing: 8) {
-            if model.state == .running {
-                CardButton(title: loc("menu.btn.stop"), systemImage: "stop", tint: .red, action: onStop)
-                CardButton(title: loc("menu.btn.restart"), systemImage: "arrow.clockwise", tint: .orange, action: onRestart)
-                CardButton(title: loc("menu.btn.reload"), systemImage: "arrow.triangle.2.circlepath", tint: .blue, action: onReload)
+        Group {
+            if model.allowsLocalServiceControl {
+                HStack(spacing: 8) {
+                    if model.state == .running {
+                        CardButton(title: loc("menu.btn.stop"), systemImage: "stop", tint: .red, action: onStop)
+                        CardButton(title: loc("menu.btn.restart"), systemImage: "arrow.clockwise", tint: .orange, action: onRestart)
+                        CardButton(title: loc("menu.btn.reload"), systemImage: "arrow.triangle.2.circlepath", tint: .blue, action: onReload)
+                    } else {
+                        CardButton(title: loc("menu.btn.start"), systemImage: "play", tint: Color(red: 0.20, green: 0.68, blue: 0.30), action: onStart)
+                    }
+                }
+                .disabled(model.isOperationInProgress)
             } else {
-                CardButton(title: loc("menu.btn.start"), systemImage: "play", tint: Color(red: 0.20, green: 0.68, blue: 0.30), action: onStart)
+                Label(loc("menu.management.remoteProcessHint"), systemImage: "server.rack")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
         .frame(maxWidth: .infinity)
-        .disabled(model.isOperationInProgress)
         .padding(.horizontal, 14)
         .padding(.top, 8)
         .padding(.bottom, 10)
