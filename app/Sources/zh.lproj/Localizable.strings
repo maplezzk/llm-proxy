@@ -288,6 +288,7 @@
 "settings.title" = "设置";
 "settings.managementURL" = "管理服务地址";
 "settings.managementURLLocal" = "本地服务（默认）";
+"settings.managementURLRemote" = "远程服务";
 "settings.managementURLPlaceholder" = "http://proxy.example.com:9000";
 "settings.managementURLHint" = "支持 HTTP 或 HTTPS；可以包含反向代理路径，也可以直接粘贴以 /admin 结尾的地址。HTTP 不会加密管理密钥和数据。";
 "settings.managementURLInvalid" = "请输入不含查询参数和凭据的 HTTP 或 HTTPS 地址";

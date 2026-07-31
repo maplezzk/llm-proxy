@@ -266,6 +266,7 @@
 "settings.title" = "Settings";
 "settings.managementURL" = "Management Service";
 "settings.managementURLLocal" = "Local service (default)";
+"settings.managementURLRemote" = "Remote service";
 "settings.managementURLPlaceholder" = "http://proxy.example.com:9000";
 "settings.managementURLHint" = "HTTP and HTTPS are supported. You may include a reverse-proxy path or paste a URL ending in /admin. HTTP does not encrypt management keys or data.";
 "settings.managementURLInvalid" = "Enter an HTTP or HTTPS URL without query parameters or credentials";
