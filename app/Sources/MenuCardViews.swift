@@ -502,6 +502,11 @@ struct MenuUsagePopoverView: View {
                         RoundedRectangle(cornerRadius: 5, style: .continuous)
                             .fill(interaction.dimension == dimension ? Color.accentColor : Color.secondary.opacity(0.1))
                     )
+                    .contentShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
+                    .onHover { isActive in
+                        guard isActive, interaction.dimension != dimension else { return }
+                        onDimensionChange(dimension)
+                    }
                 }
             }
 
