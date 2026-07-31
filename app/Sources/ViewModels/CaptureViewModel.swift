@@ -152,7 +152,8 @@ final class CaptureViewModel {
     /// 加载历史抓包数据
     private func loadHistory() async throws {
         let url = URL(string: "\(apiClient.baseURL)/admin/debug/captures")!
-        let (data, _) = try await URLSession.shared.data(from: url)
+        let request = APIClient.managementRequest(url: url)
+        let (data, _) = try await URLSession.shared.data(for: request)
         guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
               json["success"] as? Bool == true,
               let arr = json["data"] as? [[String: Any]] else { return }

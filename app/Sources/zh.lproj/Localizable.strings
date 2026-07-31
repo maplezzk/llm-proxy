@@ -286,6 +286,19 @@
 
 // Settings
 "settings.title" = "设置";
+"settings.managementURL" = "管理服务地址";
+"settings.managementURLLocal" = "本地服务（默认）";
+"settings.managementURLPlaceholder" = "http://proxy.example.com:9000";
+"settings.managementURLHint" = "支持 HTTP 或 HTTPS；可以包含反向代理路径，也可以直接粘贴以 /admin 结尾的地址。HTTP 不会加密管理密钥和数据。";
+"settings.managementURLInvalid" = "请输入不含查询参数和凭据的 HTTP 或 HTTPS 地址";
+"settings.managementURLSaved" = "管理服务地址已保存";
+"settings.managementURLReset" = "使用本地";
+"settings.managementURLResetDone" = "已切换到本地服务";
+"settings.managementAPIKey" = "管理 API 密钥";
+"settings.managementAPIKeyPlaceholder" = "输入管理 API 密钥";
+"settings.managementAPIKeyHint" = "以 Authorization: Bearer 请求头发送给配置了 admin_key 的管理服务或鉴权反向代理；不同于代理密钥。";
+"settings.managementAPIKeySaved" = "管理 API 密钥已保存";
+"settings.managementAPIKeyRemoved" = "管理 API 密钥已移除";
 "settings.port" = "端口";
 "settings.proxyKey" = "代理密钥";
 "settings.set" = "已设置";

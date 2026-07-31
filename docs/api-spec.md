@@ -298,11 +298,13 @@ event: message_stop
 }
 ```
 
-### 5.2 代理 API Key 认证
+### 5.2 API Key 认证
 
+- `admin_key` 配置在 `config.yaml` 中；若设置，除用于首次录入密钥的 `GET /admin` Web UI 外壳外，所有 `/admin*` 请求须携带 `Authorization: Bearer <key>` 或 `x-api-key: <key>`
+- Web 管理页可在“设置 → 管理 API Key”中将密钥保存到当前浏览器，之后普通管理请求和抓包 SSE 流都会自动携带 Bearer 密钥
 - `proxy_key` 配置在 `config.yaml` 中
 - 若设置，所有 `/v1/*` 请求须携带 `Authorization: Bearer <key>` 或 `x-api-key: <key>`
-- `/admin/*` 路由不校验
+- 两个密钥相互独立；未配置对应密钥时保持原有免认证行为
 
 ## 六、已知限制 / 待核对项
 

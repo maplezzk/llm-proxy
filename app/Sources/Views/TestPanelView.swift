@@ -238,8 +238,10 @@ struct TestPanelView: View {
             let base = apiBase
             curl = generateProviderCurl(type: selectedType, model: selectedModelId, apiKey: key, apiBase: base)
         } else {
-            let port = APIClient.storedPort()
-            curl = generateAdapterCurl(adapterName: selectedAdapterName, model: adapterModelId, port: port)
+            curl = generateAdapterCurl(
+                model: adapterModelId,
+                baseURL: APIClient.adapterAPIBaseURL(selectedAdapterName)
+            )
         }
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(curl, forType: .string)
@@ -272,9 +274,9 @@ struct TestPanelView: View {
         }
     }
 
-    private func generateAdapterCurl(adapterName: String, model: String, port: Int) -> String {
+    private func generateAdapterCurl(model: String, baseURL: String) -> String {
         return """
-        curl -X POST http://127.0.0.1:\(port)/\(adapterName)/v1/chat/completions \\
+        curl -X POST \(baseURL)chat/completions \\
           -H "Content-Type: application/json" \\
           -d '{"model": "\(model)", "messages": [{"role": "user", "content": "hi"}]}'
         """

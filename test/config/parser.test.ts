@@ -58,6 +58,29 @@ providers:
     assert.strictEqual(config.providers[1].apiKey, 'sk-openai-yyy')
   })
 
+  it('解析并序列化独立的管理 API 密钥', () => {
+    process.env.ADMIN_KEY = 'admin-secret'
+    process.env.K = 'provider-key'
+    const path = writeConfig(`
+admin_key: \${ADMIN_KEY}
+proxy_key: proxy-secret
+providers:
+  - name: p1
+    type: openai
+    api_key: \${K}
+    models:
+      - id: m1
+    `)
+
+    const config = loadConfigFromYaml(path)
+    assert.strictEqual(config.adminKey, 'admin-secret')
+    assert.strictEqual(config.proxyKey, 'proxy-secret')
+
+    const serialized = serializeConfigToYaml(config)
+    assert.match(serialized, /admin_key: admin-secret/)
+    assert.match(serialized, /proxy_key: proxy-secret/)
+  })
+
   it('未定义环境变量抛错', () => {
     const path = writeConfig(`
 providers:

@@ -28,6 +28,15 @@
       "themeLight": "浅色",
       "themeDark": "深色"
     },
+    "managementKey": {
+      "title": "管理 API Key",
+      "desc": "用于访问服务端 admin_key 保护的管理接口，与代理 API Key 相互独立。密钥仅保存在当前浏览器。",
+      "placeholder": "输入与服务端 admin_key 相同的密钥",
+      "set": "当前浏览器已保存管理密钥",
+      "notSet": "当前浏览器未保存管理密钥",
+      "saved": "管理 API Key 已保存",
+      "removed": "管理 API Key 已移除"
+    },
     "common": {
       "save": "保存",
       "cancel": "取消",

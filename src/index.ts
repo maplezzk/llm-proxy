@@ -31,9 +31,11 @@ const COMMANDS: Record<string, () => Promise<void>> = {
     return cmdRestart({ config, host, port: isNaN(port as number) ? undefined : port, logLevel })
   },
   reload: () => {
+    const configIndex = process.argv.indexOf('--config')
+    const config = configIndex !== -1 ? process.argv[configIndex + 1] : undefined
     const portIndex = process.argv.indexOf('--port')
     const port = portIndex !== -1 ? parseInt(process.argv[portIndex + 1], 10) : undefined
-    return cmdReload({ port: isNaN(port as number) ? undefined : port })
+    return cmdReload({ config, port: isNaN(port as number) ? undefined : port })
   },
 }
 

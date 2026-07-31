@@ -8,6 +8,9 @@ struct SettingsView: View {
         case failed
     }
 
+    @State private var managementURL: String = APIClient.configuredManagementURL() ?? ""
+    @State private var managementAPIKey: String = ""
+    @State private var hasManagementAPIKey: Bool = APIClient.configuredManagementAPIKey() != nil
     @State private var port: String = ""
     @State private var originalPort: Int?
     @State private var hasProxyKey: Bool = false
@@ -53,6 +56,73 @@ struct SettingsView: View {
                     .padding(.horizontal, 24)
                     .padding(.bottom, 12)
                 }
+
+                // 管理服务地址
+                settingsSection {
+                    settingsRow(
+                        icon: "externaldrive.connected.to.line.below",
+                        iconColor: .indigo,
+                        title: loc("settings.managementURL"),
+                        subtitle: APIClient.configuredManagementURL() ?? loc("settings.managementURLLocal")
+                    ) {
+                        HStack(spacing: 8) {
+                            TextField(loc("settings.managementURLPlaceholder"), text: $managementURL)
+                                .textFieldStyle(.roundedBorder)
+                                .frame(width: 300)
+                                .help(loc("settings.managementURLHint"))
+                                .onSubmit { saveManagementURL() }
+                            Button(loc("action.save")) {
+                                saveManagementURL()
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .controlSize(.small)
+
+                            if APIClient.configuredManagementURL() != nil {
+                                Button(loc("settings.managementURLReset")) {
+                                    resetManagementURL()
+                                }
+                                .buttonStyle(.bordered)
+                                .controlSize(.small)
+                            }
+                        }
+                    }
+                }
+
+                Divider().padding(.horizontal, 24)
+
+                // 管理 API 密钥（用于远程管理服务或鉴权反向代理）
+                settingsSection {
+                    settingsRow(
+                        icon: "lock.shield",
+                        iconColor: .indigo,
+                        title: loc("settings.managementAPIKey"),
+                        subtitle: hasManagementAPIKey ? loc("settings.set") : loc("settings.notSet")
+                    ) {
+                        HStack(spacing: 8) {
+                            SecureField(loc("settings.managementAPIKeyPlaceholder"), text: $managementAPIKey)
+                                .textFieldStyle(.roundedBorder)
+                                .frame(width: 220)
+                                .help(loc("settings.managementAPIKeyHint"))
+                                .onSubmit { saveManagementAPIKey() }
+                            Button(loc("action.save")) {
+                                saveManagementAPIKey()
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .controlSize(.small)
+                            .disabled(managementAPIKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+
+                            if hasManagementAPIKey {
+                                Button(loc("settings.remove"), role: .destructive) {
+                                    removeManagementAPIKey()
+                                }
+                                .buttonStyle(.bordered)
+                                .controlSize(.small)
+                            }
+                        }
+                    }
+                }
+
+                Divider().padding(.horizontal, 24)
 
                 // 端口
                 settingsSection {
@@ -301,6 +371,8 @@ struct SettingsView: View {
     // MARK: - Load
 
     private func loadSettings() async {
+        managementURL = APIClient.configuredManagementURL() ?? ""
+        hasManagementAPIKey = APIClient.configuredManagementAPIKey() != nil
         do {
             if let p = try await api.fetchPort() {
                 originalPort = p
@@ -319,6 +391,43 @@ struct SettingsView: View {
         do {
             visionProviders = try await api.fetchProviders()
         } catch {}
+    }
+
+    // MARK: - Management URL
+
+    private func saveManagementURL() {
+        guard api.updateManagementURL(managementURL) else {
+            showToast(loc("settings.managementURLInvalid"), type: "error")
+            return
+        }
+        managementURL = APIClient.configuredManagementURL() ?? ""
+        showToast(loc("settings.managementURLSaved"), type: "success")
+        NotificationCenter.default.post(name: .configDidChange, object: nil)
+    }
+
+    private func resetManagementURL() {
+        _ = api.updateManagementURL("")
+        managementURL = ""
+        showToast(loc("settings.managementURLResetDone"), type: "success")
+        NotificationCenter.default.post(name: .configDidChange, object: nil)
+    }
+
+    // MARK: - Management API Key
+
+    private func saveManagementAPIKey() {
+        api.updateManagementAPIKey(managementAPIKey)
+        managementAPIKey = ""
+        hasManagementAPIKey = APIClient.configuredManagementAPIKey() != nil
+        showToast(loc("settings.managementAPIKeySaved"), type: "success")
+        NotificationCenter.default.post(name: .configDidChange, object: nil)
+    }
+
+    private func removeManagementAPIKey() {
+        api.updateManagementAPIKey("")
+        managementAPIKey = ""
+        hasManagementAPIKey = false
+        showToast(loc("settings.managementAPIKeyRemoved"), type: "success")
+        NotificationCenter.default.post(name: .configDidChange, object: nil)
     }
 
     // MARK: - Port

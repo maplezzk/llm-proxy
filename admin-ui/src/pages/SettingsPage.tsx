@@ -13,7 +13,12 @@ import { Textarea } from '@appica/ui-react/textarea'
 import { Switch } from '@appica/ui-react/switch'
 import { Eye, EyeOff, Refresh } from '@appica/icons-react'
 import { useTheme } from '@appica/ui-react/hooks/use-theme'
-import { fetchJson } from '../lib/api'
+import {
+  ADMIN_KEY_CHANGED_EVENT,
+  fetchJson,
+  getAdminKey,
+  setAdminKey,
+} from '../lib/api'
 import type { ApiRes } from '../lib/api-types'
 import { LABEL_CLS, extractError } from '../lib/form-helpers'
 import { useToast } from '../lib/toast'
@@ -133,6 +138,76 @@ function GeneralCard() {
             {t('admin.common.reloadConfig')}
           </Button>
         </div>
+      </div>
+    </Card>
+  )
+}
+
+/* ────────────────────────── Management API Key 卡片 ────────────────────────── */
+
+function AdminKeyCard() {
+  const { t } = useTranslation()
+  const { toast } = useToast()
+  const [key, setKey] = useState('')
+  const [hasKey, setHasKey] = useState(() => !!getAdminKey())
+  const [showKey, setShowKey] = useState(false)
+
+  const save = (value: string) => {
+    const normalized = value.trim()
+    setAdminKey(normalized)
+    setHasKey(!!normalized)
+    setKey('')
+    toast(
+      normalized ? t('admin.managementKey.saved') : t('admin.managementKey.removed'),
+      'success',
+    )
+  }
+
+  return (
+    <Card
+      icon="🛡️"
+      title={t('admin.managementKey.title')}
+      desc={hasKey ? t('admin.managementKey.set') : t('admin.managementKey.notSet')}
+    >
+      <p className="mb-3 text-[11px] text-muted-foreground">
+        {t('admin.managementKey.desc')}
+      </p>
+      <div className="flex items-center gap-2">
+        <Input
+          type={showKey ? 'text' : 'password'}
+          value={key}
+          onChange={(e) => setKey(e.target.value)}
+          placeholder={t('admin.managementKey.placeholder')}
+          inputSize="sm"
+          className="flex-1 font-mono"
+          autoComplete="off"
+        />
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label={showKey ? t('admin.common.hide') : t('admin.common.view')}
+          onClick={() => setShowKey((s) => !s)}
+        >
+          {showKey ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+        </Button>
+        <Button
+          variant="primary"
+          size="sm"
+          disabled={!key.trim()}
+          onClick={() => save(key)}
+        >
+          {t('admin.common.save')}
+        </Button>
+        {hasKey && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-error-emphasis hover:bg-error-soft"
+            onClick={() => save('')}
+          >
+            {t('admin.common.remove')}
+          </Button>
+        )}
       </div>
     </Card>
   )
@@ -469,15 +544,25 @@ function VisionCard() {
 /**
  * Settings 页 — 移植自旧版 proxy-key.ts + vision-setting.ts，并收纳原侧栏页脚的通用设置：
  * - 通用卡片（语言/主题/端口/重载配置）
+ * - Management API Key 卡片（仅保存到当前浏览器，统一用于 /admin API 请求）
  * - Proxy Key 卡片（设置/移除 /admin/proxy-key）
  * - Vision 卡片（启用/供应商/模型/提示词 + 缓存统计与清除）
  */
 export default function SettingsPage() {
+  const [adminKeyVersion, setAdminKeyVersion] = useState(0)
+
+  useEffect(() => {
+    const handleAdminKeyChanged = () => setAdminKeyVersion((version) => version + 1)
+    window.addEventListener(ADMIN_KEY_CHANGED_EVENT, handleAdminKeyChanged)
+    return () => window.removeEventListener(ADMIN_KEY_CHANGED_EVENT, handleAdminKeyChanged)
+  }, [])
+
   return (
     <div className="flex max-w-220 flex-col gap-4 p-6">
       <GeneralCard />
-      <ProxyKeyCard />
-      <VisionCard />
+      <AdminKeyCard />
+      <ProxyKeyCard key={`proxy-key-${adminKeyVersion}`} />
+      <VisionCard key={`vision-${adminKeyVersion}`} />
     </div>
   )
 }

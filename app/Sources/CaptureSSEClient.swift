@@ -72,7 +72,8 @@ class CaptureSSEClient: NSObject {
         }
 
         do {
-            let (bytes, response) = try await URLSession.shared.bytes(for: URLRequest(url: url))
+            let request = APIClient.managementRequest(url: url)
+            let (bytes, response) = try await URLSession.shared.bytes(for: request)
 
             guard let httpResponse = response as? HTTPURLResponse,
                   httpResponse.statusCode == 200 else {

@@ -5,7 +5,6 @@ struct AdaptersView: View {
     @Environment(TestCoordinator.self) private var testCoordinator
     @State private var showDeleteAlert = false
     @State private var adapterToDelete: String?
-    @State private var port: Int = APIClient.storedPort()
 
     var body: some View {
         VStack(spacing: 0) {
@@ -210,7 +209,7 @@ struct AdaptersView: View {
     // MARK: - Helpers
 
     private func adapterURL(_ adapter: Adapter) -> String {
-        return "http://127.0.0.1:\(port)/\(adapter.name)/v1/"
+        APIClient.adapterAPIBaseURL(adapter.name)
     }
 
     private func typeIcon(for type: String) -> String {

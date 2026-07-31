@@ -9,6 +9,7 @@ import { Logger, type LogLevel } from '../log/logger.js'
 import { createI18n } from '../lib/i18n.js'
 import type { Server } from 'node:http'
 import type { Config } from '../config/types.js'
+import { loadConfigFromYaml } from '../config/parser.js'
 import { VisionCache } from '../proxy/vision-cache.js'
 
 const DEFAULT_CONFIG_PATH = `${process.env.HOME ?? '/tmp'}/.llm-proxy/config.yaml`
@@ -370,15 +371,27 @@ export async function cmdRestart(opts: StartOptions): Promise<void> {
   await cmdStart(opts)
 }
 
-export async function cmdReload(opts: { port?: number }): Promise<void> {
+export async function cmdReload(opts: { port?: number; config?: string }): Promise<void> {
   const { t } = createI18n('en')
 
   const state = getState()
   const port = opts.port ?? state?.port ?? DEFAULT_PORT
   const url = `http://${DEFAULT_HOST}:${port}/admin/config/reload`
+  const configPath = opts.config ?? DEFAULT_CONFIG_PATH
+  let adminKey: string | undefined
+  if (existsSync(configPath)) {
+    try {
+      adminKey = loadConfigFromYaml(configPath).adminKey
+    } catch {
+      // 让运行中的服务返回配置重载错误；未能读取当前 key 时会得到 401。
+    }
+  }
 
   try {
-    const response = await fetch(url, { method: 'POST' })
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: adminKey ? { Authorization: `Bearer ${adminKey}` } : undefined,
+    })
     const data = await response.json()
     if (data.success) {
       console.log(t('cli.reload.success', { version: data.data.version }))

@@ -9,6 +9,7 @@ import type { Logger } from '../log/logger.js'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
+import { timingSafeEqual } from 'node:crypto'
 import { handleGetConfig, handleReload, handleHealth, handleStatus, handleGetLogs, handleGetLogLevel, handleSetLogLevel, handleGetLocale, handleSetLocale, handleGetPort, handleSetPort, handleGetAdapters, handleCreateProvider, handleUpdateProvider, handleDeleteProvider, handleCreateAdapter, handleUpdateAdapter, handleDeleteAdapter, handleTestModel, handleTestAdapter, handleListModels, handlePullModels, handleGetProxyKey, handleSetProxyKey, handleGetTokenStats, handleGetTokenTimeline, handleGetTokenBreakdown, handleGetTokenDbInfo, handlePostTokenCleanup, handleDebugCapturesStatus, handleDebugCaptures, handleDebugCapturesControl, handleDebugCapturesStream, handleGetVision, handleSetVision, handleGetVisionCacheStats, handleClearVisionCache } from './handlers/index.js'
 import { handleAnthropicMessages, handleOpenAIChat, handleOpenAIResponses } from '../proxy/handlers.js'
 import { handleAdapterRequest, handleAdapterModels } from '../adapter/handlers.js'
@@ -122,6 +123,22 @@ function corsHeaders(res: ServerResponse): void {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-api-key, anthropic-version')
 }
 
+function isAdminRequest(url: string): boolean {
+  return url === '/admin' || url.startsWith('/admin?') || url.startsWith('/admin/')
+}
+
+function isAdminUIShellRequest(url: string, method: string): boolean {
+  return method === 'GET' && /^\/admin\/?(\?.*)?$/.test(url)
+}
+
+function hasValidAdminKey(req: IncomingMessage, expectedKey: string): boolean {
+  const auth = req.headers.authorization ?? req.headers['x-api-key'] ?? ''
+  const providedKey = String(auth).replace(/^Bearer\s+/i, '').trim()
+  const provided = Buffer.from(providedKey)
+  const expected = Buffer.from(expectedKey)
+  return provided.length === expected.length && timingSafeEqual(provided, expected)
+}
+
 export function createProxyServer(opts: ServerOptions): Server {
   let server: Server
   let currentPort = opts.proxyPort
@@ -203,6 +220,16 @@ export function createProxyServer(opts: ServerOptions): Server {
     }
     const url = req.url ?? '/'
     const method = req.method ?? 'GET'
+
+    const { config } = ctx.store.getConfig()
+    // Web UI 外壳不包含管理数据，保持公开才能让首次访问者输入管理密钥；其余管理 API 均鉴权。
+    const requiresAdminAuth = isAdminRequest(url) && !isAdminUIShellRequest(url, method)
+    if (requiresAdminAuth && config.adminKey && !hasValidAdminKey(req, config.adminKey)) {
+      ctx.logger.log('request', 'Admin API auth failed', { url, method }, 'warn')
+      res.writeHead(401, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify({ error: { message: '管理 API Key 无效' } }))
+      return
+    }
 
     // 跳过高频健康检查和 SSE 长连接，避免日志刷屏
     const skipLog = url === '/admin/health' || url.startsWith('/admin/capture/stream') || url === '/v1/models'
