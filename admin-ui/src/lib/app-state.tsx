@@ -9,7 +9,7 @@ import {
 } from 'react'
 import type { ReactNode } from 'react'
 import i18next from 'i18next'
-import { fetchJson } from './api'
+import { ADMIN_KEY_CHANGED_EVENT, fetchJson } from './api'
 import { toast } from './toast'
 import { switchLang as switchLangI18n } from '../i18n'
 
@@ -93,6 +93,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     startPolling()
     return () => stopPolling()
   }, [loadDashboard, startPolling, stopPolling])
+
+  // 管理密钥由设置页更新后立即重拉，避免等待下一次 10s 轮询。
+  useEffect(() => {
+    const handleAdminKeyChanged = () => void loadDashboard()
+    window.addEventListener(ADMIN_KEY_CHANGED_EVENT, handleAdminKeyChanged)
+    return () => window.removeEventListener(ADMIN_KEY_CHANGED_EVENT, handleAdminKeyChanged)
+  }, [loadDashboard])
 
   // hash 路由：对齐旧 store.switchTab——同时直接更新 currentTab 并写 location.hash，
   // 规避点击当前 tab（hash 不变、不触发 hashchange）导致状态不同步的边界。

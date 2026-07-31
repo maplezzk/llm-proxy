@@ -12,6 +12,7 @@ import {
 } from '@appica/ui-react/table'
 import { ClipboardCopy } from '@appica/icons-react'
 import JsonEditorPane from '../components/JsonEditorPane'
+import { adminFetch } from '../lib/api'
 import { useToast } from '../lib/toast'
 
 /* ────────────────────────── 类型 / 常量 ────────────────────────── */
@@ -72,6 +73,44 @@ function fmtSize(s: string | null): string {
   return b + 'B'
 }
 
+async function readSSE(
+  response: Response,
+  signal: AbortSignal,
+  onMessage: (data: string) => void,
+): Promise<void> {
+  if (!response.ok) throw new Error(`SSE request failed: ${response.status}`)
+  if (!response.body) throw new Error('SSE response body is unavailable')
+
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+
+  try {
+    while (!signal.aborted) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buffer += decoder.decode(value, { stream: true })
+      // 在完整缓冲区上归一化，兼容 "\r" 与 "\n" 恰好落在两个网络分片的情况。
+      buffer = buffer.replace(/\r\n/g, '\n')
+
+      let boundary = buffer.indexOf('\n\n')
+      while (boundary >= 0) {
+        const event = buffer.slice(0, boundary)
+        buffer = buffer.slice(boundary + 2)
+        const data = event
+          .split('\n')
+          .filter((line) => line.startsWith('data:'))
+          .map((line) => line.slice(5).trimStart())
+          .join('\n')
+        if (data) onMessage(data)
+        boundary = buffer.indexOf('\n\n')
+      }
+    }
+  } finally {
+    reader.releaseLock()
+  }
+}
+
 /* ────────────────────────── 页面 ────────────────────────── */
 
 /**
@@ -88,7 +127,6 @@ export default function CapturePage() {
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const [running, setRunning] = useState(false)
   const [sourceFilter, setSourceFilter] = useState('')
-  const esRef = useRef<EventSource | null>(null)
   const abortRef = useRef<AbortController | null>(null)
   const mountedRef = useRef(true)
 
@@ -104,11 +142,12 @@ export default function CapturePage() {
   const apiControl = useCallback(
     async (enabled: boolean, clear = false) => {
       try {
-        await fetch('/admin/debug/captures/control', {
+        const response = await adminFetch('/admin/debug/captures/control', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ enabled, clear }),
         })
+        if (!response.ok) throw new Error(`Capture control failed: ${response.status}`)
       } catch (err) {
         console.warn('[capture] 控制请求失败', err)
         toast(t('admin.common.requestFailed'), 'error')
@@ -119,8 +158,6 @@ export default function CapturePage() {
 
   /** 建立 SSE 连接 + 加载历史数据（不修改后端 enabled 状态）。 */
   const connectSSE = useCallback(() => {
-    esRef.current?.close()
-    esRef.current = null
     abortRef.current?.abort()
     const ac = new AbortController()
     abortRef.current = ac
@@ -129,8 +166,11 @@ export default function CapturePage() {
     setSelectedId(null)
 
     // 历史数据（可中止）
-    fetch('/admin/debug/captures', { signal: ac.signal })
-      .then((r) => r.json())
+    adminFetch('/admin/debug/captures', { signal: ac.signal })
+      .then((r) => {
+        if (!r.ok) throw new Error(`Capture history failed: ${r.status}`)
+        return r.json()
+      })
       .then((d: { success?: boolean; data?: CaptureEntry[] }) => {
         if (d.success && mountedRef.current && !ac.signal.aborted) setEntries(d.data ?? [])
       })
@@ -140,12 +180,11 @@ export default function CapturePage() {
         toast(t('admin.common.requestFailed'), 'error')
       })
 
-    // SSE 实时推送
-    const es = new EventSource('/admin/debug/captures/stream')
-    es.onmessage = (ev) => {
-      if (!mountedRef.current || esRef.current !== es) return
+    // 原生 EventSource 不支持自定义 Authorization 头，因此使用 fetch 读取 SSE 流。
+    const handleMessage = (data: string) => {
+      if (!mountedRef.current || ac.signal.aborted) return
       try {
-        const entry = JSON.parse(ev.data) as CaptureEntry
+        const entry = JSON.parse(data) as CaptureEntry
         setEntries((prev) => {
           const idx = prev.findIndex((e) => e.pairId === entry.pairId)
           if (idx >= 0) {
@@ -162,23 +201,41 @@ export default function CapturePage() {
         toast(t('admin.common.parseFailed'), 'warning')
       }
     }
-    es.onerror = () => {
-      // EventSource 会自动重连；readyState=CLOSED 表示服务端关闭或 fatal，同步 UI 状态
-      console.warn('[capture] SSE 连接异常, readyState=', es.readyState)
-      toast(t('admin.common.requestFailed'), 'warning')
-      if (es.readyState === EventSource.CLOSED) {
-        if (esRef.current === es) esRef.current = null
-        if (mountedRef.current) setRunning(false)
+
+    const stream = async () => {
+      while (!ac.signal.aborted) {
+        try {
+          const response = await adminFetch('/admin/debug/captures/stream', {
+            signal: ac.signal,
+            headers: { Accept: 'text/event-stream' },
+          })
+          if (response.status === 401) {
+            if (mountedRef.current) setRunning(false)
+            throw new Error('Capture stream unauthorized')
+          }
+          await readSSE(response, ac.signal, handleMessage)
+        } catch (err) {
+          if (ac.signal.aborted) return
+          console.warn('[capture] SSE 连接异常', err)
+          toast(t('admin.common.requestFailed'), 'warning')
+          if (err instanceof Error && err.message === 'Capture stream unauthorized') return
+        }
+        if (!ac.signal.aborted) {
+          await new Promise((resolve) => setTimeout(resolve, 1000))
+        }
       }
     }
-    esRef.current = es
+    void stream()
   }, [t, toast])
 
   // 进入页面：查询后端状态，已启用则自动连接；卸载时中止 fetch + 关闭 SSE。
   useEffect(() => {
     const ac = new AbortController()
-    fetch('/admin/debug/captures/status', { signal: ac.signal })
-      .then((r) => r.json())
+    adminFetch('/admin/debug/captures/status', { signal: ac.signal })
+      .then((r) => {
+        if (!r.ok) throw new Error(`Capture status failed: ${r.status}`)
+        return r.json()
+      })
       .then((d: StatusRes) => {
         if (d.success && d.data?.enabled) connectSSE()
       })
@@ -190,8 +247,6 @@ export default function CapturePage() {
     return () => {
       ac.abort()
       abortRef.current?.abort()
-      esRef.current?.close()
-      esRef.current = null
     }
   }, [connectSSE, t, toast])
 
@@ -206,16 +261,16 @@ export default function CapturePage() {
   const pauseCapture = () => {
     void apiControl(false)
     setRunning(false)
-    esRef.current?.close()
-    esRef.current = null
+    abortRef.current?.abort()
+    abortRef.current = null
   }
 
   /** 结束：停用 + 清空后端缓存与本地数据（对齐旧版 endCapture）。 */
   const endCapture = () => {
     void apiControl(false, true)
     setRunning(false)
-    esRef.current?.close()
-    esRef.current = null
+    abortRef.current?.abort()
+    abortRef.current = null
     setEntries([])
     setSelectedId(null)
   }

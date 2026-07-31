@@ -127,6 +127,10 @@ function isAdminRequest(url: string): boolean {
   return url === '/admin' || url.startsWith('/admin?') || url.startsWith('/admin/')
 }
 
+function isAdminUIShellRequest(url: string, method: string): boolean {
+  return method === 'GET' && /^\/admin\/?(\?.*)?$/.test(url)
+}
+
 function hasValidAdminKey(req: IncomingMessage, expectedKey: string): boolean {
   const auth = req.headers.authorization ?? req.headers['x-api-key'] ?? ''
   const providedKey = String(auth).replace(/^Bearer\s+/i, '').trim()
@@ -218,7 +222,9 @@ export function createProxyServer(opts: ServerOptions): Server {
     const method = req.method ?? 'GET'
 
     const { config } = ctx.store.getConfig()
-    if (isAdminRequest(url) && config.adminKey && !hasValidAdminKey(req, config.adminKey)) {
+    // Web UI 外壳不包含管理数据，保持公开才能让首次访问者输入管理密钥；其余管理 API 均鉴权。
+    const requiresAdminAuth = isAdminRequest(url) && !isAdminUIShellRequest(url, method)
+    if (requiresAdminAuth && config.adminKey && !hasValidAdminKey(req, config.adminKey)) {
       ctx.logger.log('request', 'Admin API auth failed', { url, method }, 'warn')
       res.writeHead(401, { 'Content-Type': 'application/json' })
       res.end(JSON.stringify({ error: { message: '管理 API Key 无效' } }))

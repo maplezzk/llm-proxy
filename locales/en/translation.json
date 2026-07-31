@@ -28,6 +28,15 @@
       "themeLight": "Light",
       "themeDark": "Dark"
     },
+    "managementKey": {
+      "title": "Management API Key",
+      "desc": "Used for admin endpoints protected by the server's admin_key. It is separate from the proxy API key and stored only in this browser.",
+      "placeholder": "Enter the same key as the server admin_key",
+      "set": "A management key is saved in this browser",
+      "notSet": "No management key is saved in this browser",
+      "saved": "Management API key saved",
+      "removed": "Management API key removed"
+    },
     "common": {
       "save": "Save",
       "cancel": "Cancel",

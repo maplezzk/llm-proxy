@@ -64,6 +64,15 @@ describe('admin API authentication', () => {
     assert.strictEqual(apiKey.status, 200)
   })
 
+  it('serves the admin UI shell without credentials so a browser can enter its key', async () => {
+    const page = await fetch(`${baseURL}/admin`)
+    assert.strictEqual(page.status, 200)
+    assert.match(page.headers.get('content-type') ?? '', /text\/html/)
+
+    const trailingSlash = await fetch(`${baseURL}/admin/`)
+    assert.strictEqual(trailingSlash.status, 200)
+  })
+
   it('does not apply admin authentication to proxy routes or CORS preflight', async () => {
     const models = await fetch(`${baseURL}/v1/models`)
     assert.strictEqual(models.status, 200)
