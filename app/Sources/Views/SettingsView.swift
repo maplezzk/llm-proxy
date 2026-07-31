@@ -68,7 +68,7 @@ struct SettingsView: View {
                         HStack(spacing: 8) {
                             TextField(loc("settings.managementURLPlaceholder"), text: $managementURL)
                                 .textFieldStyle(.roundedBorder)
-                                .frame(width: 300)
+                                .frame(minWidth: 180, idealWidth: 300, maxWidth: 300)
                                 .help(loc("settings.managementURLHint"))
                                 .onSubmit { saveManagementURL() }
                             Button(loc("action.save")) {
@@ -76,6 +76,7 @@ struct SettingsView: View {
                             }
                             .buttonStyle(.borderedProminent)
                             .controlSize(.small)
+                            .fixedSize(horizontal: true, vertical: false)
 
                             if APIClient.configuredManagementURL() != nil {
                                 Button(loc("settings.managementURLReset")) {
@@ -83,6 +84,7 @@ struct SettingsView: View {
                                 }
                                 .buttonStyle(.bordered)
                                 .controlSize(.small)
+                                .fixedSize(horizontal: true, vertical: false)
                             }
                         }
                     }
@@ -101,7 +103,7 @@ struct SettingsView: View {
                         HStack(spacing: 8) {
                             SecureField(loc("settings.managementAPIKeyPlaceholder"), text: $managementAPIKey)
                                 .textFieldStyle(.roundedBorder)
-                                .frame(width: 220)
+                                .frame(minWidth: 160, idealWidth: 220, maxWidth: 220)
                                 .help(loc("settings.managementAPIKeyHint"))
                                 .onSubmit { saveManagementAPIKey() }
                             Button(loc("action.save")) {
@@ -109,6 +111,7 @@ struct SettingsView: View {
                             }
                             .buttonStyle(.borderedProminent)
                             .controlSize(.small)
+                            .fixedSize(horizontal: true, vertical: false)
                             .disabled(managementAPIKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
 
                             if hasManagementAPIKey {
@@ -117,6 +120,7 @@ struct SettingsView: View {
                                 }
                                 .buttonStyle(.bordered)
                                 .controlSize(.small)
+                                .fixedSize(horizontal: true, vertical: false)
                             }
                         }
                     }
@@ -310,6 +314,7 @@ struct SettingsView: View {
             Spacer()
 
             controls()
+                .layoutPriority(1)
         }
         .padding(.horizontal, 24)
         .padding(.vertical, 14)
