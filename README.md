@@ -90,6 +90,7 @@ The admin UI supports:
 log_level: debug          # debug | info | warn | error
 port: 9000                # Optional: default 9000
 max_body_size: 10485760   # Optional: max request body in bytes (default 10MB)
+admin_key: ${ADMIN_KEY}   # Optional: if set, /admin* requires auth
 proxy_key: sk-xxx         # Optional: if set, /v1/* requires auth
 
 providers:

@@ -2,6 +2,7 @@ import Foundation
 
 class APIClient {
     static let managementURLDefaultsKey = "llm-proxy-management-url"
+    static let managementAPIKeyDefaultsKey = "llm-proxy-management-api-key"
 
     /// Tests and one-off callers can override the resolved URL without changing
     /// the persisted app setting. Normal app clients keep this nil so every
@@ -42,8 +43,17 @@ class APIClient {
         "\(storedManagementURL())/\(adapterName)/v1/"
     }
 
-    /// 规范化用户输入：允许粘贴 Web UI 的 `/admin` 地址，也允许反向代理前缀。
-    /// 远程 HTTP 会被拒绝，避免打包 App 的 ATS 拦截及明文管理流量。
+    /// 管理 API 密钥仅用于访问管理服务，与后端配置的代理 API Key 相互独立。
+    static func configuredManagementAPIKey() -> String? {
+        guard let stored = UserDefaults.standard.string(forKey: managementAPIKeyDefaultsKey) else {
+            return nil
+        }
+        let trimmed = stored.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    /// 规范化用户输入：允许 HTTP/HTTPS、粘贴 Web UI 的 `/admin` 地址，
+    /// 也允许反向代理前缀。
     static func normalizedManagementURL(_ input: String) -> String? {
         let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty,
@@ -55,7 +65,7 @@ class APIClient {
               components.password == nil,
               components.query == nil,
               components.fragment == nil,
-              scheme == "https" || (scheme == "http" && isLoopbackHost(host)) else {
+              scheme == "https" || scheme == "http" else {
             return nil
         }
 
@@ -77,14 +87,6 @@ class APIClient {
         return normalized.hasSuffix("/") ? String(normalized.dropLast()) : normalized
     }
 
-    private static func isLoopbackHost(_ host: String) -> Bool {
-        if host == "localhost" || host == "::1" { return true }
-        let octets = host.split(separator: ".", omittingEmptySubsequences: false)
-        guard octets.count == 4,
-              octets[0] == "127" else { return false }
-        return octets.allSatisfy { UInt8($0) != nil }
-    }
-
     /// 保存自定义管理地址。空字符串等价于恢复本机默认地址。
     @discardableResult
     func updateManagementURL(_ input: String) -> Bool {
@@ -98,6 +100,37 @@ class APIClient {
         UserDefaults.standard.set(normalized, forKey: Self.managementURLDefaultsKey)
         baseURLOverride = nil
         return true
+    }
+
+    /// 保存管理 API 密钥。空字符串等价于移除密钥。
+    func updateManagementAPIKey(_ input: String) {
+        let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty {
+            UserDefaults.standard.removeObject(forKey: Self.managementAPIKeyDefaultsKey)
+        } else {
+            UserDefaults.standard.set(trimmed, forKey: Self.managementAPIKeyDefaultsKey)
+        }
+    }
+
+    /// 为管理请求附加独立的 Bearer 密钥。供普通请求与 SSE 共用。
+    static func managementRequest(url: URL) -> URLRequest {
+        authorizedManagementRequest(URLRequest(url: url))
+    }
+
+    static func authorizedManagementRequest(_ request: URLRequest) -> URLRequest {
+        var request = request
+        if let key = configuredManagementAPIKey() {
+            request.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
+        }
+        return request
+    }
+
+    private func data(from url: URL) async throws -> (Data, URLResponse) {
+        try await URLSession.shared.data(for: Self.managementRequest(url: url))
+    }
+
+    private func data(for request: URLRequest) async throws -> (Data, URLResponse) {
+        try await URLSession.shared.data(for: Self.authorizedManagementRequest(request))
     }
 
     // MARK: - 统一错误解析
@@ -159,7 +192,7 @@ class APIClient {
 
     func fetchLogLevel() async throws -> String {
         let url = URL(string: "\(baseURL)/admin/log-level")!
-        let (data, _) = try await URLSession.shared.data(from: url)
+        let (data, _) = try await data(from: url)
         if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
            let d = json["data"] as? [String: Any],
            let level = d["level"] as? String { return level }
@@ -172,13 +205,13 @@ class APIClient {
         req.httpMethod = "PUT"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = try JSONSerialization.data(withJSONObject: ["level": level])
-        let (data, resp) = try await URLSession.shared.data(for: req)
+        let (data, resp) = try await data(for: req)
         try Self.validate(data: data, response: resp, context: "setLogLevel")
     }
 
     func fetchHealth() async throws -> Bool {
         let url = URL(string: "\(baseURL)/admin/health")!
-        let (data, resp) = try await URLSession.shared.data(from: url)
+        let (data, resp) = try await data(from: url)
         guard let http = resp as? HTTPURLResponse, http.statusCode == 200 else { return false }
         if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
             return json["success"] as? Bool ?? false
@@ -188,13 +221,13 @@ class APIClient {
 
     func fetchConfig() async throws -> ConfigResponse {
         let url = URL(string: "\(baseURL)/admin/config")!
-        let (data, _) = try await URLSession.shared.data(from: url)
+        let (data, _) = try await data(from: url)
         return try JSONDecoder().decode(ConfigResponse.self, from: data)
     }
 
     func fetchAdapters() async throws -> AdaptersResponse {
         let url = URL(string: "\(baseURL)/admin/adapters")!
-        let (data, _) = try await URLSession.shared.data(from: url)
+        let (data, _) = try await data(from: url)
         return try JSONDecoder().decode(AdaptersResponse.self, from: data)
     }
 
@@ -202,7 +235,7 @@ class APIClient {
         let url = URL(string: "\(baseURL)/admin/config/reload")!
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
-        let (data, resp) = try await URLSession.shared.data(for: req)
+        let (data, resp) = try await data(for: req)
         try Self.validate(data: data, response: resp, context: "reloadConfig")
     }
 
@@ -213,13 +246,13 @@ class APIClient {
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         let body = UpdateAdapterBody(name: adapter.name, type: adapter.type, maxTokens: adapter.maxTokens, stream: adapter.stream, models: mappings)
         req.httpBody = try JSONEncoder().encode(body)
-        let (data, resp) = try await URLSession.shared.data(for: req)
+        let (data, resp) = try await data(for: req)
         try Self.validate(data: data, response: resp, context: "updateAdapter")
     }
 
     func fetchLocale() async throws -> String {
         let url = URL(string: "\(baseURL)/admin/locale")!
-        let (data, _) = try await URLSession.shared.data(from: url)
+        let (data, _) = try await data(from: url)
         let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
         if let d = json?["data"] as? [String: Any], let locale = d["locale"] as? String {
             return locale
@@ -233,13 +266,13 @@ class APIClient {
         req.httpMethod = "PUT"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = try JSONSerialization.data(withJSONObject: ["locale": locale])
-        let (data, resp) = try await URLSession.shared.data(for: req)
+        let (data, resp) = try await data(for: req)
         try Self.validate(data: data, response: resp, context: "setLocale")
     }
 
     func fetchProxyKey() async throws -> Bool {
         let url = URL(string: "\(baseURL)/admin/proxy-key")!
-        let (data, _) = try await URLSession.shared.data(from: url)
+        let (data, _) = try await data(from: url)
         guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
               let d = json["data"] as? [String: Any] else { return false }
         return d["set"] as? Bool ?? false
@@ -251,13 +284,13 @@ class APIClient {
         req.httpMethod = "PUT"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = try JSONSerialization.data(withJSONObject: ["key": key ?? ""])
-        let (data, resp) = try await URLSession.shared.data(for: req)
+        let (data, resp) = try await data(for: req)
         try Self.validate(data: data, response: resp, context: "setProxyKey")
     }
 
     func fetchPort() async throws -> Int? {
         let url = URL(string: "\(baseURL)/admin/port")!
-        let (data, _) = try await URLSession.shared.data(from: url)
+        let (data, _) = try await data(from: url)
         guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
               let d = json["data"] as? [String: Any] else { return nil }
         return d["port"] as? Int
@@ -273,7 +306,7 @@ class APIClient {
             bodyDict["port"] = p
         }
         req.httpBody = try JSONSerialization.data(withJSONObject: bodyDict)
-        let (data, resp) = try await URLSession.shared.data(for: req)
+        let (data, resp) = try await data(for: req)
         try Self.validate(data: data, response: resp, context: "setPort")
     }
 
@@ -281,7 +314,7 @@ class APIClient {
 
     func fetchTokenStats() async throws -> TokenStats {
         let url = URL(string: "\(baseURL)/admin/token-stats")!
-        let (data, _) = try await URLSession.shared.data(from: url)
+        let (data, _) = try await data(from: url)
         let resp = try JSONDecoder().decode(TokenStatsResponse.self, from: data)
         guard resp.success, let stats = resp.data else {
             throw URLError(.cannotParseResponse)
@@ -296,7 +329,7 @@ class APIClient {
             query = "startDate=\(s)&endDate=\(e)"
         }
         let url = URL(string: "\(baseURL)/admin/token-stats/timeline?\(query)")!
-        let (data, _) = try await URLSession.shared.data(from: url)
+        let (data, _) = try await data(from: url)
         let resp = try JSONDecoder().decode(ArrayResponse<TimelinePoint>.self, from: data)
         guard resp.success else { throw URLError(.cannotParseResponse) }
         return resp.data ?? []
@@ -310,7 +343,7 @@ class APIClient {
             query += "&startDate=\(s)&endDate=\(e)"
         }
         let url = URL(string: "\(baseURL)/admin/token-stats/breakdown?\(query)")!
-        let (data, _) = try await URLSession.shared.data(from: url)
+        let (data, _) = try await data(from: url)
         let resp = try JSONDecoder().decode(ArrayResponse<UsageBucket>.self, from: data)
         guard resp.success else { throw URLError(.cannotParseResponse) }
         return resp.data ?? []
@@ -319,7 +352,7 @@ class APIClient {
     /// 获取数据库概况（条目数 + 大小）
     func fetchTokenDbInfo() async throws -> TokenDbInfo {
         let url = URL(string: "\(baseURL)/admin/token-stats/db-info")!
-        let (data, _) = try await URLSession.shared.data(from: url)
+        let (data, _) = try await data(from: url)
         let resp = try JSONDecoder().decode(InfoResponse<TokenDbInfo>.self, from: data)
         guard resp.success, let info = resp.data else {
             throw URLError(.cannotParseResponse)
@@ -336,7 +369,7 @@ class APIClient {
         req.httpBody = try JSONSerialization.data(
             withJSONObject: all ? ["all": true] : ["days": max(1, min(365, days))]
         )
-        let (data, _) = try await URLSession.shared.data(for: req)
+        let (data, _) = try await data(for: req)
         let resp = try JSONDecoder().decode(CleanupResponse.self, from: data)
         guard resp.success, let result = resp.data else {
             throw URLError(.cannotParseResponse)
@@ -349,7 +382,7 @@ class APIClient {
     /// 获取外挂识图配置。返回 nil 表示未启用。
     func fetchVision() async throws -> VisionConfig? {
         let url = URL(string: "\(baseURL)/admin/vision")!
-        let (data, _) = try await URLSession.shared.data(from: url)
+        let (data, _) = try await data(from: url)
         let resp = try JSONDecoder().decode(VisionResponse.self, from: data)
         guard resp.success else {
             throw URLError(.cannotParseResponse)
@@ -368,7 +401,7 @@ class APIClient {
         if let m = model, !m.isEmpty { body["model"] = m }
         if let pr = prompt, !pr.isEmpty { body["prompt"] = pr }
         req.httpBody = try JSONSerialization.data(withJSONObject: body)
-        let (data, _) = try await URLSession.shared.data(for: req)
+        let (data, _) = try await data(for: req)
         let resp = try JSONDecoder().decode(VisionResponse.self, from: data)
         guard resp.success else {
             throw NSError(domain: "Vision", code: 1, userInfo: [NSLocalizedDescriptionKey: resp.error ?? "Unknown error"])
@@ -385,7 +418,7 @@ class APIClient {
         if let type = type { queryItems.append(URLQueryItem(name: "type", value: type)) }
         if let date = date { queryItems.append(URLQueryItem(name: "date", value: date)) }
         components.queryItems = queryItems
-        let (data, _) = try await URLSession.shared.data(from: components.url!)
+        let (data, _) = try await data(from: components.url!)
         let resp = try JSONDecoder().decode(LogsResponse.self, from: data)
         guard resp.success, let logsData = resp.data else {
             throw URLError(.cannotParseResponse)
@@ -397,7 +430,7 @@ class APIClient {
 
     func fetchCaptureStatus() async throws -> Bool {
         let url = URL(string: "\(baseURL)/admin/debug/captures/status")!
-        let (data, _) = try await URLSession.shared.data(from: url)
+        let (data, _) = try await data(from: url)
         let resp = try JSONDecoder().decode(CaptureStatusResponse.self, from: data)
         guard resp.success, let status = resp.data else {
             throw URLError(.cannotParseResponse)
@@ -411,7 +444,7 @@ class APIClient {
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = try JSONSerialization.data(withJSONObject: ["enabled": enabled, "clear": clear])
-        let (data, resp) = try await URLSession.shared.data(for: req)
+        let (data, resp) = try await data(for: req)
         try Self.validate(data: data, response: resp, context: "setCaptureControl")
         let result = try JSONDecoder().decode(CaptureControlResponse.self, from: data)
         return result.data?.enabled ?? false
@@ -421,7 +454,7 @@ class APIClient {
 
     func fetchProviders() async throws -> [ProviderDetail] {
         let url = URL(string: "\(baseURL)/admin/config")!
-        let (data, _) = try await URLSession.shared.data(from: url)
+        let (data, _) = try await data(from: url)
         if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
            let d = json["data"] as? [String: Any],
            let providers = d["providers"] as? [[String: Any]] {
@@ -438,7 +471,7 @@ class APIClient {
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         let body = CreateProviderBody(name: name, type: type, api_key: apiKey, api_base: apiBase, protocols: protocols, models: models)
         req.httpBody = try JSONEncoder().encode(body)
-        let (data, resp) = try await URLSession.shared.data(for: req)
+        let (data, resp) = try await data(for: req)
         try Self.validate(data: data, response: resp, context: "createProvider")
     }
 
@@ -449,7 +482,7 @@ class APIClient {
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         let body = UpdateProviderBody(name: name, type: type, api_key: apiKey, api_base: apiBase, protocols: protocols, models: models)
         req.httpBody = try JSONEncoder().encode(body)
-        let (data, resp) = try await URLSession.shared.data(for: req)
+        let (data, resp) = try await data(for: req)
         try Self.validate(data: data, response: resp, context: "updateProvider")
     }
 
@@ -457,7 +490,7 @@ class APIClient {
         let url = URL(string: "\(baseURL)/admin/providers/\(name)")!
         var req = URLRequest(url: url)
         req.httpMethod = "DELETE"
-        let (data, resp) = try await URLSession.shared.data(for: req)
+        let (data, resp) = try await data(for: req)
         try Self.validate(data: data, response: resp, context: "deleteProvider")
     }
 
@@ -470,7 +503,7 @@ class APIClient {
         if !apiKey.isEmpty { body["api_key"] = apiKey }
         if !apiBase.isEmpty { body["api_base"] = apiBase }
         req.httpBody = try JSONSerialization.data(withJSONObject: body)
-        let (data, resp) = try await URLSession.shared.data(for: req)
+        let (data, resp) = try await data(for: req)
         try Self.validate(data: data, response: resp, context: "pullModels")
         let result = try JSONDecoder().decode(PullModelsResponse.self, from: data)
         guard result.success, let modelsData = result.data else {
@@ -492,7 +525,7 @@ class APIClient {
             "type": type
         ]
         req.httpBody = try JSONSerialization.data(withJSONObject: body)
-        let (data, resp) = try await URLSession.shared.data(for: req)
+        let (data, resp) = try await data(for: req)
         try Self.validate(data: data, response: resp, context: "testProvider")
         let result = try JSONDecoder().decode(TestModelResponse.self, from: data)
         guard result.success, let testResult = result.data else {
@@ -510,7 +543,7 @@ class APIClient {
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         let body = UpdateAdapterBody(name: name, type: type, maxTokens: maxTokens, stream: stream, models: models)
         req.httpBody = try JSONEncoder().encode(body)
-        let (data, resp) = try await URLSession.shared.data(for: req)
+        let (data, resp) = try await data(for: req)
         try Self.validate(data: data, response: resp, context: "createAdapter")
     }
 
@@ -518,7 +551,7 @@ class APIClient {
         let url = URL(string: "\(baseURL)/admin/adapters/\(name)")!
         var req = URLRequest(url: url)
         req.httpMethod = "DELETE"
-        let (data, resp) = try await URLSession.shared.data(for: req)
+        let (data, resp) = try await data(for: req)
         try Self.validate(data: data, response: resp, context: "deleteAdapter")
     }
 
@@ -528,7 +561,7 @@ class APIClient {
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = try JSONSerialization.data(withJSONObject: ["adapterName": name, "modelId": modelId])
-        let (data, resp) = try await URLSession.shared.data(for: req)
+        let (data, resp) = try await data(for: req)
         try Self.validate(data: data, response: resp, context: "testAdapter")
         let result = try JSONDecoder().decode(TestModelResponse.self, from: data)
         guard result.success, let testResult = result.data else {

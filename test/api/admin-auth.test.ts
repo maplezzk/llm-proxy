@@ -1,0 +1,74 @@
+import { after, before, describe, it } from 'node:test'
+import assert from 'node:assert'
+import type { AddressInfo } from 'node:net'
+import type { Server } from 'node:http'
+import { mkdtempSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { createProxyServer } from '../../src/api/server.js'
+import { ConfigStore } from '../../src/config/store.js'
+import { StatusTracker } from '../../src/status/tracker.js'
+import { UsageStore } from '../../src/status/usage-store.js'
+import { Logger } from '../../src/log/logger.js'
+
+describe('admin API authentication', () => {
+  let server: Server
+  let usageStore: UsageStore
+  let baseURL: string
+
+  before(async () => {
+    const store = new ConfigStore('/fake/admin-auth-test', {
+      adminKey: 'admin-secret',
+      providers: [],
+    })
+    usageStore = new UsageStore(join(mkdtempSync(join(tmpdir(), 'admin-auth-')), 'usage.db'))
+    server = createProxyServer({
+      adminHost: '127.0.0.1',
+      adminPort: 0,
+      proxyHost: '127.0.0.1',
+      proxyPort: 0,
+      store,
+      tracker: new StatusTracker(),
+      usageStore,
+      logger: new Logger(20),
+    })
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+    baseURL = `http://127.0.0.1:${(server.address() as AddressInfo).port}`
+  })
+
+  after(async () => {
+    await new Promise<void>((resolve) => server.close(() => resolve()))
+    usageStore.close()
+  })
+
+  it('rejects missing or invalid admin credentials', async () => {
+    const missing = await fetch(`${baseURL}/admin/health`)
+    assert.strictEqual(missing.status, 401)
+    assert.match(await missing.text(), /管理 API Key 无效/)
+
+    const invalid = await fetch(`${baseURL}/admin/health`, {
+      headers: { 'x-api-key': 'wrong-secret' },
+    })
+    assert.strictEqual(invalid.status, 401)
+  })
+
+  it('accepts Bearer and x-api-key admin credentials', async () => {
+    const bearer = await fetch(`${baseURL}/admin/health`, {
+      headers: { Authorization: 'Bearer admin-secret' },
+    })
+    assert.strictEqual(bearer.status, 200)
+
+    const apiKey = await fetch(`${baseURL}/admin/health`, {
+      headers: { 'x-api-key': 'admin-secret' },
+    })
+    assert.strictEqual(apiKey.status, 200)
+  })
+
+  it('does not apply admin authentication to proxy routes or CORS preflight', async () => {
+    const models = await fetch(`${baseURL}/v1/models`)
+    assert.strictEqual(models.status, 200)
+
+    const preflight = await fetch(`${baseURL}/admin/health`, { method: 'OPTIONS' })
+    assert.strictEqual(preflight.status, 204)
+  })
+})

@@ -1,5 +1,9 @@
 # llm-proxy 配置示例
 
+# 远程暴露管理服务时建议通过环境变量配置独立密钥。
+# 设置后所有 /admin* 请求都需要 Authorization: Bearer 或 x-api-key。
+admin_key: ${ADMIN_KEY}
+
 providers:
   # Anthropic (原生 Messages API) — 启用 thinking 模式
   - name: anthropic-main

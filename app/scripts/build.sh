@@ -57,7 +57,10 @@ cat > "$APP/Contents/Info.plist" << PLIST
     <key>CFBundleShortVersionString</key><string>${VERSION}</string>
     <key>LSUIElement</key><true/>
     <key>NSAppTransportSecurity</key>
-    <dict><key>NSAllowsLocalNetworking</key><true/></dict>
+    <dict>
+        <key>NSAllowsArbitraryLoads</key><true/>
+        <key>NSAllowsLocalNetworking</key><true/>
+    </dict>
 </dict>
 </plist>
 PLIST

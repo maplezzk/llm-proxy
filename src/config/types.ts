@@ -91,6 +91,8 @@ export interface Config {
   adapters?: AdapterConfig[]
   /** 外挂多模态识图配置，为不支持图片的模型提供自动识图能力 */
   vision?: VisionConfig
+  /** 管理接口认证密钥；设置后所有 /admin* 请求必须携带该密钥 */
+  adminKey?: string
   proxyKey?: string
   logLevel?: LogLevel
   locale?: string
@@ -129,6 +131,7 @@ export interface ConfigFile {
   providers: ProviderConfigFile[]
   adapters?: AdapterConfigFile[]
   vision?: { provider: string; model: string; prompt?: string }
+  admin_key?: string
   proxy_key?: string
   log_level?: string
   locale?: string
