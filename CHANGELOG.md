@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.26.0](https://github.com/maplezzk/llm-proxy/compare/v0.25.0...v0.26.0) (2026-07-31)
+
+
+### Features
+
+* Web 管理页支持管理 API 密钥 ([57f60db](https://github.com/maplezzk/llm-proxy/commit/57f60dbf8457349e6dbc4b5b0bc4ebf24d3751c2))
+* 支持 macOS 管理远程服务 ([48a9ad8](https://github.com/maplezzk/llm-proxy/commit/48a9ad851afb44c2a2429ef20a6437039deac1c7))
+* 支持远程管理服务与管理 API 密钥 ([0aed38a](https://github.com/maplezzk/llm-proxy/commit/0aed38a7ce7f112a61f349f58d380aed12cc185a))
+* 支持远程管理认证和 HTTP 地址 ([c90466f](https://github.com/maplezzk/llm-proxy/commit/c90466f2af4d7fb183e80331857f3f48c1980a24))
+
+
+### Bug Fixes
+
+* hot reload all runtime configuration changes ([d86f090](https://github.com/maplezzk/llm-proxy/commit/d86f090db3a4679d7827b4fb11be348277bb6773))
+* 修复 macOS 代理密钥状态与热更新 ([64fe1c3](https://github.com/maplezzk/llm-proxy/commit/64fe1c3d7127d3997e163957b5db133fadd8be16))
+* 修复 macOS 代理密钥状态与热更新 ([5880544](https://github.com/maplezzk/llm-proxy/commit/58805446a57e558f695e328d86d4a6e055e28a58))
+* 限制抓包列表高度 ([1b44b00](https://github.com/maplezzk/llm-proxy/commit/1b44b00aa698310d018916c4f62330f46a6af8b7))
+* 限制抓包列表高度 ([0003200](https://github.com/maplezzk/llm-proxy/commit/00032006551b0c053c725690670c790c50c38210))
+
 ## [0.25.0](https://github.com/maplezzk/llm-proxy/compare/v0.24.0...v0.25.0) (2026-07-27)
 
 
