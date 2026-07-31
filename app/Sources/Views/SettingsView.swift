@@ -68,7 +68,7 @@ struct SettingsView: View {
                         HStack(spacing: 8) {
                             TextField(loc("settings.managementURLPlaceholder"), text: $managementURL)
                                 .textFieldStyle(.roundedBorder)
-                                .frame(minWidth: 180, idealWidth: 300, maxWidth: 300)
+                                .frame(minWidth: 140, idealWidth: 280, maxWidth: 360)
                                 .help(loc("settings.managementURLHint"))
                                 .onSubmit { saveManagementURL() }
                             Button(loc("action.save")) {
@@ -109,7 +109,7 @@ struct SettingsView: View {
                                 text: $managementAPIKey
                             )
                                 .textFieldStyle(.roundedBorder)
-                                .frame(minWidth: 160, idealWidth: 220, maxWidth: 220)
+                                .frame(minWidth: 140, idealWidth: 220, maxWidth: 300)
                                 .help(loc("settings.managementAPIKeyHint"))
                                 .onSubmit { saveManagementAPIKey() }
                             Button(hasManagementAPIKey ? loc("settings.replace") : loc("action.save")) {
@@ -302,6 +302,43 @@ struct SettingsView: View {
         subtitle: String,
         @ViewBuilder controls: () -> Controls
     ) -> some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 12) {
+                settingsRowLabel(
+                    icon: icon,
+                    iconColor: iconColor,
+                    title: title,
+                    subtitle: subtitle
+                )
+                .frame(minWidth: 220, idealWidth: 240, maxWidth: 280, alignment: .leading)
+
+                Spacer(minLength: 16)
+
+                controls()
+            }
+
+            VStack(alignment: .leading, spacing: 12) {
+                settingsRowLabel(
+                    icon: icon,
+                    iconColor: iconColor,
+                    title: title,
+                    subtitle: subtitle
+                )
+
+                controls()
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+            }
+        }
+        .padding(.horizontal, 24)
+        .padding(.vertical, 14)
+    }
+
+    private func settingsRowLabel(
+        icon: String,
+        iconColor: Color,
+        title: String,
+        subtitle: String
+    ) -> some View {
         HStack(spacing: 12) {
             Image(systemName: icon)
                 .font(.system(size: 14, weight: .medium))
@@ -312,18 +349,15 @@ struct SettingsView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
                     .font(.body)
+                    .lineLimit(1)
                 Text(subtitle)
                     .font(.caption)
                     .foregroundColor(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .help(subtitle)
             }
-
-            Spacer()
-
-            controls()
-                .layoutPriority(1)
         }
-        .padding(.horizontal, 24)
-        .padding(.vertical, 14)
     }
 
     // MARK: - Auto Update
