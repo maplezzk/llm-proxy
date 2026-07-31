@@ -336,6 +336,10 @@
 "menu.status.running" = "Running";
 "menu.status.stopped" = "Not Running";
 "menu.todayUsage" = "Today %@ · cache hit %@";
+"menu.management.local" = "Local";
+"menu.management.remote" = "Remote";
+"menu.management.switchToLocal" = "Use Local";
+"menu.management.switchToRemote" = "Use Remote";
 "menu.usage.last30Total" = "Last 30 days total";
 "menu.usage.requests" = "%d requests";
 "menu.usage.input" = "Input";

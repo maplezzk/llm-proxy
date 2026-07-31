@@ -5,13 +5,16 @@ final class APIClientTests: XCTestCase {
     var client: APIClient!
     private var savedPort: Any?
     private var savedManagementURL: Any?
+    private var savedLastRemoteManagementURL: Any?
     private var savedManagementAPIKey: Any?
 
     override func setUp() {
         savedPort = UserDefaults.standard.object(forKey: "llm-proxy-port")
         savedManagementURL = UserDefaults.standard.object(forKey: APIClient.managementURLDefaultsKey)
+        savedLastRemoteManagementURL = UserDefaults.standard.object(forKey: APIClient.lastRemoteManagementURLDefaultsKey)
         savedManagementAPIKey = UserDefaults.standard.object(forKey: APIClient.managementAPIKeyDefaultsKey)
         UserDefaults.standard.removeObject(forKey: APIClient.managementURLDefaultsKey)
+        UserDefaults.standard.removeObject(forKey: APIClient.lastRemoteManagementURLDefaultsKey)
         UserDefaults.standard.removeObject(forKey: APIClient.managementAPIKeyDefaultsKey)
         client = APIClient()
         client.baseURL = "http://127.0.0.1:9000"
@@ -20,6 +23,7 @@ final class APIClientTests: XCTestCase {
     override func tearDown() {
         restore(savedPort, forKey: "llm-proxy-port")
         restore(savedManagementURL, forKey: APIClient.managementURLDefaultsKey)
+        restore(savedLastRemoteManagementURL, forKey: APIClient.lastRemoteManagementURLDefaultsKey)
         restore(savedManagementAPIKey, forKey: APIClient.managementAPIKeyDefaultsKey)
         client = nil
     }
@@ -106,6 +110,25 @@ final class APIClientTests: XCTestCase {
         XCTAssertEqual(client.baseURL, "https://proxy.example.com")
         XCTAssertEqual(APIClient.storedPort(), 9001)
         XCTAssertTrue(client.usesCustomManagementURL)
+    }
+
+    func testSwitchesBetweenRemoteAndLocalWithoutLosingRemoteURL() {
+        XCTAssertTrue(client.updateManagementURL("https://proxy.example.com/base"))
+
+        client.switchToLocalManagement()
+
+        XCTAssertFalse(client.usesCustomManagementURL)
+        XCTAssertEqual(APIClient.lastRemoteManagementURL(), "https://proxy.example.com/base")
+        XCTAssertEqual(client.baseURL, "http://127.0.0.1:\(APIClient.storedPort())")
+
+        XCTAssertTrue(client.switchToRemoteManagement())
+        XCTAssertTrue(client.usesCustomManagementURL)
+        XCTAssertEqual(client.baseURL, "https://proxy.example.com/base")
+    }
+
+    func testCannotSwitchToRemoteWithoutSavedURL() {
+        XCTAssertFalse(client.switchToRemoteManagement())
+        XCTAssertFalse(client.usesCustomManagementURL)
     }
 
     func testPersistsManagementAPIKeyAndAddsBearerAuthorization() {
