@@ -4,6 +4,17 @@ import { t } from '../../lib/i18n.js'
 import { json } from './index.js'
 import { getProviderPrimaryType } from '../../config/types.js'
 
+function rebindPortAfterResponse(ctx: ServerContext, res: ServerResponse, port: number): void {
+  if (!ctx.rebindPort) return
+  const rebind = () => {
+    void ctx.rebindPort!(port).catch((error) => {
+      ctx.logger.log('system', 'Config port hot reload failed', { port, error: String(error) }, 'error')
+    })
+  }
+  if (res.writableFinished) queueMicrotask(rebind)
+  else res.once('finish', rebind)
+}
+
 export function handleGetConfig(ctx: ServerContext, _req: IncomingMessage, res: ServerResponse): void {
   const { config } = ctx.store.getConfig()
   json(res, 200, {
@@ -40,8 +51,13 @@ export function handleGetConfig(ctx: ServerContext, _req: IncomingMessage, res: 
 export async function handleReload(ctx: ServerContext, _req: IncomingMessage, res: ServerResponse): Promise<void> {
   const result = await ctx.store.reload()
   if (result.success) {
+    const { config } = ctx.store.getConfig()
+    ctx.capture?.setMaxSize(config.captureMaxSize ?? 100)
+    if (config.logLevel) ctx.logger.setLevel(config.logLevel)
+    ctx.changeLocale?.(config.locale ?? 'en')
     ctx.logger.log('system', t('backend.config.reloadSuccess'), { version: result.version })
     json(res, 200, { success: true, data: { version: result.version } })
+    rebindPortAfterResponse(ctx, res, config.port ?? 9000)
   } else {
     ctx.logger.log('system', t('backend.config.reloadFailed'), { errors: result.errors })
     json(res, 400, { success: false, error: t('backend.config.validationFailed'), errors: result.errors })
@@ -80,7 +96,8 @@ export async function handleSetLogLevel(ctx: ServerContext, req: IncomingMessage
     return
   }
   const { config } = ctx.store.getConfig()
-  const newConfig = { providers: config.providers, adapters: config.adapters, proxyKey: config.proxyKey, logLevel: level }
+  const newConfig = structuredClone(config)
+  newConfig.logLevel = level
   await ctx.store.writeConfig(newConfig)
   ctx.logger.setLevel(level)
   ctx.logger.log('system', `Log level changed to ${level} (persisted)`, { level })
@@ -100,14 +117,10 @@ export async function handleSetLocale(ctx: ServerContext, req: IncomingMessage, 
     return
   }
   const { config } = ctx.store.getConfig()
-  const newConfig = {
-    providers: config.providers,
-    adapters: config.adapters,
-    proxyKey: config.proxyKey,
-    logLevel: config.logLevel,
-    locale,
-  }
+  const newConfig = structuredClone(config)
+  newConfig.locale = locale
   await ctx.store.writeConfig(newConfig)
+  ctx.changeLocale?.(locale)
   ctx.logger.log('system', `Locale changed to ${locale} (persisted)`, { locale })
   json(res, 200, { success: true, data: { locale } })
 }
@@ -125,18 +138,12 @@ export async function handleSetPort(ctx: ServerContext, req: IncomingMessage, re
     return
   }
   const { config } = ctx.store.getConfig()
-  const newConfig: import('../../config/types.js').Config = {
-    providers: config.providers,
-    adapters: config.adapters,
-    proxyKey: config.proxyKey,
-    logLevel: config.logLevel,
-    locale: config.locale,
-    port: port || undefined,
-    captureMaxSize: config.captureMaxSize,
-  }
+  const newConfig = structuredClone(config)
+  newConfig.port = port || undefined
   await ctx.store.writeConfig(newConfig)
-  ctx.logger.log('system', `Port changed to ${port ?? 'default (9000)'} (persisted, restart to take effect)`)
+  ctx.logger.log('system', `Port changed to ${port ?? 'default (9000)'} (hot reloaded)`)
   json(res, 200, { success: true, data: { port: newConfig.port } })
+  rebindPortAfterResponse(ctx, res, port ?? 9000)
 }
 
 export function handleGetProxyKey(_ctx: ServerContext, _req: IncomingMessage, res: ServerResponse): void {
@@ -147,11 +154,13 @@ export function handleGetProxyKey(_ctx: ServerContext, _req: IncomingMessage, re
 export async function handleSetProxyKey(ctx: ServerContext, req: IncomingMessage, res: ServerResponse): Promise<void> {
   const body = JSON.parse(await (await import('../../lib/http-utils.js')).readBody(req))
   const { config } = ctx.store.getConfig()
-  const newConfig = { providers: config.providers, adapters: config.adapters, proxyKey: body.key || undefined, logLevel: config.logLevel }
+  const key = typeof body.key === 'string' ? body.key.trim() : ''
+  const newConfig = structuredClone(config)
+  newConfig.proxyKey = key || undefined
   await ctx.store.writeConfig(newConfig)
-  const verb = body.key ? 'set' : 'removed'
+  const verb = key ? 'set' : 'removed'
   ctx.logger.log('system', `Proxy API key ${verb}`)
-  json(res, 200, { success: true, data: { set: !!body.key } })
+  json(res, 200, { success: true, data: { set: !!key } })
 }
 
 // Vision (外挂识图) 配置
@@ -177,16 +186,8 @@ export async function handleSetVision(ctx: ServerContext, req: IncomingMessage, 
     return
   }
 
-  const newConfig = {
-    providers: config.providers,
-    adapters: config.adapters,
-    proxyKey: config.proxyKey,
-    vision: newVision,
-    logLevel: config.logLevel,
-    locale: config.locale,
-    port: config.port,
-    captureMaxSize: config.captureMaxSize,
-  }
+  const newConfig = structuredClone(config)
+  newConfig.vision = newVision
   await ctx.store.writeConfig(newConfig)
   ctx.logger.log('system', newVision ? `Vision fallback configured: ${newVision.provider}/${newVision.model}` : 'Vision fallback removed')
   json(res, 200, { success: true, data: newVision ?? null })

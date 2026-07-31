@@ -4,7 +4,7 @@ import { ConfigStore } from '../../src/config/store.js'
 import { StatusTracker } from '../../src/status/tracker.js'
 import { Logger } from '../../src/log/logger.js'
 import type { Config } from '../../src/config/types.js'
-import { handleGetConfig, handleReload, handleHealth, handleStatus, handleGetLocale, handleSetLocale, handleCreateProvider, handleUpdateProvider } from '../../src/api/handlers/index.js'
+import { handleGetConfig, handleReload, handleHealth, handleStatus, handleGetLocale, handleSetLocale, handleSetProxyKey, handleCreateProvider, handleUpdateProvider } from '../../src/api/handlers/index.js'
 import type { OutgoingHttpHeaders } from 'node:http'
 
 function createConfig(): Config {
@@ -187,6 +187,39 @@ describe('api/handlers', () => {
     handleGetLocale(ctx, {} as never, res2 as never)
     const data2 = JSON.parse(res2.getBody())
     assert.strictEqual(data2.data.locale, 'zh')
+  })
+
+  it('PUT /admin/proxy-key 热更新运行时配置且保留其他配置', async () => {
+    const tmpDir = (await import('node:fs')).mkdtempSync((await import('node:os')).tmpdir() + '/llm-proxy-test-')
+    const configPath = tmpDir + '/config.yaml'
+    const config: Config = {
+      ...createConfig(),
+      providers: [{ ...createConfig().providers[0], models: [{ id: 'mv1', input: ['image'] }] }],
+      adapters: [{ name: 'adapter', type: 'openai', models: [{ sourceModelId: 'source', provider: 'p1', targetModelId: 'mv1' }] }],
+      vision: { provider: 'p1', model: 'mv1' },
+      locale: 'zh',
+      port: 9100,
+      captureMaxSize: 42,
+      logLevel: 'debug',
+    }
+    const store = new ConfigStore(configPath, config)
+    const ctx = { store, tracker: new StatusTracker(), logger: new Logger() }
+    const req = new(await import('stream')).Readable()
+    req.push(JSON.stringify({ key: '  proxy-secret  ' }))
+    req.push(null)
+    const res = mockRes()
+
+    await handleSetProxyKey(ctx, req as never, res as never)
+
+    assert.strictEqual(res.getStatus(), 200)
+    const current = store.getConfig().config
+    assert.strictEqual(current.proxyKey, 'proxy-secret')
+    assert.deepStrictEqual(current.adapters, config.adapters)
+    assert.deepStrictEqual(current.vision, config.vision)
+    assert.strictEqual(current.locale, 'zh')
+    assert.strictEqual(current.port, 9100)
+    assert.strictEqual(current.captureMaxSize, 42)
+    assert.strictEqual(current.logLevel, 'debug')
   })
 
   it('PUT /admin/locale 无效参数返回 400', async () => {

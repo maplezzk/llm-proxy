@@ -275,11 +275,15 @@
 "settings.port" = "Port";
 "settings.proxyKey" = "Proxy Key";
 "settings.set" = "Set";
+"settings.edit" = "Edit";
 "settings.notSet" = "Not set";
+"settings.loadFailed" = "Unable to load status";
 "settings.remove" = "Remove";
 "settings.proxyKeyPlaceholder" = "Enter proxy key...";
+"settings.showKey" = "Show key";
+"settings.hideKey" = "Hide key";
 "settings.portPlaceholder" = "Port number";
-"settings.portSaved" = "Port saved (restart to apply)";
+"settings.portSaved" = "Port saved and applied";
 "settings.portInvalid" = "Port must be 1-65535";
 "settings.proxyKeySaved" = "Proxy key saved";
 "settings.proxyKeyRemoved" = "Proxy key removed";
