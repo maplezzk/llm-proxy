@@ -78,7 +78,7 @@ The admin UI supports:
 - **Provider management**: Add/edit/delete AI providers, pull model lists from APIs, declare input modalities (text/image)
 - **Adapter config**: Create virtual endpoints with model remapping and protocol adaptation
 - **Vision settings**: Enable external vision (image-to-text) for non-multimodal models, view cache stats
-- **Management key**: Store an independent admin API key in this browser for protected management endpoints
+- **Management key**: Store an independent admin API key scoped to the current service for protected management endpoints
 - **Proxy key**: Set API authentication key
 - **Live test**: Send test requests directly to verify configuration
 - **Protocol capture**: Real-time request/response inspection
@@ -192,8 +192,10 @@ llm-proxy status    # Show status
 | `/admin/logs/stats` | GET | Log statistics |
 | `/admin/token-stats` | GET | Token usage stats |
 | `/admin/log-level` | GET / PUT | Read / update log level |
-| `/admin/locale` | GET / PUT | Read / update UI locale (zh / en) |
-| `/admin/port` | GET / PUT | Read / update listening port (requires restart) |
+| `/admin/locale` | GET / PUT | Read / update server message locale (zh / en) |
+| `/admin/port` | GET / PUT | Read / update the listening port with runtime rebinding |
+| `/admin/auth/handoff` | POST | Issue a one-time Web UI handoff code using the current management key |
+| `/admin/auth/handoff/exchange` | POST | Exchange a one-time Web UI handoff code |
 | `/admin/proxy-key` | GET / PUT | Read / update proxy auth key |
 | `/admin/vision` | GET / PUT | Read / update external-vision config |
 | `/admin/vision-cache/stats` | GET | Vision cache hit / miss / size |
@@ -205,7 +207,9 @@ llm-proxy status    # Show status
 | `/admin/test-adapter` | POST | Send a test request through an adapter |
 | `/admin/debug/captures/*` | GET / POST | Protocol capture ring buffer + SSE stream |
 
-When `admin_key` is configured, all management APIs require `Authorization: Bearer <key>` or `x-api-key: <key>`. The static `GET /admin` shell stays public so the browser can save its key under **Settings → Management API Key**. To rotate or remove the key with hot reload, authenticate with the currently running key: `llm-proxy reload --admin-key <current-key>` (or set `LLM_PROXY_ADMIN_KEY`).
+When `admin_key` is configured, management APIs require `Authorization: Bearer <key>` or `x-api-key: <key>`, except for the static `GET /admin` shell and the one-time handoff exchange endpoint. Web UI credentials are scoped by origin and reverse-proxy path. When the macOS App opens the Web UI over HTTPS or loopback HTTP, it can import the key through a 60-second, single-use handoff code; the raw key is never placed in the URL. To rotate or remove the key with hot reload, authenticate with the currently running key: `llm-proxy reload --admin-key <current-key>` (or set `LLM_PROXY_ADMIN_KEY`).
+
+The macOS App and Web UI keep their interface language preferences locally and no longer modify the server `locale`. The server locale controls server logs and backend messages only.
 
 ## Protocol Translation Matrix
 

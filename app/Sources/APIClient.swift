@@ -1,9 +1,10 @@
 import Foundation
 
 class APIClient {
-    static let managementURLDefaultsKey = "llm-proxy-management-url"
-    static let lastRemoteManagementURLDefaultsKey = "llm-proxy-last-remote-management-url"
-    static let managementAPIKeyDefaultsKey = "llm-proxy-management-api-key"
+    static let managementURLDefaultsKey = ManagementConnectionStore.managementURLDefaultsKey
+    static let lastRemoteManagementURLDefaultsKey = ManagementConnectionStore.lastRemoteManagementURLDefaultsKey
+    static let managementAPIKeyDefaultsKey = ManagementConnectionStore.legacyManagementAPIKeyDefaultsKey
+    static var connectionStore = ManagementConnectionStore()
 
     /// Tests and one-off callers can override the resolved URL without changing
     /// the persisted app setting. Normal app clients keep this nil so every
@@ -23,31 +24,22 @@ class APIClient {
 
     /// 从 UserDefaults 读取端口，默认 9000
     static func storedPort() -> Int {
-        let stored = UserDefaults.standard.integer(forKey: "llm-proxy-port")
-        return stored > 0 ? stored : 9000
+        connectionStore.storedPort()
     }
 
     /// 用户显式配置的管理服务地址；nil 表示继续管理本机服务。
     static func configuredManagementURL() -> String? {
-        guard let stored = UserDefaults.standard.string(forKey: managementURLDefaultsKey) else {
-            return nil
-        }
-        return normalizedManagementURL(stored)
+        connectionStore.configuredManagementURL()
     }
 
     /// 最近一次配置的远程管理地址。切换到本地模式时继续保留，供菜单栏一键恢复。
     static func lastRemoteManagementURL() -> String? {
-        if let stored = UserDefaults.standard.string(forKey: lastRemoteManagementURLDefaultsKey),
-           let normalized = normalizedManagementURL(stored) {
-            return normalized
-        }
-        // 兼容升级前已经启用远程管理、但尚未写入“最近地址”的用户。
-        return configuredManagementURL()
+        connectionStore.lastRemoteManagementURL()
     }
 
     /// 所有管理 API 的实际 base URL。未配置时保持原有本机端口行为。
     static func storedManagementURL() -> String {
-        configuredManagementURL() ?? "http://127.0.0.1:\(storedPort())"
+        connectionStore.storedManagementURL()
     }
 
     static func adapterAPIBaseURL(_ adapterName: String) -> String {
@@ -56,89 +48,41 @@ class APIClient {
 
     /// 管理 API 密钥仅用于访问管理服务，与后端配置的代理 API Key 相互独立。
     static func configuredManagementAPIKey() -> String? {
-        guard let stored = UserDefaults.standard.string(forKey: managementAPIKeyDefaultsKey) else {
-            return nil
-        }
-        let trimmed = stored.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? nil : trimmed
+        connectionStore.configuredManagementAPIKey()
     }
 
     /// 规范化用户输入：允许 HTTP/HTTPS、粘贴 Web UI 的 `/admin` 地址，
     /// 也允许反向代理前缀。
     static func normalizedManagementURL(_ input: String) -> String? {
-        let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty,
-              var components = URLComponents(string: trimmed),
-              let scheme = components.scheme?.lowercased(),
-              let host = components.host?.lowercased(),
-              !host.isEmpty,
-              components.user == nil,
-              components.password == nil,
-              components.query == nil,
-              components.fragment == nil,
-              scheme == "https" || scheme == "http" else {
-            return nil
-        }
-
-        components.scheme = scheme
-        components.host = host
-
-        var path = components.percentEncodedPath
-        while path.count > 1 && path.hasSuffix("/") {
-            path.removeLast()
-        }
-        if path == "/admin" {
-            path = ""
-        } else if path.hasSuffix("/admin") {
-            path.removeLast("/admin".count)
-        }
-        components.percentEncodedPath = path
-
-        guard let normalized = components.url?.absoluteString else { return nil }
-        return normalized.hasSuffix("/") ? String(normalized.dropLast()) : normalized
+        ManagementConnectionStore.normalizedManagementURL(input)
     }
 
     /// 保存自定义管理地址。空字符串等价于恢复本机默认地址。
     @discardableResult
     func updateManagementURL(_ input: String) -> Bool {
-        let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmed.isEmpty {
-            if let current = Self.configuredManagementURL() {
-                UserDefaults.standard.set(current, forKey: Self.lastRemoteManagementURLDefaultsKey)
-            }
-            UserDefaults.standard.removeObject(forKey: Self.managementURLDefaultsKey)
-            baseURLOverride = nil
-            return true
-        }
-        guard let normalized = Self.normalizedManagementURL(trimmed) else { return false }
-        UserDefaults.standard.set(normalized, forKey: Self.managementURLDefaultsKey)
-        UserDefaults.standard.set(normalized, forKey: Self.lastRemoteManagementURLDefaultsKey)
-        baseURLOverride = nil
-        return true
+        let updated = Self.connectionStore.updateManagementURL(input)
+        if updated { baseURLOverride = nil }
+        return updated
     }
 
     /// 切换到本地管理，但保留当前远程地址以便稍后恢复。
     func switchToLocalManagement() {
-        _ = updateManagementURL("")
+        Self.connectionStore.switchToLocalManagement()
+        baseURLOverride = nil
     }
 
     /// 恢复最近一次远程管理地址。没有历史远程地址时返回 false。
     @discardableResult
     func switchToRemoteManagement() -> Bool {
-        guard let remoteURL = Self.lastRemoteManagementURL() else { return false }
-        UserDefaults.standard.set(remoteURL, forKey: Self.managementURLDefaultsKey)
-        baseURLOverride = nil
-        return true
+        let switched = Self.connectionStore.switchToRemoteManagement()
+        if switched { baseURLOverride = nil }
+        return switched
     }
 
     /// 保存管理 API 密钥。空字符串等价于移除密钥。
-    func updateManagementAPIKey(_ input: String) {
-        let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmed.isEmpty {
-            UserDefaults.standard.removeObject(forKey: Self.managementAPIKeyDefaultsKey)
-        } else {
-            UserDefaults.standard.set(trimmed, forKey: Self.managementAPIKeyDefaultsKey)
-        }
+    @discardableResult
+    func updateManagementAPIKey(_ input: String) -> Bool {
+        Self.connectionStore.updateManagementAPIKey(input)
     }
 
     /// 为管理请求附加独立的 Bearer 密钥。供普通请求与 SSE 共用。
@@ -148,10 +92,30 @@ class APIClient {
 
     static func authorizedManagementRequest(_ request: URLRequest) -> URLRequest {
         var request = request
-        if let key = configuredManagementAPIKey() {
+        let managementURL = connectionStore.storedManagementURL()
+        if let requestURL = request.url,
+           requestBelongsToManagementService(requestURL, managementURL: managementURL),
+           let key = connectionStore.configuredManagementAPIKey(for: managementURL) {
             request.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
         }
         return request
+    }
+
+    private static func requestBelongsToManagementService(_ requestURL: URL, managementURL: String) -> Bool {
+        guard let serviceURL = URL(string: managementURL),
+              requestURL.scheme?.lowercased() == serviceURL.scheme?.lowercased(),
+              requestURL.host?.lowercased() == serviceURL.host?.lowercased(),
+              requestURL.port == serviceURL.port else {
+            return false
+        }
+
+        let servicePath = serviceURL.path.replacingOccurrences(
+            of: "/+$",
+            with: "",
+            options: .regularExpression
+        )
+        let adminPath = "\(servicePath)/admin"
+        return requestURL.path == adminPath || requestURL.path.hasPrefix("\(adminPath)/")
     }
 
     private func data(from url: URL) async throws -> (Data, URLResponse) {
@@ -215,7 +179,7 @@ class APIClient {
     /// 因此不能把 baseURL 重写回 127.0.0.1。
     func updatePort(_ port: Int) {
         guard !usesCustomManagementURL else { return }
-        UserDefaults.standard.set(port, forKey: "llm-proxy-port")
+        Self.connectionStore.updateLocalPort(port)
         baseURLOverride = nil
     }
 
@@ -268,6 +232,20 @@ class APIClient {
         try Self.validate(data: data, response: resp, context: "reloadConfig")
     }
 
+    func createWebUIHandoff() async throws -> String {
+        let url = URL(string: "\(baseURL)/admin/auth/handoff")!
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        let (data, response) = try await data(for: request)
+        try Self.validate(data: data, response: response, context: "createWebUIHandoff")
+        guard let payload = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let result = payload["data"] as? [String: Any],
+              let code = result["code"] as? String else {
+            throw URLError(.cannotParseResponse)
+        }
+        return code
+    }
+
     func updateAdapter(_ adapter: Adapter, mappings: [UpdateModelMapping]) async throws {
         let url = URL(string: "\(baseURL)/admin/adapters/\(adapter.name)")!
         var req = URLRequest(url: url)
@@ -277,26 +255,6 @@ class APIClient {
         req.httpBody = try JSONEncoder().encode(body)
         let (data, resp) = try await data(for: req)
         try Self.validate(data: data, response: resp, context: "updateAdapter")
-    }
-
-    func fetchLocale() async throws -> String {
-        let url = URL(string: "\(baseURL)/admin/locale")!
-        let (data, _) = try await data(from: url)
-        let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
-        if let d = json?["data"] as? [String: Any], let locale = d["locale"] as? String {
-            return locale
-        }
-        return "en"
-    }
-
-    func setLocale(_ locale: String) async throws {
-        let url = URL(string: "\(baseURL)/admin/locale")!
-        var req = URLRequest(url: url)
-        req.httpMethod = "PUT"
-        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.httpBody = try JSONSerialization.data(withJSONObject: ["locale": locale])
-        let (data, resp) = try await data(for: req)
-        try Self.validate(data: data, response: resp, context: "setLocale")
     }
 
     func fetchProxyKey() async throws -> Bool {

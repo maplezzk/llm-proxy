@@ -1,8 +1,7 @@
-import { useCallback, useEffect } from 'react'
+import { useEffect } from 'react'
 import type { ComponentType } from 'react'
 import { useApp } from './lib/app-state'
 import type { Tab } from './lib/app-state'
-import { syncLocaleFromServer } from './i18n'
 import Sidebar from './components/Sidebar'
 import Topbar from './components/Topbar'
 import DashboardPage from './pages/DashboardPage'
@@ -51,14 +50,6 @@ const PAGES: Record<Tab, ComponentType> = {
 
 export default function App() {
   const tab = useHashTab()
-
-  // init 之后从服务端同步 locale（异步，react-i18next 自动重渲染）。
-  const syncLocale = useCallback(() => {
-    void syncLocaleFromServer()
-  }, [])
-  useEffect(() => {
-    syncLocale()
-  }, [syncLocale])
 
   const Page = PAGES[tab]
 
