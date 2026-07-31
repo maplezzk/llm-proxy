@@ -80,7 +80,8 @@ export async function handleSetLogLevel(ctx: ServerContext, req: IncomingMessage
     return
   }
   const { config } = ctx.store.getConfig()
-  const newConfig = { providers: config.providers, adapters: config.adapters, proxyKey: config.proxyKey, logLevel: level }
+  const newConfig = structuredClone(config)
+  newConfig.logLevel = level
   await ctx.store.writeConfig(newConfig)
   ctx.logger.setLevel(level)
   ctx.logger.log('system', `Log level changed to ${level} (persisted)`, { level })
@@ -100,13 +101,8 @@ export async function handleSetLocale(ctx: ServerContext, req: IncomingMessage, 
     return
   }
   const { config } = ctx.store.getConfig()
-  const newConfig = {
-    providers: config.providers,
-    adapters: config.adapters,
-    proxyKey: config.proxyKey,
-    logLevel: config.logLevel,
-    locale,
-  }
+  const newConfig = structuredClone(config)
+  newConfig.locale = locale
   await ctx.store.writeConfig(newConfig)
   ctx.logger.log('system', `Locale changed to ${locale} (persisted)`, { locale })
   json(res, 200, { success: true, data: { locale } })
@@ -147,11 +143,13 @@ export function handleGetProxyKey(_ctx: ServerContext, _req: IncomingMessage, re
 export async function handleSetProxyKey(ctx: ServerContext, req: IncomingMessage, res: ServerResponse): Promise<void> {
   const body = JSON.parse(await (await import('../../lib/http-utils.js')).readBody(req))
   const { config } = ctx.store.getConfig()
-  const newConfig = { providers: config.providers, adapters: config.adapters, proxyKey: body.key || undefined, logLevel: config.logLevel }
+  const key = typeof body.key === 'string' ? body.key.trim() : ''
+  const newConfig = structuredClone(config)
+  newConfig.proxyKey = key || undefined
   await ctx.store.writeConfig(newConfig)
-  const verb = body.key ? 'set' : 'removed'
+  const verb = key ? 'set' : 'removed'
   ctx.logger.log('system', `Proxy API key ${verb}`)
-  json(res, 200, { success: true, data: { set: !!body.key } })
+  json(res, 200, { success: true, data: { set: !!key } })
 }
 
 // Vision (外挂识图) 配置

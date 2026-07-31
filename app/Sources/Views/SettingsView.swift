@@ -2,10 +2,18 @@ import SwiftUI
 
 /// 设置页面——侧边栏独立 tab，完整详情区域展示
 struct SettingsView: View {
+    private enum ProxyKeyLoadState {
+        case loading
+        case loaded
+        case failed
+    }
+
     @State private var port: String = ""
     @State private var originalPort: Int?
     @State private var hasProxyKey: Bool = false
+    @State private var proxyKeyLoadState: ProxyKeyLoadState = .loading
     @State private var proxyKeyInput: String = ""
+    @State private var showProxyKeyInput: Bool = false
     @State private var selectedLang: String = currentLang()
     @State private var showProxyKeySheet: Bool = false
     @State private var showVisionSheet: Bool = false
@@ -76,10 +84,10 @@ struct SettingsView: View {
                         icon: "key",
                         iconColor: .orange,
                         title: loc("settings.proxyKey"),
-                        subtitle: hasProxyKey ? loc("settings.set") : loc("settings.notSet")
+                        subtitle: proxyKeyStatus
                     ) {
                         HStack(spacing: 8) {
-                            Button(loc("settings.set")) {
+                            Button(hasProxyKey ? loc("settings.edit") : loc("settings.set")) {
                                 showProxyKeySheet = true
                             }
                             .buttonStyle(.bordered)
@@ -276,6 +284,17 @@ struct SettingsView: View {
         return "\(v.provider) / \(v.model)"
     }
 
+    private var proxyKeyStatus: String {
+        switch proxyKeyLoadState {
+        case .loading:
+            return loc("common.loading")
+        case .loaded:
+            return hasProxyKey ? loc("settings.set") : loc("settings.notSet")
+        case .failed:
+            return loc("settings.loadFailed")
+        }
+    }
+
     /// 默认识图提示词（与 src/proxy/vision.ts 中的 DEFAULT_VISION_PROMPT 保持一致）
     private let defaultVisionPrompt = "请详细描述这张图片的内容，包括其中的文字、物体、场景、颜色等关键信息。"
 
@@ -290,7 +309,10 @@ struct SettingsView: View {
         } catch {}
         do {
             hasProxyKey = try await api.fetchProxyKey()
-        } catch {}
+            proxyKeyLoadState = .loaded
+        } catch {
+            proxyKeyLoadState = .failed
+        }
         do {
             visionConfig = try await api.fetchVision()
         } catch {}
@@ -329,11 +351,26 @@ struct SettingsView: View {
 
             Divider()
 
-            VStack(spacing: 16) {
-                SecureField(loc("settings.proxyKeyPlaceholder"), text: $proxyKeyInput)
-                    .textFieldStyle(.roundedBorder)
-                    .frame(width: 280)
+            HStack(spacing: 8) {
+                Group {
+                    if showProxyKeyInput {
+                        TextField(loc("settings.proxyKeyPlaceholder"), text: $proxyKeyInput)
+                    } else {
+                        SecureField(loc("settings.proxyKeyPlaceholder"), text: $proxyKeyInput)
+                    }
+                }
+                .textFieldStyle(.roundedBorder)
+
+                Button {
+                    showProxyKeyInput.toggle()
+                } label: {
+                    Image(systemName: showProxyKeyInput ? "eye.slash" : "eye")
+                }
+                .buttonStyle(.borderless)
+                .accessibilityLabel(showProxyKeyInput ? loc("settings.hideKey") : loc("settings.showKey"))
+                .help(showProxyKeyInput ? loc("settings.hideKey") : loc("settings.showKey"))
             }
+            .frame(width: 280)
             .padding(20)
 
             if let toast = toastMessage {
@@ -364,8 +401,10 @@ struct SettingsView: View {
         do {
             try await api.setProxyKey(proxyKeyInput)
             hasProxyKey = true
+            proxyKeyLoadState = .loaded
             showToast(loc("settings.proxyKeySaved"), type: "success")
             proxyKeyInput = ""
+            showProxyKeyInput = false
             NotificationCenter.default.post(name: .configDidChange, object: nil)
         } catch {
             showToast(error.localizedDescription, type: "error")
@@ -376,6 +415,7 @@ struct SettingsView: View {
         do {
             try await api.setProxyKey(nil)
             hasProxyKey = false
+            proxyKeyLoadState = .loaded
             showToast(loc("settings.proxyKeyRemoved"), type: "success")
             proxyKeyInput = ""
             NotificationCenter.default.post(name: .configDidChange, object: nil)
