@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.28.0](https://github.com/maplezzk/llm-proxy/compare/v0.27.0...v0.28.0) (2026-07-31)
+
+
+### Features
+
+* 完善远程管理配置与 Web 密钥交接 ([88d252a](https://github.com/maplezzk/llm-proxy/commit/88d252a3fbc692e7f6de08ed239e78097f20510a))
+* 完善远程管理配置作用域与 Web 密钥交接 ([c508679](https://github.com/maplezzk/llm-proxy/commit/c5086794d71db2db7ed7b487390bbbdd29022005))
+
+
+### Bug Fixes
+
+* 修复管理设置行布局与重复地址 ([481d85c](https://github.com/maplezzk/llm-proxy/commit/481d85ce2fe7dce2e83e7787a12ca921fff939c8))
+* 修复设置页标签被压缩 ([2815ac1](https://github.com/maplezzk/llm-proxy/commit/2815ac1b9c07e4c95d41ed2369458cedcbb9525d))
+* 移除管理地址重复展示 ([3cf810a](https://github.com/maplezzk/llm-proxy/commit/3cf810a032341e200f994556e4b2c2b8f3ad1985))
+
 ## [0.27.0](https://github.com/maplezzk/llm-proxy/compare/v0.26.0...v0.27.0) (2026-07-31)
 
 
