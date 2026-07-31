@@ -296,6 +296,7 @@
 "settings.managementURLResetDone" = "已切换到本地服务";
 "settings.managementAPIKey" = "管理 API 密钥";
 "settings.managementAPIKeyPlaceholder" = "输入管理 API 密钥";
+"settings.managementAPIKeyConfiguredPlaceholder" = "••••••••（输入新密钥可替换）";
 "settings.managementAPIKeyHint" = "以 Authorization: Bearer 请求头发送给配置了 admin_key 的管理服务或鉴权反向代理；不同于代理密钥。";
 "settings.managementAPIKeySaved" = "管理 API 密钥已保存";
 "settings.managementAPIKeyRemoved" = "管理 API 密钥已移除";
@@ -303,6 +304,7 @@
 "settings.proxyKey" = "代理密钥";
 "settings.set" = "已设置";
 "settings.edit" = "编辑";
+"settings.replace" = "替换";
 "settings.notSet" = "未设置";
 "settings.loadFailed" = "状态加载失败";
 "settings.remove" = "移除";

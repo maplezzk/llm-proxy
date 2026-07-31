@@ -8,7 +8,7 @@ struct SettingsView: View {
         case failed
     }
 
-    @State private var managementURL: String = APIClient.configuredManagementURL() ?? ""
+    @State private var managementURL: String = APIClient.storedManagementURL()
     @State private var managementAPIKey: String = ""
     @State private var hasManagementAPIKey: Bool = APIClient.configuredManagementAPIKey() != nil
     @State private var port: String = ""
@@ -77,6 +77,7 @@ struct SettingsView: View {
                             .buttonStyle(.borderedProminent)
                             .controlSize(.small)
                             .fixedSize(horizontal: true, vertical: false)
+                            .disabled(!hasManagementURLChanges)
 
                             if APIClient.configuredManagementURL() != nil {
                                 Button(loc("settings.managementURLReset")) {
@@ -101,12 +102,17 @@ struct SettingsView: View {
                         subtitle: hasManagementAPIKey ? loc("settings.set") : loc("settings.notSet")
                     ) {
                         HStack(spacing: 8) {
-                            SecureField(loc("settings.managementAPIKeyPlaceholder"), text: $managementAPIKey)
+                            SecureField(
+                                loc(hasManagementAPIKey
+                                    ? "settings.managementAPIKeyConfiguredPlaceholder"
+                                    : "settings.managementAPIKeyPlaceholder"),
+                                text: $managementAPIKey
+                            )
                                 .textFieldStyle(.roundedBorder)
                                 .frame(minWidth: 160, idealWidth: 220, maxWidth: 220)
                                 .help(loc("settings.managementAPIKeyHint"))
                                 .onSubmit { saveManagementAPIKey() }
-                            Button(loc("action.save")) {
+                            Button(hasManagementAPIKey ? loc("settings.replace") : loc("action.save")) {
                                 saveManagementAPIKey()
                             }
                             .buttonStyle(.borderedProminent)
@@ -370,13 +376,17 @@ struct SettingsView: View {
         }
     }
 
+    private var hasManagementURLChanges: Bool {
+        managementURL.trimmingCharacters(in: .whitespacesAndNewlines) != APIClient.storedManagementURL()
+    }
+
     /// 默认识图提示词（与 src/proxy/vision.ts 中的 DEFAULT_VISION_PROMPT 保持一致）
     private let defaultVisionPrompt = "请详细描述这张图片的内容，包括其中的文字、物体、场景、颜色等关键信息。"
 
     // MARK: - Load
 
     private func loadSettings() async {
-        managementURL = APIClient.configuredManagementURL() ?? ""
+        managementURL = APIClient.storedManagementURL()
         hasManagementAPIKey = APIClient.configuredManagementAPIKey() != nil
         do {
             if let p = try await api.fetchPort() {
@@ -405,14 +415,14 @@ struct SettingsView: View {
             showToast(loc("settings.managementURLInvalid"), type: "error")
             return
         }
-        managementURL = APIClient.configuredManagementURL() ?? ""
+        managementURL = APIClient.storedManagementURL()
         showToast(loc("settings.managementURLSaved"), type: "success")
         NotificationCenter.default.post(name: .configDidChange, object: nil)
     }
 
     private func resetManagementURL() {
         _ = api.updateManagementURL("")
-        managementURL = ""
+        managementURL = APIClient.storedManagementURL()
         showToast(loc("settings.managementURLResetDone"), type: "success")
         NotificationCenter.default.post(name: .configDidChange, object: nil)
     }
@@ -445,6 +455,9 @@ struct SettingsView: View {
         do {
             try await api.setPort(portNum)
             api.updatePort(portNum)
+            if APIClient.configuredManagementURL() == nil {
+                managementURL = APIClient.storedManagementURL()
+            }
             originalPort = portNum
             showToast(loc("settings.portSaved"), type: "success")
             NotificationCenter.default.post(name: .configDidChange, object: nil)

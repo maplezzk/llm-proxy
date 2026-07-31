@@ -274,6 +274,7 @@
 "settings.managementURLResetDone" = "Switched to the local service";
 "settings.managementAPIKey" = "Management API Key";
 "settings.managementAPIKeyPlaceholder" = "Enter management API key";
+"settings.managementAPIKeyConfiguredPlaceholder" = "•••••••• (enter a new key to replace)";
 "settings.managementAPIKeyHint" = "Sent as an Authorization: Bearer header to a management service configured with admin_key or an authenticating reverse proxy; separate from the proxy key.";
 "settings.managementAPIKeySaved" = "Management API key saved";
 "settings.managementAPIKeyRemoved" = "Management API key removed";
@@ -281,6 +282,7 @@
 "settings.proxyKey" = "Proxy Key";
 "settings.set" = "Set";
 "settings.edit" = "Edit";
+"settings.replace" = "Replace";
 "settings.notSet" = "Not set";
 "settings.loadFailed" = "Unable to load status";
 "settings.remove" = "Remove";
