@@ -11,16 +11,23 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        // 从菜单栏“退出”触发的才真正退出
+        // 清理完成后的第二次 terminate 才真正退出。
         if shouldReallyQuit {
             return .terminateNow
         }
-        // 否则（Dock 右键退出 / Cmd+Q）：关闭控制台窗口，隐藏 Dock 图标
-        for window in NSApp.windows where window.isVisible && !window.className.contains("StatusBar") {
-            window.close()
+
+        // Cmd+Q、Dock“退出”和菜单栏“退出”必须走同一套本地代理清理流程。
+        // quitApp 完成异步 stop 后会设置 shouldReallyQuit 并再次 terminate。
+        if menuBarController != nil {
+            Task { @MainActor [weak self] in
+                self?.menuBarController.quitApp()
+            }
+            return .terminateCancel
         }
-        NSApp.setActivationPolicy(.accessory)
-        return .terminateCancel
+
+        // 启动尚未完成、控制器还未建立时没有需要清理的子进程。
+        shouldReallyQuit = true
+        return .terminateNow
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {

@@ -9,6 +9,11 @@ enum ServiceState {
 }
 
 enum LocalServiceControl {
+    enum ShutdownPlan: Equatable {
+        case stop
+        case alreadyStopped
+    }
+
     static func resolvedPort(pidFileContents: String?, storedPort: Int) -> Int {
         guard let pidFileContents,
               let data = pidFileContents.data(using: .utf8),
@@ -22,6 +27,28 @@ enum LocalServiceControl {
 
     static func healthURL(port: Int) -> URL {
         URL(string: "http://127.0.0.1:\(port)/admin/health")!
+    }
+
+    /// 退出 App 和安装更新只关心本机进程是否真实存在，与当前管理连接是
+    /// 本地还是远程无关。未运行时跳过 stop，避免 CLI 的“无进程”错误阻断更新。
+    static func shutdownPlan(isLocalServiceRunning: Bool) -> ShutdownPlan {
+        isLocalServiceRunning ? .stop : .alreadyStopped
+    }
+}
+
+enum ForegroundAlertPresentation {
+    static func configure(_ alert: NSAlert) {
+        alert.window.level = .modalPanel
+        alert.window.collectionBehavior.insert(.moveToActiveSpace)
+    }
+
+    @MainActor
+    @discardableResult
+    static func run(_ alert: NSAlert) -> NSApplication.ModalResponse {
+        configure(alert)
+        NSApp.activate(ignoringOtherApps: true)
+        alert.window.orderFrontRegardless()
+        return alert.runModal()
     }
 }
 
@@ -1153,21 +1180,6 @@ class MenuBarController: NSObject, NSMenuDelegate {
         guard !isQuitting else { return }
         isQuitting = true
 
-        // 远程管理模式下退出 App 只结束本地 UI，不触碰任何服务进程。
-        if client.usesCustomManagementURL {
-            finishQuit()
-            return
-        }
-
-        // 服务已经停止时不再调用 stop CLI。旧路径会等待一个没有目标进程的
-        // stop 流程，导致菜单项高亮但应用迟迟不退出。
-        if serviceState == .stopped {
-            finishQuit()
-            return
-        }
-
-        setTransientStatus(loc("status.stopping"))
-
         // 如果已有 start/stop/restart 正在进行，先等它完成，再发起唯一的
         // stop。这样退出不会和后台生命周期操作同时争抢 PID 文件。
         Task { @MainActor [weak self] in
@@ -1176,7 +1188,17 @@ class MenuBarController: NSObject, NSMenuDelegate {
                 await operation.value
             }
 
-            let result = await self.runCLIAndWait("stop", port: self.localServiceControlPort)
+            let localPort = self.localServiceControlPort
+            let plan = LocalServiceControl.shutdownPlan(
+                isLocalServiceRunning: await self.isLocalServiceRunning(port: localPort)
+            )
+            guard plan == .stop else {
+                self.finishQuit()
+                return
+            }
+
+            self.setTransientStatus(loc("status.stopping"))
+            let result = await self.runCLIAndWait("stop", port: localPort)
             if result.exitCode != 0 {
                 self.isQuitting = false
                 let alert = NSAlert()
@@ -1186,21 +1208,19 @@ class MenuBarController: NSObject, NSMenuDelegate {
                     : result.output
                 alert.alertStyle = .warning
                 alert.addButton(withTitle: loc("common.close"))
-                alert.runModal()
+                ForegroundAlertPresentation.run(alert)
                 NSLog("[LLMProxy] ❌ 后台服务停止失败 (exit=\(result.exitCode)): \(result.output)")
                 return
             }
 
-            await self.waitForStoppedAndRefresh()
-            let stillRunning = (try? await self.client.fetchHealth()) == true
-            if stillRunning {
+            if !(await self.waitForLocalServiceStopped(port: localPort)) {
                 self.isQuitting = false
                 let alert = NSAlert()
                 alert.messageText = loc("quit.serviceStopFailed.title")
                 alert.informativeText = loc("quit.serviceStopFailed.body")
                 alert.alertStyle = .warning
                 alert.addButton(withTitle: loc("common.close"))
-                alert.runModal()
+                ForegroundAlertPresentation.run(alert)
                 NSLog("[LLMProxy] ❌ 停止命令完成后服务仍可访问，拒绝退出菜单栏")
                 return
             }
@@ -1283,7 +1303,7 @@ class MenuBarController: NSObject, NSMenuDelegate {
         alert.accessoryView = input
         input.becomeFirstResponder()
 
-        let response = alert.runModal()
+        let response = ForegroundAlertPresentation.run(alert)
         if response == .alertFirstButtonReturn {
             let portStr = input.stringValue.trimmingCharacters(in: .whitespaces)
             guard let port = Int(portStr), port >= 1, port <= 65535 else {
@@ -1397,7 +1417,7 @@ class MenuBarController: NSObject, NSMenuDelegate {
                     alert.informativeText = loc("update.downloadConfirm", update.version)
                     alert.addButton(withTitle: loc("action.download"))
                     alert.addButton(withTitle: "Cancel")
-                    if alert.runModal() == .alertFirstButtonReturn {
+                    if ForegroundAlertPresentation.run(alert) == .alertFirstButtonReturn {
                         await performDownloadAndInstall(update)
                     } else {
                         // 用户点了 Cancel，24 小时内不再提醒
@@ -1413,7 +1433,7 @@ class MenuBarController: NSObject, NSMenuDelegate {
                     alert.messageText = loc("app.title")
                     alert.informativeText = loc("update.noUpdates", currentVersion())
                     alert.addButton(withTitle: "OK")
-                    alert.runModal()
+                    ForegroundAlertPresentation.run(alert)
                 }
             }
         } catch {
@@ -1425,7 +1445,7 @@ class MenuBarController: NSObject, NSMenuDelegate {
                 alert.messageText = loc("app.title")
                 alert.informativeText = loc("update.checkFailed", error.localizedDescription)
                 alert.addButton(withTitle: "OK")
-                alert.runModal()
+                ForegroundAlertPresentation.run(alert)
             }
         }
     }
@@ -1502,7 +1522,7 @@ class MenuBarController: NSObject, NSMenuDelegate {
             alert.informativeText = loc("update.installPrompt", update.version)
             alert.addButton(withTitle: loc("action.install"))
             alert.addButton(withTitle: loc("action.later24h"))
-            if alert.runModal() == .alertFirstButtonReturn {
+            if ForegroundAlertPresentation.run(alert) == .alertFirstButtonReturn {
                 await performInstall(localURL, version: update.version)
             } else {
                 // 用户选了 Later，24 小时内不再提醒
@@ -1519,7 +1539,7 @@ class MenuBarController: NSObject, NSMenuDelegate {
             alert.informativeText = loc("update.downloadFailed", error.localizedDescription)
             alert.addButton(withTitle: loc("action.retry"))
             alert.addButton(withTitle: "Cancel")
-            if alert.runModal() == .alertFirstButtonReturn {
+            if ForegroundAlertPresentation.run(alert) == .alertFirstButtonReturn {
                 // 重试
                 await performDownloadAndInstall(update)
             }
@@ -1534,24 +1554,29 @@ class MenuBarController: NSObject, NSMenuDelegate {
         // 更新 App 只停止本机代理。当前管理连接可能指向远程服务，因此端口
         // 和停止确认都必须使用独立的 loopback 路径，不能读取 client.baseURL。
         let localPort = localServiceControlPort
-        let stopResult = await runCLIAndWait("stop", port: localPort)
-        guard stopResult.exitCode == 0 else {
-            let alert = NSAlert()
-            alert.messageText = loc("app.title")
-            alert.informativeText = stopResult.output.isEmpty
-                ? loc("quit.serviceStopFailed.body")
-                : stopResult.output
-            alert.addButton(withTitle: loc("common.close"))
-            alert.runModal()
-            return
-        }
-        if !(await waitForLocalServiceStopped(port: localPort)) {
-            let alert = NSAlert()
-            alert.messageText = loc("app.title")
-            alert.informativeText = loc("quit.serviceStopFailed.body")
-            alert.addButton(withTitle: loc("common.close"))
-            alert.runModal()
-            return
+        let plan = LocalServiceControl.shutdownPlan(
+            isLocalServiceRunning: await isLocalServiceRunning(port: localPort)
+        )
+        if plan == .stop {
+            let stopResult = await runCLIAndWait("stop", port: localPort)
+            guard stopResult.exitCode == 0 else {
+                let alert = NSAlert()
+                alert.messageText = loc("app.title")
+                alert.informativeText = stopResult.output.isEmpty
+                    ? loc("quit.serviceStopFailed.body")
+                    : stopResult.output
+                alert.addButton(withTitle: loc("common.close"))
+                ForegroundAlertPresentation.run(alert)
+                return
+            }
+            if !(await waitForLocalServiceStopped(port: localPort)) {
+                let alert = NSAlert()
+                alert.messageText = loc("app.title")
+                alert.informativeText = loc("quit.serviceStopFailed.body")
+                alert.addButton(withTitle: loc("common.close"))
+                ForegroundAlertPresentation.run(alert)
+                return
+            }
         }
 
         do {
@@ -1561,7 +1586,7 @@ class MenuBarController: NSObject, NSMenuDelegate {
             alert.messageText = loc("app.title")
             alert.informativeText = loc("update.installFailed", error.localizedDescription)
             alert.addButton(withTitle: "OK")
-            alert.runModal()
+            ForegroundAlertPresentation.run(alert)
             return
         }
 
@@ -1596,11 +1621,12 @@ class MenuBarController: NSObject, NSMenuDelegate {
 
 
 
+    @MainActor
     func showError(_ msg: String) {
         let alert = NSAlert()
         alert.messageText = loc("app.title")
         alert.informativeText = msg
-        alert.runModal()
+        ForegroundAlertPresentation.run(alert)
     }
 }
 

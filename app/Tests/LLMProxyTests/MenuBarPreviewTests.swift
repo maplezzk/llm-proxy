@@ -102,4 +102,23 @@ final class MenuBarPreviewTests: XCTestCase {
             "http://127.0.0.1:9123/admin/health"
         )
     }
+
+    func testLocalServiceShutdownDependsOnLocalProcessInsteadOfManagementMode() {
+        XCTAssertEqual(
+            LocalServiceControl.shutdownPlan(isLocalServiceRunning: true),
+            .stop
+        )
+        XCTAssertEqual(
+            LocalServiceControl.shutdownPlan(isLocalServiceRunning: false),
+            .alreadyStopped
+        )
+    }
+
+    func testForegroundAlertsUseModalLevelAndMoveToActiveSpace() {
+        let alert = NSAlert()
+        ForegroundAlertPresentation.configure(alert)
+
+        XCTAssertEqual(alert.window.level, .modalPanel)
+        XCTAssertTrue(alert.window.collectionBehavior.contains(.moveToActiveSpace))
+    }
 }
