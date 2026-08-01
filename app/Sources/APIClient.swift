@@ -251,7 +251,7 @@ class APIClient {
         var req = URLRequest(url: url)
         req.httpMethod = "PUT"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        let body = UpdateAdapterBody(name: adapter.name, type: adapter.type, maxTokens: adapter.maxTokens, stream: adapter.stream, models: mappings)
+        let body = UpdateAdapterBody(name: adapter.name, maxTokens: adapter.maxTokens, stream: adapter.stream, models: mappings)
         req.httpBody = try JSONEncoder().encode(body)
         let (data, resp) = try await data(for: req)
         try Self.validate(data: data, response: resp, context: "updateAdapter")
@@ -523,12 +523,12 @@ class APIClient {
 
     // MARK: - Adapters CRUD
 
-    func createAdapter(name: String, type: String, maxTokens: Int? = nil, stream: Bool? = nil, models: [UpdateModelMapping]) async throws {
+    func createAdapter(name: String, maxTokens: Int? = nil, stream: Bool? = nil, models: [UpdateModelMapping]) async throws {
         let url = URL(string: "\(baseURL)/admin/adapters")!
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        let body = UpdateAdapterBody(name: name, type: type, maxTokens: maxTokens, stream: stream, models: models)
+        let body = UpdateAdapterBody(name: name, maxTokens: maxTokens, stream: stream, models: models)
         req.httpBody = try JSONEncoder().encode(body)
         let (data, resp) = try await data(for: req)
         try Self.validate(data: data, response: resp, context: "createAdapter")
@@ -542,12 +542,12 @@ class APIClient {
         try Self.validate(data: data, response: resp, context: "deleteAdapter")
     }
 
-    func testAdapter(name: String, modelId: String) async throws -> TestModelResult {
+    func testAdapter(name: String, modelId: String, protocolType: String) async throws -> TestModelResult {
         let url = URL(string: "\(baseURL)/admin/test-adapter")!
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.httpBody = try JSONSerialization.data(withJSONObject: ["adapterName": name, "modelId": modelId])
+        req.httpBody = try JSONSerialization.data(withJSONObject: ["adapterName": name, "modelId": modelId, "protocol": protocolType])
         let (data, resp) = try await data(for: req)
         try Self.validate(data: data, response: resp, context: "testAdapter")
         let result = try JSONDecoder().decode(TestModelResponse.self, from: data)

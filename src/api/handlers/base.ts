@@ -41,7 +41,6 @@ export function handleGetConfig(ctx: ServerContext, _req: IncomingMessage, res: 
       vision: config.vision ?? null,
       adapters: (config.adapters ?? []).map((a) => ({
         name: a.name,
-        type: a.type,
         models: a.models,
       })),
     },

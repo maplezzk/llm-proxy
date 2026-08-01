@@ -219,7 +219,8 @@ Provider {
 }
 
 AdapterConfig {
-  name, type(anthropic|openai), models: AdapterModelMapping[]
+  name, models: AdapterModelMapping[]
+  // 不绑定入口协议；根据请求路径兼容 openai、openai-responses、anthropic
 }
 
 AdapterModelMapping {

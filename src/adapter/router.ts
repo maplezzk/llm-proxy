@@ -46,10 +46,10 @@ export function resolveAdapterRoute(
     )
   }
 
-  // 适配器配置中的 type 是默认入口协议；实际请求路径可能使用另一种协议，
-  // 此时应优先按请求路径选择同协议上游，避免无意义的格式转换。
-  const inboundType = preferredProtocol ?? adapter.type
-  const protocol = resolveProviderProtocol(provider, model, inboundType)
+  // 适配器不再绑定入口协议。实际请求路径（或测试面板选择）决定入站协议；
+  // 未指定时使用目标供应商/模型的首个可用协议，兼容旧客户端调用。
+  const protocol = resolveProviderProtocol(provider, model, preferredProtocol)
+  const inboundType = preferredProtocol ?? protocol.type
   const apiBase = protocol.apiBase ?? getDefaultApiBase(protocol.type)
 
   // Thinking config: 优先使用适配器映射上的配置，否则使用目标模型的配置

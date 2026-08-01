@@ -43,7 +43,7 @@ function createTestConfig(): Config {
       { name: 'test-openai', type: 'openai', apiKey: 'sk-test', apiBase: `http://127.0.0.1:${PORT}`, models: [{ id: 'gpt-4o-test' }] },
     ],
     adapters: [
-      { name: 'my-tool', type: 'openai', models: [{ sourceModelId: 'my-model', provider: 'test-openai', targetModelId: 'gpt-4o-test' }] },
+      { name: 'my-tool', models: [{ sourceModelId: 'my-model', provider: 'test-openai', targetModelId: 'gpt-4o-test' }] },
     ],
   }
 }
@@ -118,7 +118,7 @@ describe('adapter/handlers', { timeout: 10000 }, () => {
         { name: 'test-openai', type: 'openai', apiKey: 'sk-test', apiBase: `http://127.0.0.1:${PORT}`, models: [{ id: 'gpt-4o-test' }] },
       ],
       adapters: [
-        { name: 'cli-tool', type: 'anthropic', models: [{ sourceModelId: 'sonnet', provider: 'test-openai', targetModelId: 'gpt-4o-test' }] },
+        { name: 'cli-tool', models: [{ sourceModelId: 'sonnet', provider: 'test-openai', targetModelId: 'gpt-4o-test' }] },
       ],
     }
     const store = new ConfigStore('/fake', config)
@@ -160,7 +160,6 @@ describe('adapter/handlers', { timeout: 10000 }, () => {
       }],
       adapters: [{
         name: 'pi',
-        type: 'openai-responses',
         models: [{ sourceModelId: 'HIGH', provider: 'multi-protocol', targetModelId: 'shared-model' }],
       }],
     }
@@ -203,7 +202,7 @@ describe('adapter/handlers', { timeout: 10000 }, () => {
     const config: Config = {
       providers: [],
       adapters: [
-        { name: 'broken', type: 'openai', models: [{ sourceModelId: 'm', provider: 'nonexistent-p', targetModelId: 'x' }] },
+        { name: 'broken', models: [{ sourceModelId: 'm', provider: 'nonexistent-p', targetModelId: 'x' }] },
       ],
     }
     const store = new ConfigStore('/fake', config)

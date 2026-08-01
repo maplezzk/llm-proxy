@@ -167,6 +167,7 @@ adapters:
           budget_tokens: 4096
     `)
     const config = loadConfigFromYaml(path)
+    assert.strictEqual(Object.hasOwn(config.adapters![0], 'type'), false)
     assert.strictEqual(config.adapters![0].models[0].thinking?.budget_tokens, 4096)
   })
 

@@ -123,7 +123,6 @@ providers:
 
 adapters:
   - name: my-tool
-    type: anthropic
     models:
       - sourceModelId: claude-sonnet-4
         provider: anthropic

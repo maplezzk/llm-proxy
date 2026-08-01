@@ -458,8 +458,8 @@ class MenuBarController: NSObject, NSMenuDelegate {
             menu.addItem(makeCardItem(MenuHintCardView(text: hint, isLoading: isLoading), interactive: false))
         } else {
             for card in makeAdapterCardModels(adapters: adapters) {
-                // 适配器头：名称 + 协议类型（不可点击）
-                menu.addItem(makeCardItem(AdapterHeaderCardView(name: card.name, type: card.type), interactive: false))
+                // 适配器头：名称（不可点击）
+                menu.addItem(makeCardItem(AdapterHeaderCardView(name: card.name), interactive: false))
                 // 每个映射一行：悬停自动展开模型子菜单
                 for mapping in card.mappings {
                     let row = MappingRowView(sourceModelId: mapping.sourceModelId, currentLabel: mapping.currentLabel)

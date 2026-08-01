@@ -126,8 +126,8 @@ final class DashboardViewModelTests: XCTestCase {
         let provider2 = Provider(name: "p2", type: "anthropic", api_key: nil, api_base: nil, models: [
             ProviderModel(id: "m3")
         ])
-        let adapter1 = Adapter(name: "a1", type: "anthropic", baseUrl: nil, models: [])
-        let adapter2 = Adapter(name: "a2", type: "openai", baseUrl: nil, models: [])
+        let adapter1 = Adapter(name: "a1", baseUrl: nil, models: [])
+        let adapter2 = Adapter(name: "a2", baseUrl: nil, models: [])
         vm.config = ConfigData(
             providers: [provider1, provider2],
             adapters: [adapter1, adapter2]

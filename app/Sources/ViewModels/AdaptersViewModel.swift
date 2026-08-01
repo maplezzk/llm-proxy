@@ -14,7 +14,6 @@ final class AdaptersViewModel {
     var showForm: Bool = false
     var editingAdapter: Adapter? = nil
     var formName: String = ""
-    var formType: String = "openai"
     var formMaxTokens: String = ""
     /// stream 默认值三态：""=默认（跟随）, "true"=流式, "false"=非流式
     var formStream: String = ""
@@ -61,7 +60,6 @@ final class AdaptersViewModel {
         editingAdapter = adapter
         if let adapter = adapter {
             formName = adapter.name
-            formType = adapter.type
             formMaxTokens = adapter.maxTokens.map(String.init) ?? ""
             formStream = adapter.stream == true ? "true" : adapter.stream == false ? "false" : ""
             formMappings = adapter.models.map { m in
@@ -69,7 +67,6 @@ final class AdaptersViewModel {
             }
         } else {
             formName = ""
-            formType = "openai"
             formMaxTokens = ""
             formStream = ""
             formMappings = []
@@ -84,7 +81,6 @@ final class AdaptersViewModel {
         showForm = false
         editingAdapter = nil
         formName = ""
-        formType = "openai"
         formMaxTokens = ""
         formStream = ""
         formMappings = []
@@ -164,9 +160,9 @@ final class AdaptersViewModel {
 
         do {
             if editingAdapter != nil {
-                try await client.updateAdapter(Adapter(name: name, type: formType, maxTokens: maxTokens, stream: streamDefault, baseUrl: nil, models: []), mappings: mappings)
+                try await client.updateAdapter(Adapter(name: name, maxTokens: maxTokens, stream: streamDefault, baseUrl: nil, models: []), mappings: mappings)
             } else {
-                try await client.createAdapter(name: name, type: formType, maxTokens: maxTokens, stream: streamDefault, models: mappings)
+                try await client.createAdapter(name: name, maxTokens: maxTokens, stream: streamDefault, models: mappings)
             }
             closeForm()
             await load()
@@ -192,7 +188,7 @@ final class AdaptersViewModel {
 
     // MARK: - Test
 
-    func testAdapter(_ adapter: Adapter) async {
+    func testAdapter(_ adapter: Adapter, protocolType: String = "openai") async {
         guard let firstMapping = adapter.models.first else {
             testResults[adapter.name] = TestModelResult(
                 reachable: false, latency: nil, model: nil,
@@ -207,7 +203,7 @@ final class AdaptersViewModel {
         testResults.removeValue(forKey: name)
         error = nil
         do {
-            testResults[name] = try await client.testAdapter(name: name, modelId: firstMapping.sourceModelId)
+            testResults[name] = try await client.testAdapter(name: name, modelId: firstMapping.sourceModelId, protocolType: protocolType)
         } catch {
             testResults[name] = TestModelResult(
                 reachable: false,

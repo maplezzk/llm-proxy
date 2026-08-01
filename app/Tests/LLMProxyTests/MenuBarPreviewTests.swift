@@ -33,7 +33,7 @@ final class MenuBarPreviewTests: XCTestCase {
 
     func testAdapterCardModelsBuildsMappings() {
         let adapters = [
-            Adapter(name: "my-tool", type: "anthropic", maxTokens: nil, stream: nil, baseUrl: nil, models: [
+            Adapter(name: "my-tool", maxTokens: nil, stream: nil, baseUrl: nil, models: [
                 AdapterModel(sourceModelId: "claude-sonnet-4", provider: "anthropic", targetModelId: "claude-sonnet-4-20250514", status: nil),
                 AdapterModel(sourceModelId: "gpt-4o", provider: "deepseek", targetModelId: "deepseek-chat", status: nil),
             ]),
@@ -42,7 +42,6 @@ final class MenuBarPreviewTests: XCTestCase {
 
         XCTAssertEqual(cards.count, 1)
         XCTAssertEqual(cards[0].name, "my-tool")
-        XCTAssertEqual(cards[0].type, "anthropic")
         XCTAssertEqual(cards[0].mappings.count, 2)
 
         let first = cards[0].mappings[0]

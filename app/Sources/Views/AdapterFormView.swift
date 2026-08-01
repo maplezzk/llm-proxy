@@ -3,12 +3,6 @@ import SwiftUI
 struct AdapterFormView: View {
     @Environment(AdaptersViewModel.self) private var viewModel
 
-    private let adapterTypes = [
-        ("anthropic", "Anthropic"),
-        ("openai", "OpenAI"),
-        ("openai-responses", "OpenAI Responses"),
-    ]
-
     var body: some View {
         @Bindable var vm = viewModel
 
@@ -30,18 +24,6 @@ struct AdapterFormView: View {
                         Text(loc("adapter.name")).font(.caption).foregroundColor(.secondary)
                         TextField(loc("adapter.namePlaceholder"), text: $vm.formName)
                             .textFieldStyle(.roundedBorder)
-                    }
-
-                    // 类型
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(loc("adapter.type")).font(.caption).foregroundColor(.secondary)
-                        Picker("", selection: $vm.formType) {
-                            ForEach(adapterTypes, id: \.0) { type in
-                                Text(type.1).tag(type.0)
-                            }
-                        }
-                        .labelsHidden()
-                        .pickerStyle(.segmented)
                     }
 
                     // 默认请求参数（下游未传时生效）

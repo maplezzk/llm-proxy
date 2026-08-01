@@ -61,7 +61,7 @@ final class MenuCardSnapshotTests: XCTestCase {
 
             let detailStatus = status
 
-            let header = AdapterHeaderCardView(name: "my-tool", type: "anthropic")
+            let header = AdapterHeaderCardView(name: "my-tool")
             let adapter = VStack(spacing: 0) {
                 header
                 MappingRowView(sourceModelId: "claude-sonnet-4", currentLabel: "anthropic/claude-sonnet-4-20250514")
