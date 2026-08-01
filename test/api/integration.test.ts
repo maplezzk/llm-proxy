@@ -148,8 +148,8 @@ function createTestConfig(): Config {
       },
     ],
     adapters: [
-      { name: 'my-tool', type: 'openai', models: [{ sourceModelId: 'gpt-test', provider: 'test-openai', targetModelId: 'gpt-4o-test' }] },
-      { name: 'resp-adapter', type: 'openai-responses', models: [{ sourceModelId: 'resp-test', provider: 'test-responses', targetModelId: 'gpt-4o-resp' }] },
+      { name: 'my-tool', models: [{ sourceModelId: 'gpt-test', provider: 'test-openai', targetModelId: 'gpt-4o-test' }] },
+      { name: 'resp-adapter', models: [{ sourceModelId: 'resp-test', provider: 'test-responses', targetModelId: 'gpt-4o-resp' }] },
     ],
   }
 }
@@ -304,10 +304,24 @@ describe('integration', { timeout: 15000 }, () => {
     assert.strictEqual(data.success, true)
     assert.ok(data.data.adapters.length > 0)
     assert.strictEqual(data.data.adapters[0].name, 'my-tool')
-    assert.strictEqual(data.data.adapters[0].type, 'openai')
+    assert.strictEqual(Object.hasOwn(data.data.adapters[0], 'type'), false)
     assert.strictEqual(data.data.adapters[0].models[0].sourceModelId, 'gpt-test')
     assert.strictEqual(data.data.adapters[0].models[0].targetModelId, 'gpt-4o-test')
     assert.strictEqual(data.data.adapters[0].models[0].status, 'ok')
+  })
+
+  it('管理 API: 适配器测试可选择入站协议', async () => {
+    const resp = await fetch(`http://127.0.0.1:${PROXY_PORT}/admin/test-adapter`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ adapterName: 'resp-adapter', modelId: 'resp-test', protocol: 'anthropic' }),
+    })
+    const data = await resp.json()
+    assert.strictEqual(resp.status, 200)
+    assert.strictEqual(data.success, true)
+    assert.strictEqual(data.data.adapterUrl, '/resp-adapter/v1/messages')
+    assert.strictEqual(data.data.requestUrl, `http://127.0.0.1:${MOCK_PORT}/v1/responses`)
+    assert.strictEqual(data.data.requestBody.input, 'hi')
   })
 
   // --- OpenAI Responses API ---

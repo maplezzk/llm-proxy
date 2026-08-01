@@ -15,7 +15,7 @@ final class AdaptersViewModelTests: XCTestCase {
     @MainActor
     func testFilteredAdaptersEmptySearch() {
         viewModel.adapters = [
-            Adapter(name: "test-adapter", type: "openai", baseUrl: nil, models: []),
+            Adapter(name: "test-adapter", baseUrl: nil, models: []),
         ]
         viewModel.search = ""
         XCTAssertEqual(viewModel.filteredAdapters.count, 1)
@@ -24,8 +24,8 @@ final class AdaptersViewModelTests: XCTestCase {
     @MainActor
     func testFilteredAdaptersWithSearch() {
         viewModel.adapters = [
-            Adapter(name: "openai-adapter", type: "openai", baseUrl: nil, models: []),
-            Adapter(name: "anthropic-adapter", type: "anthropic", baseUrl: nil, models: []),
+            Adapter(name: "openai-adapter", baseUrl: nil, models: []),
+            Adapter(name: "anthropic-adapter", baseUrl: nil, models: []),
         ]
         viewModel.search = "openai"
         XCTAssertEqual(viewModel.filteredAdapters.count, 1)
@@ -34,14 +34,14 @@ final class AdaptersViewModelTests: XCTestCase {
 
     @MainActor
     func testFilteredAdaptersNoMatch() {
-        viewModel.adapters = [Adapter(name: "test", type: "openai", baseUrl: nil, models: [])]
+        viewModel.adapters = [Adapter(name: "test", baseUrl: nil, models: [])]
         viewModel.search = "nonexistent"
         XCTAssertEqual(viewModel.filteredAdapters.count, 0)
     }
 
     @MainActor
     func testFilteredAdaptersCaseInsensitive() {
-        viewModel.adapters = [Adapter(name: "MyAdapter", type: "openai", baseUrl: nil, models: [])]
+        viewModel.adapters = [Adapter(name: "MyAdapter", baseUrl: nil, models: [])]
         viewModel.search = "myadapter"
         XCTAssertEqual(viewModel.filteredAdapters.count, 1)
     }
@@ -54,7 +54,6 @@ final class AdaptersViewModelTests: XCTestCase {
         XCTAssertTrue(viewModel.showForm)
         XCTAssertNil(viewModel.editingAdapter)
         XCTAssertEqual(viewModel.formName, "")
-        XCTAssertEqual(viewModel.formType, "openai")
         XCTAssertEqual(viewModel.formMappings.count, 1) // auto-add one row
     }
 
@@ -62,7 +61,6 @@ final class AdaptersViewModelTests: XCTestCase {
     func testOpenFormForEdit() {
         let adapter = Adapter(
             name: "my-adapter",
-            type: "anthropic",
             baseUrl: nil,
             models: [
                 AdapterModel(sourceModelId: "gpt-4", provider: "openai", targetModelId: "gpt-4-turbo", status: nil),
@@ -72,7 +70,6 @@ final class AdaptersViewModelTests: XCTestCase {
         XCTAssertTrue(viewModel.showForm)
         XCTAssertNotNil(viewModel.editingAdapter)
         XCTAssertEqual(viewModel.formName, "my-adapter")
-        XCTAssertEqual(viewModel.formType, "anthropic")
         XCTAssertEqual(viewModel.formMappings.count, 1)
         XCTAssertEqual(viewModel.formMappings[0].sourceModelId, "gpt-4")
         XCTAssertEqual(viewModel.formMappings[0].provider, "openai")
@@ -86,7 +83,6 @@ final class AdaptersViewModelTests: XCTestCase {
         XCTAssertFalse(viewModel.showForm)
         XCTAssertNil(viewModel.editingAdapter)
         XCTAssertEqual(viewModel.formName, "")
-        XCTAssertEqual(viewModel.formType, "openai")
         XCTAssertTrue(viewModel.formMappings.isEmpty)
     }
 

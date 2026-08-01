@@ -4,7 +4,7 @@ import { ConfigStore } from '../../src/config/store.js'
 import { StatusTracker } from '../../src/status/tracker.js'
 import { Logger } from '../../src/log/logger.js'
 import type { Config } from '../../src/config/types.js'
-import { handleGetConfig, handleReload, handleHealth, handleStatus, handleGetLocale, handleSetLocale, handleSetProxyKey, handleCreateProvider, handleUpdateProvider } from '../../src/api/handlers/index.js'
+import { handleGetConfig, handleReload, handleHealth, handleStatus, handleGetLocale, handleSetLocale, handleSetProxyKey, handleCreateProvider, handleUpdateProvider, handleCreateAdapter } from '../../src/api/handlers/index.js'
 import type { OutgoingHttpHeaders } from 'node:http'
 
 function createConfig(): Config {
@@ -114,6 +114,29 @@ describe('api/handlers', () => {
     assert.doesNotMatch(savedYaml, /\n\s+protocol: openai\n/)
   })
 
+  it('POST /admin/adapters 不需要协议字段且保存时不写入协议', async () => {
+    const tmpDir = (await import('node:fs')).mkdtempSync((await import('node:os')).tmpdir() + '/llm-proxy-test-')
+    const configPath = `${tmpDir}/config.yaml`
+    const store = new ConfigStore(configPath, createConfig())
+    const ctx = { store, tracker: new StatusTracker(), logger: new Logger() }
+    const req = new (await import('stream')).Readable()
+    req.push(JSON.stringify({
+      name: 'tool',
+      models: [{ sourceModelId: 'source', provider: 'p1', targetModelId: 'mv1' }],
+    }))
+    req.push(null)
+    const res = mockRes()
+
+    await handleCreateAdapter(ctx, req as never, res as never)
+
+    assert.strictEqual(res.getStatus(), 200)
+    const adapter = store.getConfig().config.adapters?.[0]
+    assert.ok(adapter)
+    assert.strictEqual(Object.hasOwn(adapter, 'type'), false)
+    const savedYaml = (await import('node:fs')).readFileSync(configPath, 'utf-8')
+    assert.doesNotMatch(savedYaml, /adapters:\n\s+- name: tool\n\s+type:/)
+  })
+
   it('GET /admin/health 返回 ok', () => {
     const store = new ConfigStore('/fake', createConfig())
     const tracker = new StatusTracker()
@@ -195,7 +218,7 @@ describe('api/handlers', () => {
     const config: Config = {
       ...createConfig(),
       providers: [{ ...createConfig().providers[0], models: [{ id: 'mv1', input: ['image'] }] }],
-      adapters: [{ name: 'adapter', type: 'openai', models: [{ sourceModelId: 'source', provider: 'p1', targetModelId: 'mv1' }] }],
+      adapters: [{ name: 'adapter', models: [{ sourceModelId: 'source', provider: 'p1', targetModelId: 'mv1' }] }],
       vision: { provider: 'p1', model: 'mv1' },
       locale: 'zh',
       port: 9100,

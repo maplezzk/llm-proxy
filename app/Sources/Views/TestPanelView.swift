@@ -19,6 +19,7 @@ struct TestPanelView: View {
     @State private var adapters: [Adapter] = []
     @State private var selectedAdapterName = ""
     @State private var adapterModelId = ""
+    @State private var selectedAdapterProtocol = "openai"
 
     // 通用
     @State private var isTesting = false
@@ -31,6 +32,7 @@ struct TestPanelView: View {
 
     private var selectedProvider: Provider? { providers.first { $0.name == selectedProviderName } }
     private var selectedAdapter: Adapter? { adapters.first { $0.name == selectedAdapterName } }
+    private var adapterModels: [AdapterModel] { selectedAdapter?.models ?? [] }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -130,17 +132,37 @@ struct TestPanelView: View {
 
     private var adapterForm: some View {
         Group {
-            Picker(loc("test.selectProvider"), selection: $selectedAdapterName) {
-                Text(loc("test.selectProvider")).tag("")
+            Picker(loc("test.selectAdapter"), selection: $selectedAdapterName) {
+                Text(loc("test.selectAdapter")).tag("")
                 ForEach(adapters, id: \.name) { a in Text(a.name).tag(a.name) }
             }
-            .onChange(of: selectedAdapterName) { _, _ in
-                if let a = selectedAdapter, let first = a.models.first {
+            .onChange(of: selectedAdapterName) { _, name in
+                selectedAdapterProtocol = "openai"
+                if let a = adapters.first(where: { $0.name == name }), let first = a.models.first {
                     adapterModelId = first.sourceModelId
+                } else {
+                    adapterModelId = ""
                 }
             }
 
-            TextField(loc("test.model"), text: $adapterModelId).textFieldStyle(.roundedBorder)
+            if adapterModels.isEmpty {
+                TextField(loc("test.model"), text: $adapterModelId).textFieldStyle(.roundedBorder)
+            } else {
+                Picker(loc("test.model"), selection: $adapterModelId) {
+                    Text(loc("test.model")).tag("")
+                    ForEach(adapterModels, id: \.sourceModelId) { model in
+                        Text(model.sourceModelId).tag(model.sourceModelId)
+                    }
+                }
+                .pickerStyle(.menu)
+            }
+
+            Picker(loc("test.protocol"), selection: $selectedAdapterProtocol) {
+                ForEach(types, id: \.self) { type in
+                    Text(type).tag(type)
+                }
+            }
+            .pickerStyle(.segmented)
         }
     }
 
@@ -169,7 +191,11 @@ struct TestPanelView: View {
                 let base = apiBase
                 testResult = try await api.testProvider(modelId: selectedModelId, provider: selectedProviderName, apiKey: key, apiBase: base, type: type)
             } else {
-                testResult = try await api.testAdapter(name: selectedAdapterName, modelId: adapterModelId)
+                testResult = try await api.testAdapter(
+                    name: selectedAdapterName,
+                    modelId: adapterModelId,
+                    protocolType: selectedAdapterProtocol
+                )
             }
         } catch {
             errorMessage = error.localizedDescription
@@ -240,7 +266,8 @@ struct TestPanelView: View {
         } else {
             curl = generateAdapterCurl(
                 model: adapterModelId,
-                baseURL: APIClient.adapterAPIBaseURL(selectedAdapterName)
+                baseURL: APIClient.adapterAPIBaseURL(selectedAdapterName),
+                protocolType: selectedAdapterProtocol
             )
         }
         NSPasteboard.general.clearContents()
@@ -274,12 +301,27 @@ struct TestPanelView: View {
         }
     }
 
-    private func generateAdapterCurl(model: String, baseURL: String) -> String {
-        return """
-        curl -X POST \(baseURL)chat/completions \\
-          -H "Content-Type: application/json" \\
-          -d '{"model": "\(model)", "messages": [{"role": "user", "content": "hi"}]}'
-        """
+    private func generateAdapterCurl(model: String, baseURL: String, protocolType: String) -> String {
+        switch protocolType {
+        case "anthropic":
+            return """
+            curl -X POST \(baseURL)messages \\
+              -H "Content-Type: application/json" \\
+              -d '{"model": "\(model)", "max_tokens": 100, "messages": [{"role": "user", "content": "hi"}]}'
+            """
+        case "openai-responses":
+            return """
+            curl -X POST \(baseURL)responses \\
+              -H "Content-Type: application/json" \\
+              -d '{"model": "\(model)", "input": "hi"}'
+            """
+        default:
+            return """
+            curl -X POST \(baseURL)chat/completions \\
+              -H "Content-Type: application/json" \\
+              -d '{"model": "\(model)", "messages": [{"role": "user", "content": "hi"}]}'
+            """
+        }
     }
 
     // MARK: - Data Loading
@@ -291,6 +333,10 @@ struct TestPanelView: View {
             providers = config.data?.providers ?? []
             let adaptersResp = try await api.fetchAdapters()
             adapters = adaptersResp.data?.adapters ?? []
+            if let selected = adapters.first(where: { $0.name == selectedAdapterName }),
+               !selected.models.contains(where: { $0.sourceModelId == adapterModelId }) {
+                adapterModelId = selected.models.first?.sourceModelId ?? ""
+            }
         } catch { /* ignore */ }
         isLoadingData = false
     }
@@ -307,6 +353,7 @@ struct TestPanelView: View {
             mode = .adapter
             selectedAdapterName = a.name
             adapterModelId = a.modelId
+            selectedAdapterProtocol = "openai"
         }
     }
 }

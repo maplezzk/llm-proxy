@@ -693,7 +693,6 @@ struct CardButton: View {
 
 struct AdapterCardModel {
     let name: String
-    let type: String
     let mappings: [Mapping]
 
     struct Mapping: Identifiable {
@@ -706,11 +705,10 @@ struct AdapterCardModel {
     }
 }
 
-// MARK: - 适配器头（名称 + 协议类型，不可点击）
+// MARK: - 适配器头（名称，不可点击）
 
 struct AdapterHeaderCardView: View {
     let name: String
-    let type: String
 
     var body: some View {
         HStack(spacing: 6) {
@@ -719,12 +717,6 @@ struct AdapterHeaderCardView: View {
                 .foregroundStyle(.orange)
             Text(name)
                 .font(.system(size: 12.5, weight: .semibold))
-            Text(type)
-                .font(.system(size: 9.5, weight: .medium))
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 5)
-                .padding(.vertical, 1.5)
-                .background(Capsule().fill(Color.secondary.opacity(0.12)))
             Spacer()
         }
         .padding(.horizontal, 14)
@@ -807,7 +799,6 @@ func makeAdapterCardModels(adapters: [Adapter]) -> [AdapterCardModel] {
     adapters.map { adapter in
         AdapterCardModel(
             name: adapter.name,
-            type: adapter.type,
             mappings: adapter.models.map { mapping in
                 AdapterCardModel.Mapping(
                     sourceModelId: mapping.sourceModelId,

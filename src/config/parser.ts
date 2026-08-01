@@ -68,7 +68,6 @@ export function loadConfigFromYaml(filePath: string): Config {
     })),
     adapters: (interpolated.adapters ?? []).map((a) => ({
       name: a.name,
-      type: a.type,
       max_tokens: a.max_tokens,
       stream: a.stream,
       models: (a.models ?? []).map((m) => ({
@@ -111,7 +110,6 @@ export function serializeConfigToYaml(config: Config): string {
     })),
     adapters: (config.adapters ?? []).map((a) => ({
       name: a.name,
-      type: a.type,
       ...(a.max_tokens !== undefined ? { max_tokens: a.max_tokens } : {}),
       ...(a.stream !== undefined ? { stream: a.stream } : {}),
       models: a.models.map((m) => ({

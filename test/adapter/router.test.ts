@@ -28,7 +28,6 @@ function createStore(): ConfigStore {
     adapters: [
       {
         name: 'claude-code',
-        type: 'anthropic',
         models: [
           { sourceModelId: 'sonnet', provider: 'anthropic-main', targetModelId: 'claude-sonnet-4-20250514' },
           { sourceModelId: 'fast', provider: 'openai-main', targetModelId: 'gpt-4o' },
@@ -49,13 +48,13 @@ describe('adapter/router', () => {
     assert.strictEqual(result.inboundType, 'anthropic')
   })
 
-  it('跨协议映射到 OpenAI Provider（Anthropic 格式 → OpenAI 上游）', () => {
+  it('无协议绑定时按目标 Provider 协议作为默认入站协议', () => {
     const store = createStore()
     const result = resolveAdapterRoute(store, 'claude-code', 'fast')
     assert.strictEqual(result.route.providerName, 'openai-main')
     assert.strictEqual(result.route.providerType, 'openai')
     assert.strictEqual(result.route.modelId, 'gpt-4o')
-    assert.strictEqual(result.inboundType, 'anthropic')  // 适配器格式不变
+    assert.strictEqual(result.inboundType, 'openai')
   })
 
   it('实际请求协议优先于适配器默认协议', () => {
@@ -71,7 +70,6 @@ describe('adapter/router', () => {
       }],
       adapters: [{
         name: 'pi',
-        type: 'openai-responses',
         models: [{ sourceModelId: 'HIGH', provider: 'multi-protocol', targetModelId: 'shared-model' }],
       }],
     }
@@ -104,7 +102,7 @@ describe('adapter/router', () => {
     const config: Config = {
       providers: [],
       adapters: [
-        { name: 'test-adapter', type: 'openai', models: [{ sourceModelId: 'm', provider: 'nonexistent-provider', targetModelId: 'm' }] },
+        { name: 'test-adapter', models: [{ sourceModelId: 'm', provider: 'nonexistent-provider', targetModelId: 'm' }] },
       ],
     }
     const store = new ConfigStore('/fake', config)
@@ -120,7 +118,7 @@ describe('adapter/router', () => {
         { name: 'p', type: 'openai', apiKey: 'k', models: [{ id: 'real' }] },
       ],
       adapters: [
-        { name: 'a', type: 'openai', models: [{ sourceModelId: 'm', provider: 'p', targetModelId: 'nonexistent-model' }] },
+        { name: 'a', models: [{ sourceModelId: 'm', provider: 'p', targetModelId: 'nonexistent-model' }] },
       ],
     }
     const store = new ConfigStore('/fake', config)
@@ -148,7 +146,6 @@ describe('adapter/router', () => {
       adapters: [
         {
           name: 'a',
-          type: 'openai',
           models: [
             { sourceModelId: 'mm', provider: 'vision-provider', targetModelId: 'multimodal-model' },
             { sourceModelId: 'txt', provider: 'vision-provider', targetModelId: 'text-only-model' },

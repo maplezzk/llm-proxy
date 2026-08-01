@@ -74,12 +74,14 @@
 "test.apiKey" = "API Key";
 "test.apiBase" = "API Base";
 "test.type" = "类型";
+"test.protocol" = "协议";
 "test.send" = "发送";
 "test.result" = "结果";
 "test.latency" = "延迟: %@ms";
 "test.reachable" = "可达";
 "test.unreachable" = "不可达";
 "test.selectProvider" = "选择供应商…";
+"test.selectAdapter" = "选择适配器…";
 
 // Providers
 "providers.loading" = "正在加载供应商...";
@@ -153,7 +155,6 @@
 "adapter.editTitle" = "编辑适配器";
 "adapter.name" = "名称";
 "adapter.namePlaceholder" = "适配器名称";
-"adapter.type" = "类型";
 "adapter.requestDefaults" = "默认请求参数";
 "adapter.streamDefault" = "stream 默认";
 "adapter.streamFollow" = "默认（跟随）";

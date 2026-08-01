@@ -128,17 +128,24 @@ export async function handleTestAdapter(ctx: ServerContext, req: IncomingMessage
 
   const adapterName = typeof body.adapterName === 'string' ? body.adapterName : ''
   const modelId = typeof body.modelId === 'string' ? body.modelId : ''
+  const rawProtocol = body.protocol ?? body.type
+  const requestedProtocol = typeof rawProtocol === 'string' ? rawProtocol : undefined
 
   if (!adapterName || !modelId) {
     json(res, 400, { success: false, error: '缺少必填字段: adapterName, modelId' })
     return
   }
 
-  ctx.logger.log('system', 'Adapter test request received', { adapter: adapterName, model: modelId })
+  if (requestedProtocol && !['anthropic', 'openai', 'openai-responses'].includes(requestedProtocol)) {
+    json(res, 400, { success: false, error: 'protocol 必须为 openai、anthropic 或 openai-responses' })
+    return
+  }
+
+  ctx.logger.log('system', 'Adapter test request received', { adapter: adapterName, model: modelId, protocol: requestedProtocol ?? '' })
 
   let route
   try {
-    route = resolveAdapterRoute(ctx.store, adapterName, modelId)
+    route = resolveAdapterRoute(ctx.store, adapterName, modelId, requestedProtocol as 'anthropic' | 'openai' | 'openai-responses' | undefined)
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     const code = err instanceof AdapterError ? err.code : 'UNKNOWN'
@@ -153,6 +160,8 @@ export async function handleTestAdapter(ctx: ServerContext, req: IncomingMessage
   const targetModel = route.route.modelId
   const url = providerType === 'anthropic'
     ? `${baseUrl}/v1/messages`
+    : providerType === 'openai-responses'
+      ? `${baseUrl}/v1/responses`
     : `${baseUrl}/v1/chat/completions`
 
   // 适配器入口 URL（客户端实际请求的地址）
@@ -169,7 +178,9 @@ export async function handleTestAdapter(ctx: ServerContext, req: IncomingMessage
 
   const requestBody = providerType === 'anthropic'
     ? { model: targetModel, messages: [{ role: 'user' as const, content: 'hi' }], max_tokens: 10, stream: false }
-    : { model: targetModel, messages: [{ role: 'user' as const, content: 'hi' }], stream: false }
+    : providerType === 'openai-responses'
+      ? { model: targetModel, input: 'hi', stream: false }
+      : { model: targetModel, messages: [{ role: 'user' as const, content: 'hi' }], stream: false }
 
   const startTime = Date.now()
   try {

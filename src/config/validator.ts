@@ -215,10 +215,6 @@ function validateAdapters(config: Config): ValidationError[] {
       errors.push({ field: `adapters.${adapter.name}.name`, message: `适配器名称 "${adapter.name}" 与模型供应商名称冲突` })
     }
 
-    if (!VALID_PROVIDER_TYPES.includes(adapter.type)) {
-      errors.push({ field: `adapters.${adapter.name}.type`, message: `适配器类型 "${adapter.type}" 无效，仅支持 anthropic、openai、openai-responses` })
-    }
-
     if (!adapter.models || !Array.isArray(adapter.models) || adapter.models.length === 0) {
       errors.push({ field: `adapters.${adapter.name}.models`, message: '每个适配器至少需要一个模型映射' })
       continue

@@ -78,7 +78,6 @@ export interface AdapterModelMapping {
 
 export interface AdapterConfig {
   name: string
-  type: ProviderType
   /** 默认 max_tokens，客户端没传时使用 */
   max_tokens?: number
   /** 下游未传 stream 时的默认值。未配置（undefined）时沿用内置默认 true（流式） */
@@ -121,7 +120,6 @@ export interface ProviderConfigFile {
 
 export interface AdapterConfigFile {
   name: string
-  type: ProviderType
   max_tokens?: number
   stream?: boolean
   models: { source_model_id: string; provider: string; target_model_id: string; thinking?: ThinkingConfigFile; reasoning_effort?: string }[]

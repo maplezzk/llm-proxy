@@ -117,12 +117,13 @@ GET /v1/models
 ```
 POST /{adapterName}/v1/messages          # Anthropic 格式入站
 POST /{adapterName}/v1/chat/completions  # OpenAI 格式入站
+POST /{adapterName}/v1/responses         # OpenAI Responses 格式入站
 ```
 
 - `adapterName` 只支持 `[a-zA-Z0-9_-]`，不支持中文
-- 入站格式由适配器 `type`（`anthropic` / `openai`）决定
-- 出站格式由目标 provider `type` 决定
-- 跨协议时自动转换（OpenAI ↔ Anthropic）
+- 适配器不绑定协议；入站格式由请求路径决定，天然兼容 `anthropic`、`openai`、`openai-responses`
+- 出站格式由目标 provider/model 可用协议决定
+- 入站与出站协议不一致时自动转换
 
 **跨协议转换矩阵**
 

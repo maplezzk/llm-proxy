@@ -39,13 +39,12 @@ import {
 } from '@appica/icons-react'
 import { useApp } from '../lib/app-state'
 import { fetchJson } from '../lib/api'
-import type { ApiRes, ProviderType } from '../lib/api-types'
+import type { ApiRes } from '../lib/api-types'
 import {
   EffortSelect,
   LABEL_CLS,
   REASONING_EFFORTS,
   THINKING_TYPES,
-  TYPE_LABELS,
   extractError,
 } from '../lib/form-helpers'
 import { useToast } from '../lib/toast'
@@ -71,7 +70,6 @@ interface AdapterMapping {
 
 interface AdapterRow {
   name: string
-  type: ProviderType
   max_tokens?: number
   stream?: boolean
   baseUrl?: string
@@ -89,7 +87,6 @@ interface MappingRow {
 
 interface FormState {
   name: string
-  type: ProviderType
   maxTokens: string
   stream: string // '' | 'true' | 'false'
   models: MappingRow[]
@@ -100,6 +97,12 @@ interface TestTarget {
   name: string
   modelIds: string[]
 }
+
+const ADAPTER_PROTOCOLS = [
+  { type: 'openai' },
+  { type: 'openai-responses' },
+  { type: 'anthropic' },
+]
 
 /* ────────────────────────── 常量 / 工具 ────────────────────────── */
 
@@ -113,7 +116,6 @@ const emptyMappingRow = (): MappingRow => ({
 
 const emptyForm = (): FormState => ({
   name: '',
-  type: 'openai',
   maxTokens: '',
   stream: '',
   models: [emptyMappingRow()],
@@ -124,7 +126,7 @@ const emptyForm = (): FormState => ({
 /**
  * Adapters 页 — 移植自旧版 adapters.ts：
  * - 列表（baseUrl / 模型映射 / 状态）、搜索过滤、空态/无匹配
- * - 新增/编辑弹窗（name/type/请求默认 max_tokens+stream / 模型映射表）
+ * - 新增/编辑弹窗（name/请求默认 max_tokens+stream / 模型映射表）
  * - 批量从供应商导入、删除确认、连通性测试（复用 TestPanelDialog → /admin/test-adapter）
  */
 export default function AdaptersPage() {
@@ -194,7 +196,6 @@ export default function AdaptersPage() {
       if (a) {
         next = {
           name: a.name,
-          type: (a.type as ProviderType) || 'openai',
           maxTokens: a.max_tokens != null ? String(a.max_tokens) : '',
           stream: a.stream === true ? 'true' : a.stream === false ? 'false' : '',
           models: (a.models || []).map((m) => ({
@@ -284,7 +285,7 @@ export default function AdaptersPage() {
 
   /** 保存：校验 → 组装 validModels → PUT/POST → toast + 刷新（对齐旧版 save）。 */
   const save = async () => {
-    const { name, type, models } = form
+    const { name, models } = form
     const validModels = models
       .filter((m) => m.sourceModelId.trim() && m.provider && m.targetModelId)
       .map((m) => {
@@ -293,14 +294,10 @@ export default function AdaptersPage() {
           provider: m.provider,
           targetModelId: m.targetModelId,
         }
-        if (type === 'anthropic') {
-          const bt = parseInt(m.thinking.budget_tokens ?? '', 10)
-          if (bt > 0) base.thinking = { budget_tokens: bt }
-          if (m.reasoning_effort && (REASONING_EFFORTS as readonly string[]).includes(m.reasoning_effort)) {
-            base.thinking = { ...(base.thinking as object), reasoning_effort: m.reasoning_effort }
-          }
-        } else if (m.reasoning_effort && (REASONING_EFFORTS as readonly string[]).includes(m.reasoning_effort)) {
-          base.thinking = { reasoning_effort: m.reasoning_effort }
+        const bt = parseInt(m.thinking.budget_tokens ?? '', 10)
+        if (bt > 0) base.thinking = { budget_tokens: bt }
+        if (m.reasoning_effort && (REASONING_EFFORTS as readonly string[]).includes(m.reasoning_effort)) {
+          base.thinking = { ...(base.thinking as object), reasoning_effort: m.reasoning_effort }
         }
         if (m.thinking.type && (THINKING_TYPES as readonly string[]).includes(m.thinking.type)) {
           base.thinking = { ...(base.thinking as object), type: m.thinking.type }
@@ -316,7 +313,6 @@ export default function AdaptersPage() {
     const streamDefault = form.stream === 'true' ? true : form.stream === 'false' ? false : undefined
     const body = {
       name,
-      type,
       max_tokens: parseInt(form.maxTokens, 10) || undefined,
       stream: streamDefault,
       models: validModels,
@@ -382,8 +378,6 @@ export default function AdaptersPage() {
 
   /* ──── 渲染 ──── */
 
-  const isAnthropic = form.type === 'anthropic'
-
   return (
     <div className="flex flex-col gap-4 p-6">
       {/* 工具条：搜索 + 添加 */}
@@ -407,7 +401,6 @@ export default function AdaptersPage() {
         <TableHeader>
           <TableRow>
             <TableHead>{t('admin.adapters.adapter')}</TableHead>
-            <TableHead>{t('admin.adapters.type')}</TableHead>
             <TableHead>{t('admin.adapters.baseUrl')}</TableHead>
             <TableHead>{t('admin.adapters.modelMapping')}</TableHead>
             <TableHead>{t('admin.adapters.status')}</TableHead>
@@ -421,9 +414,6 @@ export default function AdaptersPage() {
             return (
               <TableRow key={a.name}>
                 <TableCell className="font-semibold text-foreground">{a.name}</TableCell>
-                <TableCell className="font-mono text-[11.5px] text-muted-foreground">
-                  {a.type === 'openai-responses' ? 'openai (responses)' : a.type}
-                </TableCell>
                 <TableCell className="font-mono text-[10.5px] text-muted-foreground">
                   {a.baseUrl || '—'}
                 </TableCell>
@@ -499,21 +489,21 @@ export default function AdaptersPage() {
 
           {loading && adapters.length === 0 && (
             <TableRow>
-              <TableCell colSpan={6} className="py-12 text-center">
+              <TableCell colSpan={5} className="py-12 text-center">
                 <Spinner className="text-xl" />
               </TableCell>
             </TableRow>
           )}
           {!loading && filtered.length === 0 && adapters.length === 0 && (
             <TableRow>
-              <TableCell colSpan={6} className="py-12 text-center text-[13px] text-muted-foreground">
+              <TableCell colSpan={5} className="py-12 text-center text-[13px] text-muted-foreground">
                 {t('admin.adapters.empty')}
               </TableCell>
             </TableRow>
           )}
           {!loading && filtered.length === 0 && adapters.length > 0 && (
             <TableRow>
-              <TableCell colSpan={6} className="py-12 text-center text-[13px] text-muted-foreground">
+              <TableCell colSpan={5} className="py-12 text-center text-[13px] text-muted-foreground">
                 {t('admin.adapters.noMatch')}
               </TableCell>
             </TableRow>
@@ -543,27 +533,6 @@ export default function AdaptersPage() {
                   placeholder={t('admin.adapters.formNamePlaceholder')}
                   inputSize="sm"
                 />
-              </div>
-
-              {/* 类型 */}
-              <div className="flex flex-col gap-1.5">
-                <label className={LABEL_CLS}>{t('admin.adapters.formType')}</label>
-                <Select
-                  size="sm"
-                  value={form.type}
-                  onValueChange={(v) => setForm((f) => ({ ...f, type: String(v ?? 'openai') as ProviderType }))}
-                >
-                  <SelectTrigger aria-label={t('admin.adapters.formType')}>
-                    <SelectValue>
-                      {(v) => TYPE_LABELS[String(v ?? 'openai') as ProviderType] ?? String(v)}
-                    </SelectValue>
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="openai">OpenAI (Chat)</SelectItem>
-                    <SelectItem value="openai-responses">OpenAI (Responses)</SelectItem>
-                    <SelectItem value="anthropic">Anthropic</SelectItem>
-                  </SelectContent>
-                </Select>
               </div>
 
               {/* 请求默认（max_tokens + stream） */}
@@ -697,23 +666,21 @@ export default function AdaptersPage() {
 
                         {/* thinking / effort 配置 */}
                         <div className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-2">
-                          {isAnthropic && (
-                            <label className="flex items-center gap-1.5">
-                              <span className="text-[10.5px] font-medium whitespace-nowrap text-primary-strong">
-                                {t('admin.providers.thinkingBudget')}
-                              </span>
-                              <Input
-                                type="number"
-                                min={0}
-                                step={1024}
-                                value={m.thinking.budget_tokens ?? ''}
-                                onChange={(e) => updateMappingThinking(i, { budget_tokens: e.target.value })}
-                                inputSize="sm"
-                                aria-label={t('admin.providers.thinkingBudget')}
-                                className="w-24 font-mono text-[11px]"
-                              />
-                            </label>
-                          )}
+                          <label className="flex items-center gap-1.5">
+                            <span className="text-[10.5px] font-medium whitespace-nowrap text-primary-strong">
+                              {t('admin.providers.thinkingBudget')}
+                            </span>
+                            <Input
+                              type="number"
+                              min={0}
+                              step={1024}
+                              value={m.thinking.budget_tokens ?? ''}
+                              onChange={(e) => updateMappingThinking(i, { budget_tokens: e.target.value })}
+                              inputSize="sm"
+                              aria-label={t('admin.providers.thinkingBudget')}
+                              className="w-24 font-mono text-[11px]"
+                            />
+                          </label>
 
                           <label className="flex items-center gap-1.5">
                             <span className="text-[10.5px] font-medium whitespace-nowrap text-primary-strong">
@@ -809,9 +776,10 @@ export default function AdaptersPage() {
         open={test.open}
         onClose={() => setTest((prev) => ({ ...prev, open: false }))}
         name={test.name}
+        protocols={ADAPTER_PROTOCOLS}
         modelIds={test.modelIds}
         endpoint="/admin/test-adapter"
-        buildBody={(modelId) => ({ adapterName: test.name, modelId })}
+        buildBody={(modelId, protocolType) => ({ adapterName: test.name, modelId, protocol: protocolType })}
       />
     </div>
   )

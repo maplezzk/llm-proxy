@@ -67,12 +67,14 @@
 "test.apiKey" = "API Key";
 "test.apiBase" = "API Base";
 "test.type" = "Type";
+"test.protocol" = "Protocol";
 "test.send" = "Send";
 "test.result" = "Result";
 "test.latency" = "Latency: %@ms";
 "test.reachable" = "Reachable";
 "test.unreachable" = "Unreachable";
 "test.selectProvider" = "Select provider…";
+"test.selectAdapter" = "Select adapter…";
 "providers.loading" = "Loading providers...";
 "providers.searchPlaceholder" = "Search providers...";
 "providers.addProvider" = "Add Provider";
@@ -138,7 +140,6 @@
 "adapter.editTitle" = "Edit Adapter";
 "adapter.name" = "Name";
 "adapter.namePlaceholder" = "Adapter name";
-"adapter.type" = "Type";
 "adapter.requestDefaults" = "Request Defaults";
 "adapter.streamDefault" = "stream default";
 "adapter.streamFollow" = "Default (follow)";

@@ -113,12 +113,12 @@ struct AdaptersView: View {
 
     private func adapterCard(_ adapter: Adapter) -> some View {
         HStack(spacing: 14) {
-            // 类型图标
-            Image(systemName: typeIcon(for: adapter.type))
+            // 适配器不绑定协议，使用通用分支图标
+            Image(systemName: "arrow.triangle.branch")
                 .font(.title3)
-                .foregroundColor(.white)
+                .foregroundColor(.accentColor)
                 .frame(width: 32, height: 32)
-                .background(typeIconColor(for: adapter.type), in: RoundedRectangle(cornerRadius: 7))
+                .background(Color.accentColor.opacity(0.12), in: RoundedRectangle(cornerRadius: 7))
 
             // 信息
             VStack(alignment: .leading, spacing: 4) {
@@ -126,7 +126,6 @@ struct AdaptersView: View {
                     Text(adapter.name)
                         .font(.body)
                         .fontWeight(.medium)
-                    typeBadge(adapter.type)
                     Text(loc("adapter.mappingCount", adapter.models.count))
                         .font(.caption)
                         .foregroundColor(.secondary)
@@ -212,40 +211,4 @@ struct AdaptersView: View {
         APIClient.adapterAPIBaseURL(adapter.name)
     }
 
-    private func typeIcon(for type: String) -> String {
-        switch type {
-        case "anthropic": return "a.circle"
-        case "openai": return "o.circle"
-        case "openai-responses": return "r.circle"
-        default: return "questionmark.circle"
-        }
-    }
-
-    private func typeIconColor(for type: String) -> Color {
-        switch type {
-        case "anthropic": return .orange
-        case "openai": return .blue
-        case "openai-responses": return .purple
-        default: return .gray
-        }
-    }
-
-    private func typeBadge(_ type: String) -> some View {
-        let label: String = {
-            switch type {
-            case "anthropic": return "Anthropic"
-            case "openai": return "OpenAI"
-            case "openai-responses": return "Responses"
-            default: return type
-            }
-        }()
-        return Text(label)
-            .font(.caption2)
-            .fontWeight(.medium)
-            .padding(.horizontal, 6)
-            .padding(.vertical, 2)
-            .background(typeIconColor(for: type).opacity(0.12))
-            .foregroundColor(typeIconColor(for: type))
-            .clipShape(Capsule())
-    }
 }

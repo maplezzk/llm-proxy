@@ -16,7 +16,6 @@ export function handleGetAdapters(ctx: ServerContext, req: IncomingMessage, res:
   const adapters = (config.adapters ?? []).map((a) => {
     return {
       name: a.name,
-      type: a.type,
       max_tokens: a.max_tokens,
       stream: a.stream,
       baseUrl: `http://${host}/${a.name}/v1`,
@@ -40,15 +39,10 @@ export function handleGetAdapters(ctx: ServerContext, req: IncomingMessage, res:
 
 export async function handleCreateAdapter(ctx: ServerContext, req: IncomingMessage, res: ServerResponse): Promise<void> {
   const body = JSON.parse(await readBody(req))
-  const { name, type, max_tokens, stream, models } = body
+  const { name, max_tokens, stream, models } = body
 
-  if (!name || !type || !models || !Array.isArray(models)) {
-    json(res, 400, { success: false, error: '缺少必填字段: name, type, models（models 需为数组）' })
-    return
-  }
-
-  if (!['anthropic', 'openai'].includes(type)) {
-    json(res, 400, { success: false, error: 'type 必须为 anthropic 或 openai' })
+  if (!name || !models || !Array.isArray(models)) {
+    json(res, 400, { success: false, error: '缺少必填字段: name, models（models 需为数组）' })
     return
   }
 
@@ -58,7 +52,7 @@ export async function handleCreateAdapter(ctx: ServerContext, req: IncomingMessa
     return
   }
 
-  const newAdapter: AdapterConfig = { name, type, max_tokens, stream, models }
+  const newAdapter: AdapterConfig = { name, max_tokens, stream, models }
   const errs = validateConfig({ providers: config.providers, adapters: [newAdapter] })
   if (errs.length > 0) {
     json(res, 400, { success: false, error: '校验失败', errors: errs })
@@ -70,8 +64,8 @@ export async function handleCreateAdapter(ctx: ServerContext, req: IncomingMessa
   newConfig.adapters.push(newAdapter)
   const ok = await writeConfigOrRespondError(ctx, newConfig, res)
   if (!ok) return
-  ctx.logger.log('system', 'Create adapter request received', { name, type, modelCount: models.length })
-  ctx.logger.log('system', 'Adapter created', { name, type })
+  ctx.logger.log('system', 'Create adapter request received', { name, modelCount: models.length })
+  ctx.logger.log('system', 'Adapter created', { name })
   json(res, 200, { success: true, data: { name } })
 }
 
@@ -81,7 +75,7 @@ export async function handleUpdateAdapter(ctx: ServerContext, req: IncomingMessa
   const adapterName = match[1]
 
   const body = JSON.parse(await readBody(req))
-  const { name: newName, type, max_tokens, stream, models } = body
+  const { name: newName, max_tokens, stream, models } = body
 
   const { config } = ctx.store.getConfig()
   const idx = (config.adapters ?? []).findIndex((a) => a.name === adapterName)
@@ -100,7 +94,6 @@ export async function handleUpdateAdapter(ctx: ServerContext, req: IncomingMessa
   if (!newConfig.adapters) { json(res, 500, { success: false, error: '服务器状态异常' }); return }
   newConfig.adapters[idx] = {
     name: finalName,
-    type: type ?? newConfig.adapters[idx].type,
     max_tokens: max_tokens,
     stream: stream,
     models: models ?? newConfig.adapters[idx].models,
@@ -115,7 +108,7 @@ export async function handleUpdateAdapter(ctx: ServerContext, req: IncomingMessa
 
   const ok = await writeConfigOrRespondError(ctx, newConfig, res)
   if (!ok) return
-  ctx.logger.log('system', 'Update adapter request received', { name: adapterName, newName: finalName, type: type ?? '', modelCount: models?.length })
+  ctx.logger.log('system', 'Update adapter request received', { name: adapterName, newName: finalName, modelCount: models?.length })
   ctx.logger.log('system', 'Adapter updated', { name: adapterName })
   json(res, 200, { success: true, data: { name: adapterName } })
 }
