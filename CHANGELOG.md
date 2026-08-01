@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.28.3](https://github.com/maplezzk/llm-proxy/compare/v0.28.2...v0.28.3) (2026-08-01)
+
+
+### Bug Fixes
+
+* 区分日志显示筛选与记录级别 ([12c8238](https://github.com/maplezzk/llm-proxy/commit/12c82388346e1a6cd0f2245016dccf434cd53163))
+
 ## [0.28.2](https://github.com/maplezzk/llm-proxy/compare/v0.28.1...v0.28.2) (2026-08-01)
 
 
