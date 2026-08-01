@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.29.0](https://github.com/maplezzk/llm-proxy/compare/v0.28.3...v0.29.0) (2026-08-01)
+
+
+### Features
+
+* make adapters protocol agnostic ([25bda44](https://github.com/maplezzk/llm-proxy/commit/25bda44302e510a00bd4f21e5fa56d7866dfd287))
+* make adapters protocol agnostic ([88185f0](https://github.com/maplezzk/llm-proxy/commit/88185f05e209c3576b7338c067ad957d3ca0042d))
+
 ## [0.28.3](https://github.com/maplezzk/llm-proxy/compare/v0.28.2...v0.28.3) (2026-08-01)
 
 
