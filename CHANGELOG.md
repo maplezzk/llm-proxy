@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.28.2](https://github.com/maplezzk/llm-proxy/compare/v0.28.1...v0.28.2) (2026-08-01)
+
+
+### Bug Fixes
+
+* 修复远程模式退出更新与弹窗层级 ([818c400](https://github.com/maplezzk/llm-proxy/commit/818c400ee643fd69e31d168fc3bc7b77076d4a68))
+* 修复远程模式退出更新和弹窗层级 ([425289c](https://github.com/maplezzk/llm-proxy/commit/425289cf38a0d4c44fbb6caea315f9ba98249066))
+
 ## [0.28.1](https://github.com/maplezzk/llm-proxy/compare/v0.28.0...v0.28.1) (2026-07-31)
 
 
