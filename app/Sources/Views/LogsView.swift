@@ -44,6 +44,7 @@ struct LogsView: View {
             }
             .pickerStyle(.menu)
             .labelsHidden()
+            .help(loc("logs.filter.levelHelp"))
 
             Text(loc("logs.filter.type"))
                 .font(.caption)
@@ -63,6 +64,9 @@ struct LogsView: View {
 
             Spacer()
 
+            Text(loc("logs.recordLevel"))
+                .font(.caption)
+                .foregroundColor(.secondary)
             Picker("", selection: Binding(
                 get: { viewModel.logLevel },
                 set: { newLevel in
@@ -76,6 +80,7 @@ struct LogsView: View {
             }
             .pickerStyle(.menu)
             .labelsHidden()
+            .help(loc("logs.recordLevelHelp"))
 
             Button(action: { viewModel.autoScroll.toggle() }) {
                 Image(systemName: viewModel.autoScroll ? "arrow.down.to.line.circle.fill" : "arrow.down.to.line.circle")

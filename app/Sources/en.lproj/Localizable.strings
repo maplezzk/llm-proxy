@@ -209,8 +209,11 @@
 "logs.totalCount" = "%d entries";
 "logs.autoScroll.on" = "Auto-scroll: ON (click to disable)";
 "logs.autoScroll.off" = "Auto-scroll: OFF (click to enable)";
-"logs.filter.level" = "Level";
+"logs.filter.level" = "Display level";
 "logs.filter.type" = "Type";
+"logs.filter.levelHelp" = "Only filters logs that have already been recorded";
+"logs.recordLevel" = "Record level";
+"logs.recordLevelHelp" = "Logs below this level are not recorded";
 "dashboard.serviceStatus" = "Service Status";
 "dashboard.online" = "Online";
 "dashboard.offline" = "Offline";
