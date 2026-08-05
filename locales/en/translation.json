@@ -306,6 +306,7 @@
       "sourceProxy": "Proxy",
       "filterAll": "All",
       "time": "Time",
+      "duration": "Duration",
       "sourceCol": "Source",
       "adapter": "Adapter",
       "inboundProtocol": "Inbound Protocol",

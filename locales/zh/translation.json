@@ -306,6 +306,7 @@
       "sourceProxy": "代理",
       "filterAll": "全部",
       "time": "时间",
+      "duration": "耗时",
       "sourceCol": "来源",
       "adapter": "适配器",
       "inboundProtocol": "入站协议",

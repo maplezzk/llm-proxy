@@ -322,6 +322,8 @@ export async function forwardRequest(
         'Content-Type': response.headers.get('content-type') ?? 'application/json',
         'Access-Control-Allow-Origin': '*',
       })
+      // 同协议响应虽无需转换，仍需记录实际写回客户端的正文并结算抓包耗时。
+      req.capture?.updateRequest(req.pairId!, 'responseOut', text)
       res.end(text)
       return
     }

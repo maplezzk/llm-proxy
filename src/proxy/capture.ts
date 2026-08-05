@@ -14,6 +14,8 @@ export interface CaptureMeta {
 export interface CaptureEntry extends CaptureMeta {
   id: number
   timestamp: number
+  /** 从创建抓包记录到响应完整写回客户端的耗时（毫秒） */
+  durationMs: number | null
   /** 来源：proxy（代理入口）或适配器名称 */
   source: string
   /** 代理端协议 */
@@ -92,6 +94,7 @@ export class CaptureBuffer {
     const entry: CaptureEntry = {
       id: this.nextId++,
       timestamp: Date.now(),
+      durationMs: null,
       source,
       protocol,
       model,
@@ -123,6 +126,9 @@ export class CaptureBuffer {
     const entry = this.entryMap.get(pairId)
     if (!entry) return
     entry[field] = data
+    if (field === 'responseOut') {
+      entry.durationMs = Math.max(0, Date.now() - entry.timestamp)
+    }
     this.notifySubscribers(entry)
   }
 

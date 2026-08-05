@@ -3,6 +3,7 @@ import assert from 'node:assert'
 import { EventEmitter } from 'node:events'
 import type { ServerResponse } from 'node:http'
 import { CaptureBuffer } from '../../src/proxy/capture.js'
+import { forwardRequest } from '../../src/proxy/provider.js'
 
 function fakeRes(overrides: Partial<{ destroyed: boolean; writableEnded: boolean; writable: boolean }> = {}): ServerResponse {
   const ee = new EventEmitter() as any
@@ -31,6 +32,7 @@ describe('proxy/capture', () => {
     assert.strictEqual(all[0].protocol, 'anthropic')
     assert.strictEqual(all[0].model, 'claude-3')
     assert.strictEqual(all[0].pairId, 1)
+    assert.strictEqual(all[0].durationMs, null)
     assert.strictEqual(all[0].requestIn, null)
   })
 
@@ -43,6 +45,7 @@ describe('proxy/capture', () => {
     const entry = cap.getAll()[0]
     assert.strictEqual(entry.requestIn, '{"model":"gpt-4"}')
     assert.strictEqual(entry.responseOut, '{"choices":[]}')
+    assert.ok(entry.durationMs !== null && entry.durationMs >= 0)
     // 未更新的字段仍为 null
     assert.strictEqual(entry.requestOut, null)
     assert.strictEqual(entry.responseIn, null)
@@ -52,6 +55,49 @@ describe('proxy/capture', () => {
     const cap = new CaptureBuffer(100)
     // 不应抛异常
     cap.updateRequest(999, 'requestIn', 'data')
+  })
+
+  it('非流式同协议响应同时记录双向正文和耗时', async () => {
+    const responseText = JSON.stringify({
+      id: 'chatcmpl-capture',
+      choices: [{ message: { role: 'assistant', content: 'hi' } }],
+    })
+    const fetchMock = mock.method(globalThis, 'fetch', async () => new Response(responseText, {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    }))
+    const cap = new CaptureBuffer(100)
+
+    try {
+      const pairId = cap.startRequest('proxy', 'openai', 'gpt-4')
+      const res = fakeRes()
+      let clientBody = ''
+      res.end = ((chunk?: unknown) => {
+        clientBody = chunk == null ? '' : String(chunk)
+        return res
+      }) as ServerResponse['end']
+
+      await forwardRequest({
+        url: 'https://api.openai.com/v1/chat/completions',
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: { model: 'gpt-4', messages: [{ role: 'user', content: 'hello' }] },
+        crossProtocol: false,
+        inboundType: 'openai',
+        upstreamType: 'openai',
+        capture: cap,
+        pairId,
+      }, res)
+
+      const entry = cap.getAll()[0]
+      assert.strictEqual(entry.responseIn, responseText)
+      assert.strictEqual(entry.responseOut, responseText)
+      assert.strictEqual(clientBody, responseText)
+      assert.ok(entry.durationMs !== null && entry.durationMs >= 0)
+    } finally {
+      fetchMock.mock.restore()
+      cap.destroy()
+    }
   })
 
   it('startRequest 携带 meta 信息', () => {
