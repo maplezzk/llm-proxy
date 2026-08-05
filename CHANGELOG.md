@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.30.0](https://github.com/maplezzk/llm-proxy/compare/v0.29.0...v0.30.0) (2026-08-05)
+
+
+### Features
+
+* 增加协议抓包耗时列 ([618e675](https://github.com/maplezzk/llm-proxy/commit/618e6751ad436ce428264b63f39cd9e16f4ad6d9))
+* 增加协议抓包耗时列 ([8b4b5af](https://github.com/maplezzk/llm-proxy/commit/8b4b5af097d51f9180386d294aa6423d042649a1))
+
 ## [0.29.0](https://github.com/maplezzk/llm-proxy/compare/v0.28.3...v0.29.0) (2026-08-01)
 
 
