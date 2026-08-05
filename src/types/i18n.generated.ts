@@ -53,6 +53,7 @@ export type TranslationKey =
   | 'admin.adapters.updated'
   | 'admin.capture.adapter'
   | 'admin.capture.copyRaw'
+  | 'admin.capture.duration'
   | 'admin.capture.empty'
   | 'admin.capture.entryCount'
   | 'admin.capture.filterAll'

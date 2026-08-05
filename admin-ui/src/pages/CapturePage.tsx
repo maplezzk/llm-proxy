@@ -21,6 +21,7 @@ import { useToast } from '../lib/toast'
 interface CaptureEntry {
   id: number
   timestamp: number
+  durationMs: number | null
   source: string
   protocol: string
   model: string
@@ -71,6 +72,15 @@ function fmtSize(s: string | null): string {
   const b = s.length
   if (b > 1024) return (b / 1024).toFixed(1) + 'KB'
   return b + 'B'
+}
+
+function fmtDuration(ms: number | null): string {
+  if (ms == null) return '—'
+  if (ms < 1000) return `${ms} ms`
+  if (ms < 60_000) return `${(ms / 1000).toFixed(ms < 10_000 ? 2 : 1)} s`
+  const minutes = Math.floor(ms / 60_000)
+  const seconds = ((ms % 60_000) / 1000).toFixed(1)
+  return `${minutes}m ${seconds}s`
 }
 
 async function readSSE(
@@ -372,6 +382,7 @@ export default function CapturePage() {
             <TableRow>
               <TableHead className="w-10">#</TableHead>
               <TableHead className="w-40">{t('admin.capture.time')}</TableHead>
+              <TableHead className="text-end">{t('admin.capture.duration')}</TableHead>
               <TableHead>{t('admin.capture.sourceCol')}</TableHead>
               <TableHead>{t('admin.capture.adapter')}</TableHead>
               <TableHead>{t('admin.capture.inboundProtocol')}</TableHead>
@@ -395,6 +406,9 @@ export default function CapturePage() {
                 <TableCell className="font-mono text-[11px] text-muted-foreground">{e.id}</TableCell>
                 <TableCell className="font-mono text-[10.5px] whitespace-nowrap text-muted-foreground">
                   {fmtTime(e.timestamp)}
+                </TableCell>
+                <TableCell className="text-end font-mono text-[10.5px] whitespace-nowrap text-muted-foreground">
+                  {fmtDuration(e.durationMs)}
                 </TableCell>
                 <TableCell className="text-[11.5px] text-foreground">{e.source}</TableCell>
                 <TableCell className="text-[11.5px] text-muted-foreground">{e.adapterName || '—'}</TableCell>
@@ -422,7 +436,7 @@ export default function CapturePage() {
 
             {filtered.length === 0 && (
               <TableRow>
-                <TableCell colSpan={11} className="py-12 text-center text-[13px] text-muted-foreground">
+                <TableCell colSpan={12} className="py-12 text-center text-[13px] text-muted-foreground">
                   {t('admin.capture.empty')}
                 </TableCell>
               </TableRow>
