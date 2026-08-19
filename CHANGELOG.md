@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.31.0](https://github.com/maplezzk/llm-proxy/compare/v0.30.0...v0.31.0) (2026-08-19)
+
+
+### Features
+
+* add OpenAI image endpoints to adapters ([d31336e](https://github.com/maplezzk/llm-proxy/commit/d31336e6b118cc4a0c2d9ab7b21adb637fccd96a))
+
+
+### Bug Fixes
+
+* bound image proxy memory usage ([4670cf9](https://github.com/maplezzk/llm-proxy/commit/4670cf9221f5df59d438ec3ab204c2fbf247a3a5))
+* proxy adapter image endpoints ([07bf005](https://github.com/maplezzk/llm-proxy/commit/07bf005f41a81eb7e5c5b953c331f8bc087e3b52))
+
 ## [0.30.0](https://github.com/maplezzk/llm-proxy/compare/v0.29.0...v0.30.0) (2026-08-05)
 
 
