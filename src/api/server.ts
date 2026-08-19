@@ -13,6 +13,7 @@ import { timingSafeEqual } from 'node:crypto'
 import { AdminHandoffStore, handleCreateAdminHandoff, handleExchangeAdminHandoff, handleGetConfig, handleReload, handleHealth, handleStatus, handleGetLogs, handleGetLogLevel, handleSetLogLevel, handleGetLocale, handleSetLocale, handleGetPort, handleSetPort, handleGetAdapters, handleCreateProvider, handleUpdateProvider, handleDeleteProvider, handleCreateAdapter, handleUpdateAdapter, handleDeleteAdapter, handleTestModel, handleTestAdapter, handleListModels, handlePullModels, handleGetProxyKey, handleSetProxyKey, handleGetTokenStats, handleGetTokenTimeline, handleGetTokenBreakdown, handleGetTokenDbInfo, handlePostTokenCleanup, handleDebugCapturesStatus, handleDebugCaptures, handleDebugCapturesControl, handleDebugCapturesStream, handleGetVision, handleSetVision, handleGetVisionCacheStats, handleClearVisionCache } from './handlers/index.js'
 import { handleAnthropicMessages, handleOpenAIChat, handleOpenAIResponses } from '../proxy/handlers.js'
 import { handleAdapterRequest, handleAdapterModels } from '../adapter/handlers.js'
+import { handleAdapterImageRequest } from '../adapter/image-handlers.js'
 
 export interface ServerContext {
   store: ConfigStore
@@ -121,6 +122,7 @@ const ROUTES: Route[] = [
   { method: 'POST', pattern: /^\/v1\/chat\/completions$/, handler: handleOpenAIChat },
   { method: 'POST', pattern: /^\/v1\/responses$/, handler: handleOpenAIResponses },
   { method: 'POST', pattern: /^\/([a-zA-Z0-9_-]+)\/v1\/(messages|chat\/completions|responses)(\?.*)?$/, handler: handleAdapterRequest },
+  { method: 'POST', pattern: /^\/([a-zA-Z0-9_-]+)\/v1\/images\/(generations|edits)(\?.*)?$/, handler: handleAdapterImageRequest },
 ]
 
 function corsHeaders(res: ServerResponse): void {
