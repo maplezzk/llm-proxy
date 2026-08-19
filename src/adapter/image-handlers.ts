@@ -1,4 +1,3 @@
-import { once } from 'node:events'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { maskUrl, sanitizeApiBase } from '../lib/http-utils.js'
 import type { PipelineContext } from '../proxy/pipeline.js'
@@ -7,6 +6,14 @@ import { AdapterError, resolveAdapterRoute } from './router.js'
 const ADAPTER_IMAGE_PATH_RE = /^\/([a-zA-Z0-9_-]+)\/v1\/images\/(generations|edits)(\?.*)?$/
 const HEADER_SEPARATOR = Buffer.from('\r\n\r\n')
 const LINE_SEPARATOR = Buffer.from('\r\n')
+const MAX_IMAGE_REQUEST_BODY_BYTES = 20 * 1024 * 1024
+
+class ImageRequestBodyTooLargeError extends Error {
+  constructor() {
+    super(`图片请求体超过 ${MAX_IMAGE_REQUEST_BODY_BYTES} 字节限制`)
+    this.name = 'ImageRequestBodyTooLargeError'
+  }
+}
 
 function writeJson(res: ServerResponse, status: number, body: Record<string, unknown>): void {
   res.writeHead(status, {
@@ -35,9 +42,18 @@ function authenticateProxyRequest(
 }
 
 async function readRawBody(req: IncomingMessage): Promise<Buffer> {
+  const declaredLength = Number(req.headers['content-length'])
+  if (Number.isFinite(declaredLength) && declaredLength > MAX_IMAGE_REQUEST_BODY_BYTES) {
+    throw new ImageRequestBodyTooLargeError()
+  }
+
   const chunks: Buffer[] = []
+  let totalBytes = 0
   for await (const chunk of req) {
-    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)
+    totalBytes += buffer.length
+    if (totalBytes > MAX_IMAGE_REQUEST_BODY_BYTES) throw new ImageRequestBodyTooLargeError()
+    chunks.push(buffer)
   }
   return Buffer.concat(chunks)
 }
@@ -114,6 +130,18 @@ function responseHeaders(response: Response): Record<string, string> {
   return headers
 }
 
+function waitForDrainOrClose(res: ServerResponse): Promise<void> {
+  return new Promise((resolve) => {
+    const finish = (): void => {
+      res.off('drain', finish)
+      res.off('close', finish)
+      resolve()
+    }
+    res.once('drain', finish)
+    res.once('close', finish)
+  })
+}
+
 async function relayResponse(response: Response, res: ServerResponse): Promise<void> {
   res.writeHead(response.status, responseHeaders(response))
   if (!response.body) {
@@ -126,7 +154,10 @@ async function relayResponse(response: Response, res: ServerResponse): Promise<v
     while (true) {
       const { done, value } = await reader.read()
       if (done) break
-      if (!res.write(Buffer.from(value))) await once(res, 'drain')
+      if (!res.write(Buffer.from(value))) {
+        await waitForDrainOrClose(res)
+        if (res.destroyed) return
+      }
     }
     res.end()
   } finally {
@@ -157,7 +188,14 @@ export async function handleAdapterImageRequest(
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     ctx.logger.log('request', `${logLabel} failed to read request body`, { error: message }, 'warn')
-    writeJson(res, 400, { error: { message: '读取请求体失败' } })
+    if (error instanceof ImageRequestBodyTooLargeError) {
+      res.setHeader('Connection', 'close')
+      res.once('finish', () => req.destroy())
+      writeJson(res, 413, { error: { message } })
+      req.resume()
+    } else {
+      writeJson(res, 400, { error: { message: '读取请求体失败' } })
+    }
     return
   }
 

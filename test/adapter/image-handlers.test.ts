@@ -1,6 +1,6 @@
 import { after, before, describe, it } from 'node:test'
 import assert from 'node:assert'
-import { createServer as createHttpServer, type IncomingMessage, type Server } from 'node:http'
+import { createServer as createHttpServer, request as createHttpRequest, type IncomingMessage, type Server } from 'node:http'
 import { createProxyServer } from '../../src/api/server.js'
 import { ConfigStore } from '../../src/config/store.js'
 import type { Config } from '../../src/config/types.js'
@@ -207,6 +207,30 @@ describe('adapter image handlers', { timeout: 15_000 }, () => {
       body: JSON.stringify({ model: 'client-image-model' }),
     })
     assert.strictEqual(response.status, 400)
+    assert.strictEqual(captured.length, 0)
+  })
+
+  it('声明超过 20MiB 的图片请求在读取 body 前返回 413', async () => {
+    captured.length = 0
+    const status = await new Promise<number>((resolve, reject) => {
+      const req = createHttpRequest({
+        hostname: '127.0.0.1',
+        port: PROXY_PORT,
+        path: '/amztracker/v1/images/edits',
+        method: 'POST',
+        headers: {
+          authorization: 'Bearer proxy-secret',
+          'content-type': 'multipart/form-data; boundary=test-boundary',
+          'content-length': String(20 * 1024 * 1024 + 1),
+        },
+      }, (response) => {
+        response.resume()
+        response.once('end', () => resolve(response.statusCode ?? 0))
+      })
+      req.once('error', reject)
+      req.end()
+    })
+    assert.strictEqual(status, 413)
     assert.strictEqual(captured.length, 0)
   })
 
