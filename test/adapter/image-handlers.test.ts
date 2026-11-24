@@ -10,6 +10,14 @@ import { StatusTracker } from '../../src/status/tracker.js'
 const UPSTREAM_PORT = 19820
 const PROXY_PORT = 19821
 
+const upstreamCases = [
+  { adapter: 'amztracker', basePath: '', expectedPath: '/v1' },
+  { adapter: 'explicit-v1', basePath: '/v1', expectedPath: '/v1' },
+  { adapter: 'explicit-v1-trailing', basePath: '/v1/', expectedPath: '/v1' },
+  { adapter: 'ark', basePath: '/api/v3', expectedPath: '/api/v3' },
+  { adapter: 'ark-trailing', basePath: '/api/v3/', expectedPath: '/api/v3' },
+]
+
 interface CapturedRequest {
   url: string
   authorization?: string
@@ -39,23 +47,23 @@ async function readRawBody(req: IncomingMessage): Promise<Buffer> {
 function createConfig(): Config {
   return {
     proxyKey: 'proxy-secret',
-    providers: [{
-      name: 'images-upstream',
+    providers: upstreamCases.map(({ adapter, basePath }) => ({
+      name: `images-${adapter}`,
       apiKey: 'upstream-secret',
       protocols: [
         { type: 'openai-responses', apiBase: 'http://127.0.0.1:1' },
-        { type: 'openai', apiBase: `http://127.0.0.1:${UPSTREAM_PORT}` },
+        { type: 'openai', apiBase: `http://127.0.0.1:${UPSTREAM_PORT}${basePath}` },
       ],
       models: [{ id: 'upstream-image-model', protocols: ['openai-responses', 'openai'] }],
-    }],
-    adapters: [{
-      name: 'amztracker',
+    })),
+    adapters: upstreamCases.map(({ adapter }) => ({
+      name: adapter,
       models: [{
         sourceModelId: 'client-image-model',
-        provider: 'images-upstream',
+        provider: `images-${adapter}`,
         targetModelId: 'upstream-image-model',
       }],
-    }],
+    })),
   }
 }
 
@@ -69,7 +77,7 @@ describe('adapter image handlers', { timeout: 15_000 }, () => {
         contentType: req.headers['content-type'],
       }
 
-      if ((req.url ?? '').startsWith('/v1/images/edits')) {
+      if (new URL(req.url ?? '/', 'http://upstream.test').pathname.endsWith('/images/edits')) {
         const request = new Request('http://upstream.test', {
           method: 'POST',
           headers: { 'content-type': req.headers['content-type'] ?? '' },
@@ -119,57 +127,60 @@ describe('adapter image handlers', { timeout: 15_000 }, () => {
     ])
   })
 
-  it('generation 选择 OpenAI 协议、重写模型并保留查询参数', async () => {
-    captured.length = 0
-    const response = await fetch(`http://127.0.0.1:${PROXY_PORT}/amztracker/v1/images/generations?trace=1`, {
-      method: 'POST',
-      headers: {
-        authorization: 'Bearer proxy-secret',
-        'content-type': 'application/json',
-      },
-      body: JSON.stringify({ model: 'client-image-model', prompt: 'draw a box', size: '1024x1024' }),
+  for (const { adapter, basePath, expectedPath } of upstreamCases) {
+    it(`generation ${basePath || '/'} 选择 OpenAI 协议、重写模型并保留查询参数`, async () => {
+      captured.length = 0
+      const query = '?trace=1&tag=first&tag=second&next=%2Fv1%2Fimages'
+      const response = await fetch(`http://127.0.0.1:${PROXY_PORT}/${adapter}/v1/images/generations${query}`, {
+        method: 'POST',
+        headers: {
+          authorization: 'Bearer proxy-secret',
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({ model: 'client-image-model', prompt: 'draw a box', size: '1024x1024' }),
+      })
+
+      assert.strictEqual(response.status, 200)
+      assert.strictEqual(response.headers.get('x-request-id'), 'upstream-ok')
+      assert.deepStrictEqual(await response.json(), { created: 123, data: [{ b64_json: 'aW1hZ2U=' }] })
+      assert.strictEqual(captured.length, 1)
+      assert.strictEqual(captured[0].url, `${expectedPath}/images/generations${query}`)
+      assert.strictEqual(captured[0].authorization, 'Bearer upstream-secret')
+      assert.deepStrictEqual(captured[0].json, {
+        model: 'upstream-image-model',
+        prompt: 'draw a box',
+        size: '1024x1024',
+      })
     })
 
-    assert.strictEqual(response.status, 200)
-    assert.strictEqual(response.headers.get('x-request-id'), 'upstream-ok')
-    assert.deepStrictEqual(await response.json(), { created: 123, data: [{ b64_json: 'aW1hZ2U=' }] })
-    assert.strictEqual(captured.length, 1)
-    assert.strictEqual(captured[0].url, '/v1/images/generations?trace=1')
-    assert.strictEqual(captured[0].authorization, 'Bearer upstream-secret')
-    assert.deepStrictEqual(captured[0].json, {
-      model: 'upstream-image-model',
-      prompt: 'draw a box',
-      size: '1024x1024',
-    })
-  })
+    it(`edit ${basePath || '/'} 保留 multipart 文件并只重写 model 字段`, async () => {
+      captured.length = 0
+      const imageBytes = [137, 80, 78, 71, ...Buffer.from('name="model"\r\n\r\nnot-the-form-field')]
+      const form = new FormData()
+      form.set('image', new File([Uint8Array.from(imageBytes)], 'input.png', { type: 'image/png' }))
+      form.set('model', 'client-image-model')
+      form.set('prompt', 'make it blue')
 
-  it('edit 保留 multipart 文件并只重写 model 字段', async () => {
-    captured.length = 0
-    const imageBytes = [137, 80, 78, 71, ...Buffer.from('name="model"\r\n\r\nnot-the-form-field')]
-    const form = new FormData()
-    form.set('image', new File([Uint8Array.from(imageBytes)], 'input.png', { type: 'image/png' }))
-    form.set('model', 'client-image-model')
-    form.set('prompt', 'make it blue')
+      const response = await fetch(`http://127.0.0.1:${PROXY_PORT}/${adapter}/v1/images/edits?trace=edit`, {
+        method: 'POST',
+        headers: { authorization: 'Bearer proxy-secret' },
+        body: form,
+      })
 
-    const response = await fetch(`http://127.0.0.1:${PROXY_PORT}/amztracker/v1/images/edits`, {
-      method: 'POST',
-      headers: { authorization: 'Bearer proxy-secret' },
-      body: form,
+      assert.strictEqual(response.status, 200)
+      assert.strictEqual(captured.length, 1)
+      assert.strictEqual(captured[0].url, `${expectedPath}/images/edits?trace=edit`)
+      assert.strictEqual(captured[0].authorization, 'Bearer upstream-secret')
+      assert.ok(captured[0].contentType?.startsWith('multipart/form-data; boundary='))
+      assert.deepStrictEqual(captured[0].form, {
+        model: 'upstream-image-model',
+        prompt: 'make it blue',
+        imageName: 'input.png',
+        imageType: 'image/png',
+        imageBytes,
+      })
     })
-
-    assert.strictEqual(response.status, 200)
-    assert.strictEqual(captured.length, 1)
-    assert.strictEqual(captured[0].url, '/v1/images/edits')
-    assert.strictEqual(captured[0].authorization, 'Bearer upstream-secret')
-    assert.ok(captured[0].contentType?.startsWith('multipart/form-data; boundary='))
-    assert.deepStrictEqual(captured[0].form, {
-      model: 'upstream-image-model',
-      prompt: 'make it blue',
-      imageName: 'input.png',
-      imageType: 'image/png',
-      imageBytes,
-    })
-  })
+  }
 
   it('缺少代理密钥时在访问上游前返回 401', async () => {
     captured.length = 0

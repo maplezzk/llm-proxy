@@ -1,7 +1,7 @@
 import type { RouterResult } from './types.js'
 import type { Logger } from '../log/logger.js'
 import { createHash } from 'node:crypto'
-import { sanitizeApiBase } from '../lib/http-utils.js'
+import { buildUpstreamUrl } from '../lib/http-utils.js'
 
 /**
  * OpenAI reasoning_effort → Anthropic thinking.budget_tokens 映射表。
@@ -1427,8 +1427,7 @@ export async function transformInboundRequest(
       ? 'responses'
       : 'chat/completions'
 
-  const apiBase = sanitizeApiBase(route.apiBase)
-  const url = `${apiBase}/v1/${upstreamEndpoint}`
+  const url = buildUpstreamUrl(route.apiBase, upstreamEndpoint)
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
 
   if (route.providerType === 'anthropic') {

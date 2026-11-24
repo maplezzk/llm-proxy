@@ -152,6 +152,20 @@ vision:
 
 API keys use environment variable interpolation (`${VAR}`) — never stored in plain text.
 
+### API base URLs
+
+`api_base` accepts either a server/gateway prefix or a base ending in an explicit API version:
+
+| `api_base` | Upstream Chat Completions URL |
+| --- | --- |
+| `https://api.openai.com` or `https://api.openai.com/v1` | `https://api.openai.com/v1/chat/completions` |
+| `https://ark.cn-beijing.volces.com/api/v3` | `https://ark.cn-beijing.volces.com/api/v3/chat/completions` |
+| `https://gateway.example.com/openai` | `https://gateway.example.com/openai/v1/chat/completions` |
+
+Trailing slashes are ignored. A final version segment such as `/v2`, `/api/v3`, `/v1.1`, or `/v1beta1` is preserved; other prefixes retain the default `/v1`. Only the final path segment is checked, so a prefix such as `/v3/gateway` still receives `/v1`. An explicit final `/v1` is always respected, including `/api/v3/v1`.
+
+The same rule applies to Chat Completions, Responses, Anthropic messages, adapter image requests, and the admin model/adapter tests and model-list requests. Client-facing proxy URLs continue to use `/v1/...` or `/{adapter}/v1/...`.
+
 ## External Vision
 
 When the routed model **does not** declare `input: image`, llm-proxy can automatically convert image content to text using a configured vision model:

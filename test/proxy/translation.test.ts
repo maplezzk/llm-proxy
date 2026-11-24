@@ -27,6 +27,45 @@ const openaiResponsesRoute = {
 }
 
 describe('proxy/translation', () => {
+  describe('上游 API 版本路径', () => {
+    const bases = [
+      { base: 'https://upstream.example', prefix: 'https://upstream.example/v1' },
+      { base: 'https://upstream.example/v1/', prefix: 'https://upstream.example/v1' },
+      { base: 'https://upstream.example/openai', prefix: 'https://upstream.example/openai/v1' },
+      { base: 'https://upstream.example/api/v3/', prefix: 'https://upstream.example/api/v3' },
+      { base: 'https://upstream.example/api/v3/v1', prefix: 'https://upstream.example/api/v3/v1' },
+    ]
+    const upstreams = [
+      { route: openaiRoute, endpoint: 'chat/completions' },
+      { route: openaiResponsesRoute, endpoint: 'responses' },
+      { route: anthropicRoute, endpoint: 'messages' },
+    ]
+    const inbounds = [
+      { type: 'openai' as const, body: { model: 'client-model', messages: [{ role: 'user', content: 'hi' }] } },
+      { type: 'openai-responses' as const, body: { model: 'client-model', input: 'hi' } },
+      { type: 'anthropic' as const, body: { model: 'client-model', messages: [{ role: 'user', content: 'hi' }], max_tokens: 100 } },
+    ]
+
+    for (const { base, prefix } of bases) {
+      for (const { route, endpoint } of upstreams) {
+        it(`${route.providerType} 使用 ${base}，同协议和跨协议保持相同上游 URL`, async () => {
+          for (const { type, body } of inbounds) {
+            const result = await transformInboundRequest(type, { ...route, apiBase: base }, body)
+            assert.strictEqual(result.url, `${prefix}/${endpoint}`, `inbound: ${type}`)
+            assert.strictEqual(result.body.model, route.modelId)
+            assert.strictEqual(result.crossProtocol, type !== route.providerType)
+            if (route.providerType === 'anthropic') {
+              assert.strictEqual(result.headers['x-api-key'], route.apiKey)
+              assert.strictEqual(result.headers['anthropic-version'], '2023-06-01')
+            } else {
+              assert.strictEqual(result.headers.Authorization, `Bearer ${route.apiKey}`)
+            }
+          }
+        })
+      }
+    }
+  })
+
   describe('同协议转发', () => {
     it('Anthropic → Anthropic 保真传递 + 替换 model', async () => {
       const result = await transformInboundRequest('anthropic', anthropicRoute, {
