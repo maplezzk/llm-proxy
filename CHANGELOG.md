@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.31.1](https://github.com/maplezzk/llm-proxy/compare/v0.31.0...v0.31.1) (2026-11-24)
+
+
+### Bug Fixes
+
+* **proxy:** preserve explicit upstream API versions ([#219](https://github.com/maplezzk/llm-proxy/issues/219)) ([ead42f1](https://github.com/maplezzk/llm-proxy/commit/ead42f1865a40027b13ee85ab433df6f35e94cf4))
+
 ## [0.31.0](https://github.com/maplezzk/llm-proxy/compare/v0.30.0...v0.31.0) (2026-08-19)
 
 
