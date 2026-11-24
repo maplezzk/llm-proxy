@@ -261,7 +261,7 @@ class MenuBarController: NSObject, NSMenuDelegate {
     func rebuildMenu() {
         // 临时状态文案只在 serviceOperation 期间保留，操作结束后重建时清除
         if !isServiceOperationInProgress { transientStatus = nil }
-        let menu = NSMenu()
+        let menu = StatusCardMenu()
         menu.appearance = NSAppearance(named: .aqua)
         menu.delegate = self
 
@@ -279,10 +279,9 @@ class MenuBarController: NSObject, NSMenuDelegate {
         ))
 
         if !recentUsage.isEmpty {
-            let usageItem = makeCardItem(
-                LiveMenuUsageChartCardView(state: menuCardState),
-                interactive: true
-            )
+            let usageItem = makeHighlightedCardItem {
+                LiveMenuUsageChartCardView(state: menuCardState, highlight: $0)
+            }
             usageItem.submenu = makeUsageDetailMenu()
             usageItem.target = self
             usageItem.action = #selector(menuCardNoOp(_:))
@@ -462,8 +461,9 @@ class MenuBarController: NSObject, NSMenuDelegate {
                 menu.addItem(makeCardItem(AdapterHeaderCardView(name: card.name), interactive: false))
                 // 每个映射一行：悬停自动展开模型子菜单
                 for mapping in card.mappings {
-                    let row = MappingRowView(sourceModelId: mapping.sourceModelId, currentLabel: mapping.currentLabel)
-                    let item = makeCardItem(row, interactive: true)
+                    let item = makeHighlightedCardItem {
+                        MappingRowView(sourceModelId: mapping.sourceModelId, currentLabel: mapping.currentLabel, highlight: $0)
+                    }
                     if let adapter = adapters.first(where: { $0.name == card.name }) {
                         let submenu = buildMappingSubMenu(
                             adapter: adapter,
@@ -502,7 +502,12 @@ class MenuBarController: NSObject, NSMenuDelegate {
         prepareUsageDetailSelection()
     }
 
+    func menu(_ menu: NSMenu, willHighlight item: NSMenuItem?) {
+        (menu as? StatusCardMenu)?.highlightCard(for: item)
+    }
+
     func menuDidClose(_ menu: NSMenu) {
+        (menu as? StatusCardMenu)?.highlightCard(for: nil)
         // 详情子菜单关闭时不要清空选中的日期；用户从图表移动到右侧详情面板时，
         // AppKit 可能会先回调子菜单的 close。只有整个主菜单关闭才清理本次会话状态。
         guard menu === activeMenu else { return }
@@ -653,6 +658,14 @@ class MenuBarController: NSObject, NSMenuDelegate {
         let item = NSMenuItem()
         item.view = hosting
         item.isEnabled = interactive
+        return item
+    }
+
+    @MainActor
+    private func makeHighlightedCardItem<Content: View>(_ view: (MenuCardHighlight) -> Content) -> NSMenuItem {
+        let highlight = MenuCardHighlight()
+        let item = makeCardItem(view(highlight), interactive: true)
+        item.representedObject = highlight
         return item
     }
 
@@ -1627,6 +1640,19 @@ class MenuBarController: NSObject, NSMenuDelegate {
         alert.messageText = loc("app.title")
         alert.informativeText = msg
         ForegroundAlertPresentation.run(alert)
+    }
+}
+
+/// 高亮属于当前菜单实例。AppKit 可能在重建后继续跟踪上一份菜单。
+private final class StatusCardMenu: NSMenu {
+    private var highlightedCard: MenuCardHighlight?
+
+    func highlightCard(for item: NSMenuItem?) {
+        let nextCard = item?.isEnabled == true ? item?.representedObject as? MenuCardHighlight : nil
+        guard nextCard !== highlightedCard else { return }
+        highlightedCard?.isHighlighted = false
+        highlightedCard = nextCard
+        nextCard?.isHighlighted = true
     }
 }
 
