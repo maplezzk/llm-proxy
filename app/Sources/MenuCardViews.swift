@@ -88,6 +88,10 @@ final class MenuCardState: ObservableObject {
     }
 }
 
+final class MenuCardHighlight: ObservableObject {
+    @Published var isHighlighted = false
+}
+
 enum MenuUsageDimension: String, CaseIterable, Identifiable {
     case provider
     case adapter
@@ -200,7 +204,7 @@ struct ServiceStatusCardView: View {
 /// 不会覆盖上方服务状态或下方控制按钮。
 struct MenuUsageChartCardView: View {
     let points: [MenuUsagePoint]
-    @State private var isHighlighted = false
+    var isHighlighted = false
 
     var body: some View {
         MenuUsageChartView(
@@ -217,8 +221,6 @@ struct MenuUsageChartCardView: View {
                     .padding(.horizontal, 6)
             }
         }
-        .contentShape(Rectangle())
-        .onHover { isHighlighted = $0 }
         .frame(width: MenuCardMetrics.width, alignment: .leading)
     }
 }
@@ -274,9 +276,10 @@ struct LiveServiceStatusCardView: View {
 
 struct LiveMenuUsageChartCardView: View {
     @ObservedObject var state: MenuCardState
+    @ObservedObject var highlight: MenuCardHighlight
 
     var body: some View {
-        MenuUsageChartCardView(points: state.usagePoints)
+        MenuUsageChartCardView(points: state.usagePoints, isHighlighted: highlight.isHighlighted)
     }
 }
 
@@ -731,9 +734,10 @@ struct AdapterHeaderCardView: View {
 struct MappingRowView: View {
     let sourceModelId: String
     let currentLabel: String
-    @State private var isHovered = false
+    @ObservedObject var highlight = MenuCardHighlight()
 
     var body: some View {
+        let isHighlighted = highlight.isHighlighted
         HStack(spacing: 8) {
             Text(sourceModelId)
                 .font(.system(size: 12.5, weight: .medium))
@@ -745,23 +749,22 @@ struct MappingRowView: View {
                 .font(.system(size: 11.5))
                 .lineLimit(1)
                 .truncationMode(.middle)
-                .foregroundStyle(isHovered ? Color.white.opacity(0.85) : Color.secondary)
+                .foregroundStyle(isHighlighted ? Color.white.opacity(0.85) : Color.secondary)
             Image(systemName: "chevron.right")
                 .font(.system(size: 9, weight: .semibold))
-                .foregroundStyle(isHovered ? Color.white.opacity(0.85) : Color.secondary)
+                .foregroundStyle(isHighlighted ? Color.white.opacity(0.85) : Color.secondary)
         }
-        .foregroundStyle(isHovered ? Color.white : Color.primary)
+        .foregroundStyle(isHighlighted ? Color.white : Color.primary)
         .padding(.horizontal, 14)
         .padding(.vertical, 5)
         .background {
-            if isHovered {
+            if isHighlighted {
                 RoundedRectangle(cornerRadius: 4)
                     .fill(Color(nsColor: .selectedContentBackgroundColor))
                     .padding(.horizontal, 5)
             }
         }
         .frame(width: MenuCardMetrics.width, alignment: .leading)
-        .onHover { isHovered = $0 }
     }
 }
 
