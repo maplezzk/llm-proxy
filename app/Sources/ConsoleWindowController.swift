@@ -5,9 +5,14 @@ import SwiftUI
 class ConsoleWindowController: NSWindowController {
 
     convenience init() {
+        var styleMask: NSWindow.StyleMask = [.titled, .closable, .miniaturizable, .resizable]
+        if #available(macOS 27.0, *) {
+            // 让窗口内容延伸到标题栏，避免系统把分栏页头当作标题栏下方的背景模糊。
+            styleMask.insert(.fullSizeContentView)
+        }
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 800, height: 600),
-            styleMask: [.titled, .closable, .miniaturizable, .resizable],
+            styleMask: styleMask,
             backing: .buffered,
             defer: false
         )
