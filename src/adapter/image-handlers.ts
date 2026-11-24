@@ -1,5 +1,5 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import { maskUrl, sanitizeApiBase } from '../lib/http-utils.js'
+import { maskUrl, buildUpstreamUrl } from '../lib/http-utils.js'
 import type { PipelineContext } from '../proxy/pipeline.js'
 import { AdapterError, resolveAdapterRoute } from './router.js'
 
@@ -264,7 +264,7 @@ export async function handleAdapterImageRequest(
     upstreamBody = new Blob([Uint8Array.from(rewritten)])
   }
 
-  const url = `${sanitizeApiBase(route.apiBase)}/v1/images/${operation}${query}`
+  const url = buildUpstreamUrl(route.apiBase, `images/${operation}${query}`)
   const startedAt = Date.now()
   const abortController = new AbortController()
   const abortOnDisconnect = (): void => {

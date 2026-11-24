@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { ServerContext } from '../server.js'
-import { readBody, getDefaultApiBase, sanitizeApiBase, maskHeaders } from '../../lib/http-utils.js'
+import { readBody, getDefaultApiBase, buildUpstreamUrl, maskHeaders } from '../../lib/http-utils.js'
 import { resolveAdapterRoute, AdapterError } from '../../adapter/router.js'
 import { json } from './index.js'
 import { t } from '../../lib/i18n.js'
@@ -55,15 +55,8 @@ export async function handleTestModel(ctx: ServerContext, req: IncomingMessage, 
 
   const useResponses = (type === 'openai-responses') || (type === 'openai' && body.endpoint === 'responses')
 
-  const baseUrl = sanitizeApiBase(apiBase || getDefaultApiBase(type))
-  let url: string
-  if (type === 'anthropic') {
-    url = `${baseUrl}/v1/messages`
-  } else if (useResponses) {
-    url = `${baseUrl}/v1/responses`
-  } else {
-    url = `${baseUrl}/v1/chat/completions`
-  }
+  const endpoint = type === 'anthropic' ? 'messages' : useResponses ? 'responses' : 'chat/completions'
+  const url = buildUpstreamUrl(apiBase || getDefaultApiBase(type), endpoint)
 
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
   if (type === 'anthropic') {
@@ -156,13 +149,13 @@ export async function handleTestAdapter(ctx: ServerContext, req: IncomingMessage
 
   const type = route.inboundType
   const providerType = route.route.providerType
-  const baseUrl = sanitizeApiBase(route.route.apiBase)
   const targetModel = route.route.modelId
-  const url = providerType === 'anthropic'
-    ? `${baseUrl}/v1/messages`
+  const endpoint = providerType === 'anthropic'
+    ? 'messages'
     : providerType === 'openai-responses'
-      ? `${baseUrl}/v1/responses`
-    : `${baseUrl}/v1/chat/completions`
+      ? 'responses'
+      : 'chat/completions'
+  const url = buildUpstreamUrl(route.route.apiBase, endpoint)
 
   // 适配器入口 URL（客户端实际请求的地址）
   const adapterEndpoint = type === 'anthropic' ? 'messages' : type === 'openai-responses' ? 'responses' : 'chat/completions'
@@ -265,7 +258,7 @@ export async function handlePullModels(ctx: ServerContext, req: IncomingMessage,
     headers['Authorization'] = `Bearer ${apiKey}`
   }
 
-  const url = `${sanitizeApiBase(apiBase)}/v1/models`
+  const url = buildUpstreamUrl(apiBase, 'models')
 
   try {
     const response = await fetch(url, { headers, signal: AbortSignal.timeout(10000) })
