@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.31.2](https://github.com/maplezzk/llm-proxy/compare/v0.31.1...v0.31.2) (2026-11-24)
+
+
+### Bug Fixes
+
+* 修复 macOS 27 控制台页头模糊 ([035bee8](https://github.com/maplezzk/llm-proxy/commit/035bee8b2b2ad45fd53e3317f01c4b1b5b41fdfa))
+* 修复 macOS 27 控制台页头模糊 ([bb001d9](https://github.com/maplezzk/llm-proxy/commit/bb001d9e8732d50ccb895205817fc1f1b0a49693))
+
 ## [0.31.1](https://github.com/maplezzk/llm-proxy/compare/v0.31.0...v0.31.1) (2026-11-24)
 
 
